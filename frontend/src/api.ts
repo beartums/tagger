@@ -306,6 +306,12 @@ export const api = {
       request<EditResult>('PATCH', `/api/tags/${trackId}`, tags),
     bulk: (trackIds: number[], tags: TagUpdate) =>
       request<EditResult>('POST', '/api/tags/bulk', { track_ids: trackIds, tags }),
+    parsePreview: (trackIds: number[], pattern: string) =>
+      request<{ total: number; matched: number; changing: number;
+                items: { id: number; path: string; matched: boolean; tags: Record<string, string>; changes: Record<string, string> }[] }>(
+        'POST', '/api/tags/parse-preview', { track_ids: trackIds, pattern }),
+    parseNames: (trackIds: number[], pattern: string, exclude: number[]) =>
+      request<EditResult & { changed: number }>('POST', '/api/tags/parse', { track_ids: trackIds, pattern, exclude }),
     editValues: (trackIds: number[], field: string, add: string[], remove: string[]) =>
       request<EditResult & { changed: number }>('POST', '/api/tags/values', { track_ids: trackIds, field, add, remove }),
     replaygain: (trackIds: number[], albumMode = false) =>
