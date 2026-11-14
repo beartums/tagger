@@ -14,7 +14,14 @@
     (tags, moves, covers, ReplayGain); a big write is one rescan. *Player
     rescans* sets when: N minutes after the last change (each change restarts
     the wait; default 5), N seconds after a change (later changes don't push it
-    back), or off. A rescan that's waiting shows when it's due. Both need an admin (Navidrome's `startScan`, MA's `music/sync`);
+    back), or off. A rescan that's waiting shows when it's due.
+  - **Just the changed folders**: map Tagger folders to Navidrome libraries
+    (`/music = 1:`; Test lists the library ids) and Navidrome scans only the
+    folders that changed -- both ends of a move, the nearest folder that still
+    exists for one moved away. Unmapped changes or more than 50 folders: a
+    full scan. Music Assistant can only sync whole providers, so its map
+    (Tagger folder = provider instance id) syncs just the providers whose
+    folders changed. Both need an admin (Navidrome's `startScan`, MA's `music/sync`);
     Test says so, and MA's Test lists its file providers to pick from. The
     last result shows under each; *Rescan now* forces one.
 - **Names follow Lidarr's character rules**: a "/" inside a tag no longer

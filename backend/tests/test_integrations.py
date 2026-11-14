@@ -85,7 +85,7 @@ def test_rescan_now_runs_each_configured_app_and_survives_failure(client, monkey
 def _timed(monkeypatch, mode, wait):
     runs = []
     monkeypatch.setattr(integrations, "_timing", lambda: (mode, wait))
-    monkeypatch.setattr(integrations, "rescan_now", lambda: runs.append(time.monotonic()))
+    monkeypatch.setattr(integrations, "rescan_now", lambda *a: runs.append(time.monotonic()))
     return runs
 
 
@@ -129,3 +129,60 @@ def test_source_test_needs_settings(client):
     r = client.post("/api/config/test/lidarr", json={"value": ""}).json()
     assert not r["ok"] and "URL" in r["message"]
     assert client.get("/api/config/lidarr-naming").status_code == 400
+
+
+def test_navidrome_targets(tmp_path):
+    lib = tmp_path / "music"
+    (lib / "Shared" / "Pogues, The" / "Rum").mkdir(parents=True)
+    (lib / "Shared" / "AC+DC").mkdir(parents=True)
+    m = {str(lib / "Shared"): "1:", str(lib / "Libraries"): "2:Side"}
+    t = integrations.navidrome_targets({
+        str(lib / "Shared/Pogues, The/Rum"), str(lib / "Shared/Pogues, The"),     # one covers the other
+        str(lib / "Shared/AC_DC"),                                                # moved away: nearest existing
+    }, m)
+    assert sorted(t) == ["1:"]        # AC_DC is gone, so its target is the library root, covering the rest
+    (lib / "Libraries" / "Cast" / "Show").mkdir(parents=True)
+    assert integrations.navidrome_targets({str(lib / "Libraries/Cast/Show"), str(lib / "Shared/AC+DC")}, m) == \
+        ["1:AC+DC", "2:Side/Cast/Show"]
+    assert integrations.navidrome_targets({"/elsewhere/x"}, m) is None          # outside the mapping: full scan
+    assert integrations.navidrome_targets({str(lib / "Shared/AC+DC")}, {}) is None
+
+
+def test_navidrome_targets_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(integrations, "MAX_TARGETS", 2)
+    for n in "abc":
+        (tmp_path / n).mkdir()
+    dirs = {str(tmp_path / n) for n in "abc"}
+    assert integrations.navidrome_targets(dirs, {str(tmp_path): "1:"}) is None
+
+
+def test_ma_providers_for():
+    m = {"/music/Shared": "filesystem_local--shared", "/music/Libraries/Cast": "filesystem_local--cast"}
+    assert integrations.ma_providers_for({"/music/Shared/A/B"}, m, []) == ["filesystem_local--shared"]
+    assert integrations.ma_providers_for({"/music/Shared/A", "/music/Libraries/Cast/X"}, m, []) == \
+        ["filesystem_local--cast", "filesystem_local--shared"]
+    assert integrations.ma_providers_for({"/music/Other"}, m, ["all-mine"]) == ["all-mine"]
+    assert integrations.ma_providers_for(None, m, []) == []
+
+
+def test_targeted_rescan_sends_targets(client, monkeypatch, tmp_path):
+    (tmp_path / "Shared" / "X").mkdir(parents=True)
+    client.patch("/api/config", json={
+        "navidrome_url": "http://nd", "navidrome_user": "me", "navidrome_password": "pw",
+        "navidrome_folders": {str(tmp_path / "Shared"): "1:"}})
+    calls = fake(monkeypatch, {"/rest/startScan": (200, {"subsonic-response": {"status": "ok"}})})
+    out = integrations.rescan_now({str(tmp_path / "Shared" / "X")})
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(calls[0]["url"]).query)
+    assert q["target"] == ["1:X"] and "1 folder" in out["navidrome"]["message"]
+    assert client.patch("/api/config", json={"navidrome_folders": {"/music": "Shared"}}).status_code == 400
+
+
+def test_changed_collects_folders(monkeypatch, tmp_path):
+    got = []
+    monkeypatch.setattr(integrations, "_timing", lambda: ("quiet", 0.05))
+    monkeypatch.setattr(integrations, "rescan_now", lambda dirs=None: got.append(dirs))
+    (tmp_path / "a").mkdir()
+    integrations.changed(tmp_path / "a" / "01 x.flac")
+    integrations.changed(tmp_path / "a", tmp_path / "b" / "new")
+    time.sleep(0.2)
+    assert got == [{str(tmp_path / "a"), str(tmp_path / "b")}]

@@ -190,11 +190,13 @@ export interface AppSettings {
   ma_url: string
   ma_token: string
   ma_providers: string[]
+  navidrome_folders: Record<string, string>
+  ma_folders: Record<string, string>
   rescans?: Record<string, RescanResult>
   rescan_mode: 'off' | 'delay' | 'quiet'
   rescan_delay_seconds: number
   rescan_quiet_minutes: number
-  rescan_pending?: { since: number; due: number } | null
+  rescan_pending?: { since: number; due: number; folders: number } | null
   secrets_set?: Record<string, boolean>   // keys/tokens are never sent back, only whether set
   secrets_encrypted?: boolean
   default_music_dir?: string

@@ -20,6 +20,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import posixpath
 import secrets as _secrets
 import threading
 import time
@@ -43,6 +45,10 @@ _lock = threading.Lock()
 _cached: tuple[float, str, float] | None = None     # (read at, mode, wait seconds)
 pending_since: float | None = None                  # first change not yet rescanned
 due_at: float | None = None
+_dirs: set[str] = set()                             # folders changed since the last rescan
+
+# More folders than this in one rescan: Navidrome scans everything instead.
+MAX_TARGETS = 50
 
 
 def _request(url: str, *, headers: dict | None = None, body: dict | None = None, timeout: float = 15) -> tuple[int, object]:
@@ -108,7 +114,7 @@ def _subsonic(url: str, user: str, password: str, method: str, **params) -> dict
     salt = _secrets.token_hex(6)
     q = {"u": user, "t": hashlib.md5((password + salt).encode()).hexdigest(), "s": salt,
          "v": "1.16.1", "c": "tagger", "f": "json", **params}
-    status, body = _request(f"{_base(url)}/rest/{method}?{urllib.parse.urlencode(q)}")
+    status, body = _request(f"{_base(url)}/rest/{method}?{urllib.parse.urlencode(q, doseq=True)}")
     r = body.get("subsonic-response") if isinstance(body, dict) else None
     if status != 200 or not isinstance(r, dict):
         raise ValueError(_why("Navidrome", status, body))
@@ -125,13 +131,87 @@ def test_navidrome(url: str, user: str, password: str) -> dict:
         return {"ok": False, "message": str(exc)}
     if u and not u.get("adminRole"):
         return {"ok": False, "message": f"Navidrome: signed in as {user}, but rescans need an admin user"}
-    return {"ok": True, "message": f"Navidrome: signed in as {user}"}
+    try:
+        libs = ", ".join(f"{l['id']} = {l['name']}" for l in navidrome_libraries(url, user, password))
+    except ValueError:
+        libs = ""
+    return {"ok": True, "message": f"Navidrome: signed in as {user}" + (f"; libraries: {libs}" if libs else "")}
 
 
-def rescan_navidrome(url: str, user: str, password: str) -> str:
-    r = _subsonic(url, user, password, "startScan")
+def navidrome_libraries(url: str, user: str, password: str) -> list[dict]:
+    """[{id, name}]: getMusicFolders ids are Navidrome's library ids (the target prefix)."""
+    r = _subsonic(url, user, password, "getMusicFolders")
+    return [{"id": f.get("id"), "name": f.get("name")} for f in (r.get("musicFolders") or {}).get("musicFolder") or []]
+
+
+def rescan_navidrome(url: str, user: str, password: str, targets: list[str] | None = None) -> str:
+    """Scan everything, or just the given "libraryID:folder" targets (and below)."""
+    r = _subsonic(url, user, password, "startScan", **({"target": targets} if targets else {}))
     s = r.get("scanStatus") or {}
-    return "scan started" + (f" ({s['count']} tracks known)" if "count" in s else "")
+    what = f"{len(targets)} folder{'s' if len(targets) != 1 else ''}" if targets else "full scan"
+    return f"scan started ({what})" + (f", {s['count']} tracks known" if "count" in s else "")
+
+
+def _longest(path: str, mapping: dict[str, str]) -> tuple[str, str] | None:
+    """The mapping entry whose Tagger folder contains path (deepest wins)."""
+    best = None
+    for root, v in mapping.items():
+        root = os.path.normpath(root)
+        if path == root or path.startswith(root.rstrip("/") + "/"):
+            if best is None or len(root) > len(best[0]):
+                best = (root, v)
+    return best
+
+
+def _existing(path: str, stop: str) -> str:
+    """path, or its nearest folder that still exists (a moved-away folder is gone)."""
+    while path != stop and not os.path.isdir(path):
+        path = os.path.dirname(path)
+    return path
+
+
+def _outermost(paths) -> list[str]:
+    """Drop folders inside another one in the set: a target scans its subfolders."""
+    out: list[str] = []
+    for p in sorted(set(paths)):
+        if not any(p == o or p.startswith(o.rstrip("/") + "/") for o in out):
+            out.append(p)
+    return out
+
+
+def navidrome_targets(dirs: set[str], mapping: dict[str, str]) -> list[str] | None:
+    """
+    "libraryID:folder" targets for the changed folders, or None = scan everything
+    (no mapping, a folder outside it, or more than MAX_TARGETS). mapping:
+    Tagger folder -> "libraryID:folder in that library" ("1:" = the library root).
+    """
+    if not mapping or not dirs:
+        return None
+    found = []
+    for d in dirs:
+        hit = _longest(os.path.normpath(d), mapping)
+        if hit is None:
+            return None
+        root, spec = hit
+        lib, _, prefix = spec.partition(":")
+        found.append((lib.strip(), root, _existing(os.path.normpath(d), root), prefix.strip().strip("/")))
+    targets = []
+    for lib, root, d, prefix in found:
+        rel = os.path.relpath(d, root)
+        rel = "" if rel == "." else rel.replace(os.sep, "/")
+        targets.append(f"{lib}:{posixpath.join(prefix, rel) if prefix and rel else prefix or rel}")
+    # outermost per library: "1:A" covers "1:A/B"; "1:" covers all of library 1
+    by_lib: dict[str, list[str]] = {}
+    for t in targets:
+        lib, _, folder = t.partition(":")
+        by_lib.setdefault(lib, []).append(folder)
+    out = []
+    for lib, folders in sorted(by_lib.items()):
+        if "" in folders:
+            out.append(f"{lib}:")
+        else:
+            out += [f"{lib}:{f}" for f in _outermost(folders)]
+    return out if len(out) <= MAX_TARGETS else None
 
 
 # ── Music Assistant ────────────────────────────────────────────────────────
@@ -158,6 +238,20 @@ def test_ma(url: str, token: str) -> dict:
     ids = [p.get("instance_id") for p in provs or [] if isinstance(p, dict) and str(p.get("domain", "")).startswith("filesystem")]
     found = f"; file providers: {', '.join(ids)}" if ids else "; no file providers found"
     return {"ok": True, "message": f"Music Assistant: {who}{found}"}
+
+
+def ma_providers_for(dirs: set[str] | None, mapping: dict[str, str], default: list[str]) -> list[str]:
+    """
+    Providers whose folders changed (mapping: Tagger folder -> provider instance id);
+    the default list (blank = all) when there's no mapping, no folder list, or a
+    changed folder outside the mapping.
+    """
+    if not mapping or not dirs:
+        return default
+    hits = [_longest(os.path.normpath(d), mapping) for d in dirs]
+    if any(h is None for h in hits):
+        return default
+    return sorted({h[1] for h in hits})
 
 
 def rescan_ma(url: str, token: str, providers: list[str]) -> str:
@@ -191,12 +285,16 @@ def _timing() -> tuple[str, float]:
     return _cached[1], _cached[2]
 
 
-def cancel_pending() -> None:
+def cancel_pending() -> set[str]:
+    """Stop a waiting rescan; returns the folders it would have covered."""
     global _timer, pending_since, due_at
     with _lock:
         if _timer is not None:
             _timer.cancel()
         _timer = pending_since = due_at = None
+        dirs = set(_dirs)
+        _dirs.clear()
+        return dirs
 
 
 def settings_changed() -> None:
@@ -207,13 +305,20 @@ def settings_changed() -> None:
         cancel_pending()
 
 
-def changed() -> None:
-    """Files changed: start (or, waiting for quiet, restart) the countdown to one rescan."""
+def changed(*paths) -> None:
+    """
+    Files changed (paths: the files or folders touched; their folders are what
+    get rescanned): start -- or, waiting for quiet, restart -- the countdown
+    to one rescan.
+    """
     global _timer, pending_since, due_at
     mode, wait = _timing()
     if mode == "off":
         return
     with _lock:
+        for p in paths:
+            p = os.path.normpath(str(p))
+            _dirs.add(p if os.path.isdir(p) else os.path.dirname(p))
         if _timer is not None:
             if mode == "delay":
                 return              # already due; this change rides along
@@ -229,23 +334,30 @@ def _fire() -> None:
     global _timer, pending_since, due_at
     with _lock:
         _timer = pending_since = due_at = None
-    rescan_now()
+        dirs = set(_dirs)
+        _dirs.clear()
+    rescan_now(dirs)
 
 
 def pending() -> dict | None:
     """A rescan waiting to happen, for Settings: {since, due} (epoch seconds)."""
-    return {"since": pending_since, "due": due_at} if due_at else None
+    return {"since": pending_since, "due": due_at, "folders": len(_dirs)} if due_at else None
 
 
-def rescan_now() -> dict:
-    """Ask every configured app to rescan; records and returns each result."""
+def rescan_now(dirs: set[str] | None = None) -> dict:
+    """
+    Ask every configured app to rescan -- just the changed folders where it
+    can (dirs; None = everything). Records and returns each result.
+    """
     from api.config import _load
     s = _load()
     jobs = []
     if s.navidrome_url and s.navidrome_user and s.navidrome_password:
-        jobs.append(("navidrome", lambda: rescan_navidrome(s.navidrome_url, s.navidrome_user, s.navidrome_password)))
+        targets = navidrome_targets(dirs or set(), s.navidrome_folders) if dirs else None
+        jobs.append(("navidrome", lambda: rescan_navidrome(s.navidrome_url, s.navidrome_user, s.navidrome_password, targets)))
     if s.ma_url and s.ma_token:
-        jobs.append(("music_assistant", lambda: rescan_ma(s.ma_url, s.ma_token, s.ma_providers)))
+        providers = ma_providers_for(dirs, s.ma_folders, s.ma_providers)
+        jobs.append(("music_assistant", lambda: rescan_ma(s.ma_url, s.ma_token, providers)))
     for name, fn in jobs:
         try:
             last[name] = {"at": time.time(), "ok": True, "message": fn()}

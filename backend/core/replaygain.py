@@ -63,5 +63,5 @@ def scan(paths: list[str], album_mode: bool = False) -> dict:
             "processed": 0,
             "error": msg[-1] if msg else "ReplayGain scan failed",
         }
-    from core import integrations; integrations.changed()   # rsgain wrote the tags: Navidrome/MA rescan
+    from core import integrations; integrations.changed(*paths)   # rsgain wrote the tags: Navidrome/MA rescan
     return {"ok": True, "tool": tool, "processed": len(paths)}

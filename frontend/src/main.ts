@@ -3296,6 +3296,14 @@ const integInputs = {
   ma_url:         document.getElementById('setting-ma-url') as HTMLInputElement,
 }
 const maProvidersInput = document.getElementById('setting-ma-providers') as HTMLInputElement
+const navidromeFoldersInput = document.getElementById('setting-navidrome-folders') as HTMLTextAreaElement
+const maFoldersInput   = document.getElementById('setting-ma-folders') as HTMLTextAreaElement
+// "Tagger folder = value" lines <-> {folder: value}; split on the first " = ".
+const mapToLines = (m: Record<string, string> | undefined) => Object.entries(m ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n')
+const linesToMap = (t: string) => Object.fromEntries(t.split('\n').map(l => {
+  const i = l.indexOf('=')
+  return i < 0 ? ['', ''] : [l.slice(0, i).trim(), l.slice(i + 1).trim()]
+}).filter(([k, v]) => k && v))
 const rescanModeInput  = document.getElementById('setting-rescan-mode') as HTMLSelectElement
 const rescanWaitInput  = document.getElementById('setting-rescan-wait') as HTMLInputElement
 // The wait box holds seconds (delay) or minutes (quiet); each mode keeps its own number.
@@ -3316,7 +3324,7 @@ rescanWaitInput.addEventListener('input', () => {
 })
 function showRescanPending(p: AppSettings['rescan_pending']) {
   document.getElementById('rescan-pending')!.textContent =
-    p ? `Rescan due ${new Date(p.due * 1000).toLocaleTimeString()} (changes since ${new Date(p.since * 1000).toLocaleTimeString()})` : ''
+    p ? `Rescan due ${new Date(p.due * 1000).toLocaleTimeString()}: ${p.folders} folder${p.folders === 1 ? '' : 's'} changed since ${new Date(p.since * 1000).toLocaleTimeString()}` : ''
 }
 
 function showRescans(r: Record<string, RescanResult> | undefined) {
@@ -3477,6 +3485,8 @@ async function openSettings() {
     namingColonInput.value    = s.naming_colon ?? 'smart'
     for (const [k, el] of Object.entries(integInputs)) el.value = (s as unknown as Record<string, string>)[k] ?? ''
     maProvidersInput.value    = (s.ma_providers ?? []).join(', ')
+    navidromeFoldersInput.value = mapToLines(s.navidrome_folders)
+    maFoldersInput.value      = mapToLines(s.ma_folders)
     showRescans(s.rescans)
     rescanWaits.delay = s.rescan_delay_seconds ?? 30
     rescanWaits.quiet = s.rescan_quiet_minutes ?? 5
@@ -3691,6 +3701,8 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     naming_colon:      namingColonInput.value as AppSettings['naming_colon'],
     ...Object.fromEntries(Object.entries(integInputs).map(([k, el]) => [k, el.value.trim()])),
     ma_providers:      maProvidersInput.value.split(/[\s,]+/).filter(Boolean),
+    navidrome_folders: linesToMap(navidromeFoldersInput.value),
+    ma_folders:        linesToMap(maFoldersInput.value),
     rescan_mode:       rescanModeInput.value as AppSettings['rescan_mode'],
     rescan_delay_seconds: rescanWaits.delay,
     rescan_quiet_minutes: rescanWaits.quiet,

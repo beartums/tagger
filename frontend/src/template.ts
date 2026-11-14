@@ -212,6 +212,9 @@ export const APP_HTML = `
           <span class="secret-row"><input id="setting-navidrome-password" data-secret="navidrome_password" type="password" autocomplete="off" placeholder="Navidrome password…" data-placeholder="Navidrome password…" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="navidrome" title="Check the connection (what you typed, else the saved values)">Test</button></span>
         </label>
         <div class="source-test-result" data-test-result="navidrome" hidden></div>
+        <label class="field-label">Scan just the changed folders <span class="ma-dim">(one per line: Tagger folder = library id:folder in it; blank: full scans)</span>
+          <textarea id="setting-navidrome-folders" rows="2" spellcheck="false" placeholder="/music = 1:"></textarea></label>
+        <p class="settings-hint">Test lists the library ids. <code>/music = 1:</code> means Tagger's <code>/music</code> is the root of library 1. A change outside these folders, or more than 50 folders at once, scans everything.</p>
         <div class="settings-hint" data-rescan-status="navidrome"></div>
       </div>
       <div class="settings-section">
@@ -225,6 +228,9 @@ export const APP_HTML = `
         <div class="source-test-result" data-test-result="music_assistant" hidden></div>
         <label class="field-label">Providers to sync <span class="ma-dim">(instance ids, comma-separated; blank: all)</span>
           <input id="setting-ma-providers" type="text" spellcheck="false" placeholder="filesystem_local--ab12cd34" /></label>
+        <label class="field-label">Sync just the changed providers <span class="ma-dim">(one per line: Tagger folder = provider instance id; blank: the list above)</span>
+          <textarea id="setting-ma-folders" rows="2" spellcheck="false" placeholder="/music/Shared = filesystem_local--ab12cd34"></textarea></label>
+        <p class="settings-hint">Music Assistant can't sync a single folder, only whole providers — this helps once each library is its own provider. A change outside these folders syncs the list above.</p>
         <div class="settings-hint" data-rescan-status="music_assistant"></div>
       </div>
       <div class="settings-section">

@@ -78,6 +78,11 @@ class AppSettings(BaseModel):
     ma_url: str = ""
     ma_token: str = ""                 # long-lived token of an admin (music/sync needs library.manage)
     ma_providers: list[str] = []       # provider instance ids to sync; [] = all
+    # Rescan just what changed (core/integrations.py). Tagger folder ->
+    # Navidrome "libraryID:folder in it" ("1:" = library 1's root) / MA provider instance id.
+    # Empty, or a change outside them: Navidrome scans everything, MA syncs ma_providers.
+    navidrome_folders: dict[str, str] = {}
+    ma_folders: dict[str, str] = {}
     # When Navidrome/MA rescan after Tagger changes files (core/integrations.py):
     # off | delay (N s after the first change) | quiet (N min after the last change).
     rescan_mode: str = "quiet"
@@ -309,6 +314,13 @@ def update_settings(update: AppSettings):
         sent["browse_paths"] = _check_browse_paths(update.browse_paths)
     if "layout_libraries" in sent:
         sent["layout_libraries"] = sorted({os.path.normpath(p) for p in sent["layout_libraries"]})
+    for k in ("navidrome_folders", "ma_folders"):
+        if k in sent:
+            sent[k] = {os.path.normpath(p.strip()): v.strip() for p, v in sent[k].items() if p.strip() and v.strip()}
+    for p, v in sent.get("navidrome_folders", {}).items():
+        lib = v.partition(":")[0]
+        if ":" not in v or not lib.isdigit() or int(lib) < 1:
+            raise HTTPException(400, f"Navidrome folder for {p}: libraryID:folder, e.g. 1:Shared")
     if "rescan_mode" in sent and sent["rescan_mode"] not in ("off", "delay", "quiet"):
         raise HTTPException(400, "rescan_mode: off, delay or quiet")
     for k in ("rescan_delay_seconds", "rescan_quiet_minutes"):
