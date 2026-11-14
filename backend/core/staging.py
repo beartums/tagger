@@ -29,7 +29,7 @@ from core.fileops import (
     MoveError, leftover_images, move_dir, move_file, prune_empty_dirs, root_for, same_filesystem,
 )
 from core.history import STAGEABLE, log_change, repoint_tracks, snapshot
-from core.naming import render_template
+from core.naming import NamingRules, current_rules, render_template
 from core.tagger import write_tags
 
 _UNSET = object()
@@ -344,13 +344,13 @@ def stage(conn, row, tags: dict | None = None, new_path=_UNSET, step: Step | Non
     _save(conn, row["id"], merged, path)
 
 
-def plan_path(row, tags: dict, template: str, roots: list[Path]) -> str:
+def plan_path(row, tags: dict, template: str, roots: list[Path], rules: NamingRules | None = None) -> str:
     """Absolute destination for row under its library root. Raises PlanError."""
     root = root_for(row["path"], roots)
     if root is None:
         raise PlanError("not inside a library root (see Settings → Library roots)")
     try:
-        rel = render_template(template, tags, Path(row["path"]).suffix)
+        rel = render_template(template, tags, Path(row["path"]).suffix, rules or current_rules())
     except (KeyError, ValueError, IndexError) as exc:
         raise PlanError(f"bad template: {exc}")
     return str(root / rel)
@@ -367,7 +367,8 @@ def stage_edit(conn, row, tags: dict, step: Step | None = None) -> None:
         entry = load(conn, [row["id"]]).get(row["id"])
         roots = get_library_roots()
         try:
-            dest = plan_path(row, effective(row, entry), template_for(conn, row), roots)
+            dest = plan_path(row, effective(row, entry), template_for(conn, row), roots,
+                             NamingRules.from_settings(app))
         except PlanError:
             return  # leave the file where it is
         stage(conn, row, new_path=dest, step=step)

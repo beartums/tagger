@@ -219,7 +219,7 @@ def reorganize(req: Reorganize):
             try:
                 dest = staging.plan_path(
                     row, staging.effective(row, pending.get(row["id"])),
-                    layouts.template(row["path"], assigned.get(row["id"])), roots,
+                    layouts.template(row["path"], assigned.get(row["id"])), roots, layouts.rules,
                 )
             except staging.PlanError as exc:
                 errors.append({"id": row["id"], "error": str(exc)})

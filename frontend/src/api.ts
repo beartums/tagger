@@ -170,6 +170,8 @@ export interface AppSettings {
   search_fields: string[]
   cover_folder_size: number
   browse_paths: Record<string, string[]>
+  naming_replace_illegal: boolean
+  naming_colon: 'smart' | 'delete' | 'dash' | 'space_dash' | 'space_dash_space'
   secrets_set?: Record<string, boolean>   // keys/tokens are never sent back, only whether set
   secrets_encrypted?: boolean
   default_music_dir?: string
@@ -547,9 +549,10 @@ export const api = {
     setLibrary: (path: string, active: boolean) =>
       request<{ active: boolean; removed?: number; job_id?: string | null }>('POST', '/api/config/libraries', { path, active }),
     update: (s: Partial<AppSettings>) => request<AppSettings>('PATCH', '/api/config', s),
-    renamePreview: (template: string, tags?: Record<string, string>, ext?: string, trackId?: number) =>
+    renamePreview: (template: string, tags?: Record<string, string>, ext?: string, trackId?: number,
+                    naming?: { replace_illegal: boolean; colon: string }) =>
       request<{ ok: boolean; preview?: string; path?: string; error?: string }>(
-        'POST', '/api/config/rename-preview', { template, tags, ext, track_id: trackId }),
+        'POST', '/api/config/rename-preview', { template, tags, ext, track_id: trackId, ...naming }),
   },
 
   lyrics: {
