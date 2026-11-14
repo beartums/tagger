@@ -16,7 +16,7 @@ import os
 
 logger = logging.getLogger("tagger.secrets")
 
-FIELDS = ("acoustid_api_key", "discogs_token", "lrclib_api_key")
+FIELDS = ("acoustid_api_key", "discogs_token", "lrclib_api_key", "lidarr_api_key", "navidrome_password", "ma_token")
 PREFIX = "enc:v1:"
 
 

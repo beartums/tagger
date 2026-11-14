@@ -96,11 +96,13 @@ def _trash_dir() -> Path:
 
 
 def _trash(p: Path) -> None:
+    from core import integrations; integrations.changed()   # Navidrome/MA rescan, debounced
     shutil.move(str(p), str(_trash_dir() / f"cover_{uuid.uuid4().hex[:8]}_{p.name}"))
 
 
 def write_folder(conn, directory: str, mime: str, data: bytes, size: int = 0) -> Path:
     """Write the folder's cover.<ext> (shrunk to `size`); one already there goes to the trash."""
+    from core import integrations; integrations.changed()   # Navidrome/MA rescan, debounced
     mime, data = fit(mime, data, size)
     old = read_folder(directory)
     dest = Path(directory) / ("cover" + _EXT.get(mime, ".jpg"))

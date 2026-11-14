@@ -35,6 +35,7 @@ def _same_file(a: Path, b: Path) -> bool:
 
 def move_file(src: str | Path, dst: str | Path) -> None:
     """Move src to dst. Raises MoveError instead of overwriting anything."""
+    from core import integrations; integrations.changed()   # Navidrome/MA rescan, debounced
     src, dst = Path(src), Path(dst)
     if not src.exists():
         raise MoveError(f"source missing: {src}")
@@ -53,6 +54,7 @@ def move_file(src: str | Path, dst: str | Path) -> None:
 
 def move_dir(src: str | Path, dst: str | Path) -> None:
     """Move a whole folder (cover art and all). Never merges or overwrites."""
+    from core import integrations; integrations.changed()   # Navidrome/MA rescan, debounced
     src, dst = Path(src), Path(dst)
     if not src.is_dir():
         raise MoveError(f"folder missing: {src}")

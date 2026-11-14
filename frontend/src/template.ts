@@ -98,6 +98,8 @@ export const APP_HTML = `
             <option value="delete">Delete</option>
           </select></label>
         <div id="naming-preview" class="rename-preview"></div>
+        <button type="button" id="naming-from-lidarr" class="btn btn-ghost btn-sm" title="Set both from Lidarr (Settings → Sources → Lidarr); Save to keep">Copy from Lidarr</button>
+        <div id="lidarr-formats" class="settings-hint" hidden></div>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Library layouts</div>
@@ -188,6 +190,43 @@ export const APP_HTML = `
         <div class="settings-section-title">ReplayGain</div>
         <p class="settings-hint">Scan volume levels and write ReplayGain tags, so players that read them play tracks at an even volume. Run it from the selection toolbar.</p>
         <div id="replaygain-status" class="acoustid-status"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Lidarr</div>
+        <p class="settings-hint">Optional. Lets Settings → Layouts → <em>Characters in names</em> copy Lidarr's naming choices. API key: Lidarr → Settings → General.</p>
+        <label class="field-label">URL
+          <input id="setting-lidarr-url" data-integ-url type="text" spellcheck="false" placeholder="http://lidarr:8686" /></label>
+        <label class="field-label">API key
+          <span class="secret-row"><input id="setting-lidarr-key" data-secret="lidarr_api_key" type="password" autocomplete="off" placeholder="Paste Lidarr's API key…" data-placeholder="Paste Lidarr's API key…" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="lidarr" title="Check the connection (what you typed, else the saved values)">Test</button></span>
+        </label>
+        <div class="source-test-result" data-test-result="lidarr" hidden></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Navidrome</div>
+        <p class="settings-hint">Optional. Navidrome rescans 30 s after Tagger last changes a file. Needs an <strong>admin</strong> user (rescans are admin-only).</p>
+        <label class="field-label">URL
+          <input id="setting-navidrome-url" data-integ-url type="text" spellcheck="false" placeholder="http://navidrome:4533" /></label>
+        <label class="field-label">User
+          <input id="setting-navidrome-user" data-integ-user type="text" spellcheck="false" autocomplete="off" /></label>
+        <label class="field-label">Password
+          <span class="secret-row"><input id="setting-navidrome-password" data-secret="navidrome_password" type="password" autocomplete="off" placeholder="Navidrome password…" data-placeholder="Navidrome password…" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="navidrome" title="Check the connection (what you typed, else the saved values)">Test</button></span>
+        </label>
+        <div class="source-test-result" data-test-result="navidrome" hidden></div>
+        <div class="settings-hint" data-rescan-status="navidrome"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Music Assistant</div>
+        <p class="settings-hint">Optional. Music Assistant syncs 30 s after Tagger last changes a file. Token: an <strong>admin</strong>'s long-lived token (Settings → Profile). Test lists the file providers to sync.</p>
+        <label class="field-label">URL
+          <input id="setting-ma-url" data-integ-url type="text" spellcheck="false" placeholder="http://music-assistant:8095" /></label>
+        <label class="field-label">Token
+          <span class="secret-row"><input id="setting-ma-token" data-secret="ma_token" type="password" autocomplete="off" placeholder="Paste a long-lived token…" data-placeholder="Paste a long-lived token…" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="music_assistant" title="Check the connection (what you typed, else the saved values)">Test</button></span>
+        </label>
+        <div class="source-test-result" data-test-result="music_assistant" hidden></div>
+        <label class="field-label">Providers to sync <span class="ma-dim">(instance ids, comma-separated; blank: all)</span>
+          <input id="setting-ma-providers" type="text" spellcheck="false" placeholder="filesystem_local--ab12cd34" /></label>
+        <div class="settings-hint" data-rescan-status="music_assistant"></div>
+        <button type="button" id="rescan-now" class="btn btn-ghost btn-sm" title="Ask Navidrome and Music Assistant to rescan now (saved settings)">Rescan now</button>
       </div>
       </div>
       <div class="settings-sect" data-sect="search" hidden>

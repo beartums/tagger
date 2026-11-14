@@ -1,5 +1,5 @@
 import './style.css'
-import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, TagValue, setUnauthorizedHandler, onSessionExpired } from './api'
+import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, RescanResult, TagValue, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
 import { esc, fmtDuration, debounce } from './util'
 import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
@@ -3263,7 +3263,11 @@ document.getElementById('pane-settings')!.addEventListener('click', async (e) =>
     t.disabled = true
     out.hidden = false; out.className = 'source-test-result'; out.textContent = 'Testing…'
     try {
-      const r = await api.settings.testSource(src, typed, src === 'lrclib' ? lrclibAppIdInput.value.trim() : undefined)
+      const sect = t.closest('.settings-section')!
+      const urlIn = sect.querySelector<HTMLInputElement>('[data-integ-url]')
+      const userIn = sect.querySelector<HTMLInputElement>('[data-integ-user]')
+      const extra = urlIn ? { url: urlIn.value.trim(), ...(userIn ? { user: userIn.value.trim() } : {}) } : undefined
+      const r = await api.settings.testSource(src, typed, src === 'lrclib' ? lrclibAppIdInput.value.trim() : undefined, extra)
       out.className = `source-test-result ${r.ok ? 'status-ok' : 'status-warn'}`
       out.textContent = `${r.ok ? '✓' : '⚠'} ${r.message}`
     } catch (err) {
@@ -3285,6 +3289,44 @@ const coverTargetInput  = document.getElementById('setting-cover-target') as HTM
 const namingIllegalInput = document.getElementById('setting-naming-illegal') as HTMLSelectElement
 const namingColonInput   = document.getElementById('setting-naming-colon') as HTMLSelectElement
 const namingPreviewEl    = document.getElementById('naming-preview')!
+const integInputs = {
+  lidarr_url:     document.getElementById('setting-lidarr-url') as HTMLInputElement,
+  navidrome_url:  document.getElementById('setting-navidrome-url') as HTMLInputElement,
+  navidrome_user: document.getElementById('setting-navidrome-user') as HTMLInputElement,
+  ma_url:         document.getElementById('setting-ma-url') as HTMLInputElement,
+}
+const maProvidersInput = document.getElementById('setting-ma-providers') as HTMLInputElement
+
+function showRescans(r: Record<string, RescanResult> | undefined) {
+  document.querySelectorAll<HTMLElement>('[data-rescan-status]').forEach(el => {
+    const x = r?.[el.dataset.rescanStatus!]
+    el.textContent = x ? `Last rescan ${new Date(x.at * 1000).toLocaleString()}: ${x.ok ? '✓' : '⚠'} ${x.message}` : ''
+    el.classList.toggle('status-warn', !!x && !x.ok)
+  })
+}
+document.getElementById('rescan-now')!.addEventListener('click', async (e) => {
+  const b = e.currentTarget as HTMLButtonElement
+  b.disabled = true
+  try { showRescans(await api.settings.rescan()) }
+  catch (err) { toast(`Rescan failed: ${errText(err)}`, 'error') }
+  finally { b.disabled = false }
+})
+document.getElementById('naming-from-lidarr')!.addEventListener('click', async (e) => {
+  const b = e.currentTarget as HTMLButtonElement
+  const formats = document.getElementById('lidarr-formats')!
+  b.disabled = true
+  try {
+    const n = await api.settings.lidarrNaming()
+    namingIllegalInput.value = n.replace_illegal ? 'replace' : 'remove'
+    namingColonInput.value = n.colon
+    updateNamingPreview(); updateRenamePreview()
+    formats.hidden = false
+    formats.textContent = `Copied — Save to keep. Lidarr's folders: ${n.artist_folder_format || '?'} · tracks: ${n.track_format || '?'}` +
+      (n.multi_disc_track_format ? ` · multi-disc: ${n.multi_disc_track_format}` : '')
+  } catch (err) {
+    formats.hidden = false; formats.textContent = `⚠ ${errText(err)}`
+  } finally { b.disabled = false }
+})
 function namingChoice() {
   return { replace_illegal: namingIllegalInput.value === 'replace', colon: namingColonInput.value }
 }
@@ -3411,6 +3453,9 @@ async function openSettings() {
     coverTargetInput.value    = s.cover_target ?? 'folder'
     namingIllegalInput.value  = (s.naming_replace_illegal ?? true) ? 'replace' : 'remove'
     namingColonInput.value    = s.naming_colon ?? 'smart'
+    for (const [k, el] of Object.entries(integInputs)) el.value = (s as unknown as Record<string, string>)[k] ?? ''
+    maProvidersInput.value    = (s.ma_providers ?? []).join(', ')
+    showRescans(s.rescans)
     updateNamingPreview()
     coverSizeInput.value      = String(s.cover_embed_size ?? 500)
     coverFolderSizeInput.value = String(s.cover_folder_size ?? 1200)
@@ -3617,6 +3662,8 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     cover_target:      coverTargetInput.value as AppSettings['cover_target'],
     naming_replace_illegal: namingIllegalInput.value === 'replace',
     naming_colon:      namingColonInput.value as AppSettings['naming_colon'],
+    ...Object.fromEntries(Object.entries(integInputs).map(([k, el]) => [k, el.value.trim()])),
+    ma_providers:      maProvidersInput.value.split(/[\s,]+/).filter(Boolean),
     cover_embed_size:  parseInt(coverSizeInput.value, 10),
     cover_folder_size: parseInt(coverFolderSizeInput.value, 10),
     library_roots:     libraryRootsInput.value.split('\n').map(x => x.trim()).filter(Boolean),

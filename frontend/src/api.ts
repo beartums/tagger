@@ -148,6 +148,16 @@ export interface AlbumRow {
   ids: number[]                        // its tracks (none when read-only)
 }
 
+export interface RescanResult { at: number; ok: boolean; message: string }
+
+export interface LidarrNaming {
+  replace_illegal: boolean
+  colon: AppSettings['naming_colon']
+  artist_folder_format: string
+  track_format: string
+  multi_disc_track_format: string
+}
+
 export interface AppSettings {
   rename_on_save: boolean
   rename_template: string
@@ -172,6 +182,15 @@ export interface AppSettings {
   browse_paths: Record<string, string[]>
   naming_replace_illegal: boolean
   naming_colon: 'smart' | 'delete' | 'dash' | 'space_dash' | 'space_dash_space'
+  lidarr_url: string
+  lidarr_api_key: string
+  navidrome_url: string
+  navidrome_user: string
+  navidrome_password: string
+  ma_url: string
+  ma_token: string
+  ma_providers: string[]
+  rescans?: Record<string, RescanResult>
   secrets_set?: Record<string, boolean>   // keys/tokens are never sent back, only whether set
   secrets_encrypted?: boolean
   default_music_dir?: string
@@ -544,8 +563,10 @@ export const api = {
   settings: {
     get: () => request<AppSettings>('GET', '/api/config'),
     libraries: () => request<LibraryInfo[]>('GET', '/api/config/libraries'),
-    testSource: (source: string, value: string, app_id?: string) =>
-      request<{ ok: boolean; message: string }>('POST', `/api/config/test/${source}`, { value, app_id }),
+    testSource: (source: string, value: string, app_id?: string, extra?: { url?: string; user?: string }) =>
+      request<{ ok: boolean; message: string }>('POST', `/api/config/test/${source}`, { value, app_id, ...extra }),
+    lidarrNaming: () => request<LidarrNaming>('GET', '/api/config/lidarr-naming'),
+    rescan: () => request<Record<string, RescanResult>>('POST', '/api/config/rescan'),
     setLibrary: (path: string, active: boolean) =>
       request<{ active: boolean; removed?: number; job_id?: string | null }>('POST', '/api/config/libraries', { path, active }),
     update: (s: Partial<AppSettings>) => request<AppSettings>('PATCH', '/api/config', s),
