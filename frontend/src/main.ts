@@ -57,8 +57,8 @@ onSessionExpired(() => {
   bar.querySelector('button')!.addEventListener('click', () => location.reload())
   document.body.appendChild(bar)
 })
-// Genre on a multi-track selection: chips (add/remove values per track)
-// instead of one string that would overwrite every track's genres.
+// Genre, artist and composer on a multi-track selection: chips (add/remove
+// values per track) instead of one string that would overwrite every track's.
 // Read-only tracks (e.g. a reference mount): say so, and don't offer Save.
 const readOnlyNote = document.createElement('div')
 readOnlyNote.className = 'readonly-note'
@@ -79,9 +79,15 @@ function setReadOnly(n: number, of: number) {
   saveBtn.hidden = n > 0
 }
 
-const genreChips = new ValueChips('genres')
-const genreInput = tagForm.elements.namedItem('genre') as HTMLInputElement
-genreInput.closest('.field-label')!.after(genreChips.el)
+// Album artist stays one string: players group albums by it.
+const CHIP_FIELDS = { artist: 'artists', genre: 'genres', composer: 'composers' } as const
+type ChipField = keyof typeof CHIP_FIELDS
+const valueChips = new Map<ChipField, ValueChips>()
+for (const [field, noun] of Object.entries(CHIP_FIELDS) as [ChipField, string][]) {
+  const chips = new ValueChips(noun)
+  valueChips.set(field, chips)
+  ;(tagForm.elements.namedItem(field) as HTMLInputElement).closest('.field-label')!.after(chips.el)
+}
 const editorTitle    = document.getElementById('editor-title')!
 const bulkActions    = document.getElementById('bulk-actions')!
 const lyricsLookupBtn = document.getElementById('lyrics-lookup-btn') as HTMLButtonElement
@@ -1124,22 +1130,24 @@ async function fillEditorForm() {
   }
 }
 
-/** Several tracks: genre is edited as chips; one track: as plain text. */
+/** Several tracks: the chip fields are edited as chips; one track: as plain text. */
 let chipsToken = 0
-function setGenreMode() {
+function setChipMode() {
   const multi = state.selectedIds.size > 1
-  genreInput.hidden = multi
-  genreChips.el.hidden = !multi
-  if (!multi) return
   const ids = [...state.selectedIds]
   const token = ++chipsToken
-  genreChips.load(ids.length, [], state.tagValues.get('genre') ?? [])
-  Promise.all([
-    api.library.valueCounts(ids, 'genre'),
-    state.tagValues.has('genre') ? Promise.resolve() : loadTagValues('genre'),
-  ]).then(([counts]) => {
-    if (token === chipsToken) genreChips.load(counts.count, counts.values, state.tagValues.get('genre') ?? [])
-  }).catch(e => toast(`Failed to load genres: ${e}`, 'error'))
+  for (const [field, chips] of valueChips) {
+    (tagForm.elements.namedItem(field) as HTMLInputElement).hidden = multi
+    chips.el.hidden = !multi
+    if (!multi) continue
+    chips.load(ids.length, [], state.tagValues.get(field) ?? [])
+    Promise.all([
+      api.library.valueCounts(ids, field),
+      state.tagValues.has(field) ? Promise.resolve() : loadTagValues(field),
+    ]).then(([counts]) => {
+      if (token === chipsToken) chips.load(counts.count, counts.values, state.tagValues.get(field) ?? [])
+    }).catch(e => toast(`Failed to load ${CHIP_FIELDS[field]}: ${e}`, 'error'))
+  }
 }
 
 function populateForm(tracks: Track[]) {
@@ -1156,7 +1164,7 @@ function populateForm(tracks: Track[]) {
     el.closest('.field-label')?.classList.toggle('field-staged', tracks.some(t => t._orig && field in t._orig))
     delete (el as HTMLElement).dataset.dirty
   }
-  setGenreMode()
+  setChipMode()
   // compilation: boolean checkbox; indeterminate = mixed across the selection.
   const comp = tracks.map(t => t.compilation === '1')
   const compSame = comp.every(v => v === comp[0])
@@ -1913,8 +1921,8 @@ async function saveTags(e: Event) {
     if (r.mb_album_artist_id) update.mb_album_artist_id = r.mb_album_artist_id
   }
 
-  const chips = state.selectedIds.size > 1 && genreChips.dirty
-  if (Object.keys(update).length === 0 && !chips) { toast('No changes to save', 'info'); return }
+  const chips = state.selectedIds.size > 1 ? [...valueChips].filter(([, c]) => c.dirty) : []
+  if (Object.keys(update).length === 0 && !chips.length) { toast('No changes to save', 'info'); return }
 
   const ids = [...state.selectedIds]
   try {
@@ -1924,10 +1932,10 @@ async function saveTags(e: Event) {
         ? await api.tags.update(ids[0], update)
         : await api.tags.bulk(ids, update)
     }
-    if (chips) {
-      const r = await api.tags.editValues(ids, 'genre', genreChips.add, genreChips.remove)
+    for (const [field, c] of chips) {
+      const r = await api.tags.editValues(ids, field, c.add, c.remove)
       if (r.changed || !res) res = r
-      state.tagValues.delete('genre')
+      state.tagValues.delete(field)
     }
     const what = ids.length === 1 ? 'tags' : `tags on ${ids.length} tracks`
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Artist and composer chips**: with several tracks selected, artist and
+  composer are edited like genre -- add or remove one value on every track,
+  keeping the values each track already has. Album artist stays one value
+  (players group albums by it). Long names in the chip menu wrap instead of
+  being cut off.
+
 ## 0.3.0 — 2026-11-14
 
 The first release of [beartums/tagger](https://github.com/beartums/tagger),
