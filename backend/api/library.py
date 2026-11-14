@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -107,6 +108,26 @@ def _blank(col: str) -> str:
     return f"({col} IS NULL OR {col} = '')"
 
 
+def _path_filters(path: Optional[str]) -> tuple[list[str], list]:
+    """A node of the Tags tree: JSON [[field, value], ...], each step narrowing the last."""
+    if not path:
+        return [], []
+    try:
+        steps = json.loads(path)
+        assert isinstance(steps, list) and all(
+            isinstance(s, list) and len(s) == 2 and s[0] in BROWSE_FIELDS and isinstance(s[1], str) for s in steps)
+    except (ValueError, AssertionError):
+        raise HTTPException(400, "Bad path")
+    clauses, params = [], []
+    for field, value in steps:   # field is whitelisted, so safe to interpolate
+        if value == "":
+            clauses.append(_blank(field))
+        else:
+            clauses.append(f"has_value({field}, ?)")
+            params.append(value)
+    return clauses, params
+
+
 # Same rule as the UI's quality dot (frontend/src/quality.ts).
 _POOR = f"({_blank('title')} OR {_blank('artist')})"
 _FAIR = f"(NOT {_POOR} AND ({_blank('album')} OR {_blank('year')} OR {_blank('track_number')}))"
@@ -143,10 +164,12 @@ class View:
         quality: Optional[str] = None,
         sort: Optional[str] = None,
         sort_dir: str = "asc",
+        path: Optional[str] = None,
     ):
         self.directory, self.artist, self.album, self.issue = directory, artist, album, issue
         self.tag, self.value, self.q, self.q_mode = tag, value, q, q_mode
         self.format, self.quality, self.sort, self.sort_dir = format, quality, sort, sort_dir
+        self.path = path
 
 
 def _track_filters(v: View) -> tuple[str, list, str]:
@@ -174,6 +197,9 @@ def _track_filters(v: View) -> tuple[str, list, str]:
         else:  # one of its ';'-separated values (core/multivalue.py)
             clauses.append(f"has_value({v.tag}, ?)")
             params.append(v.value)
+    path_clauses, path_params = _path_filters(v.path)
+    clauses += path_clauses
+    params += path_params
     if v.directory:
         clauses.append("(directory = ? OR substr(directory, 1, ?) = ?)")
         params.extend([v.directory, len(v.directory) + 1, v.directory + "/"])
@@ -540,17 +566,20 @@ def get_track(track_id: int):
 
 
 @router.get("/tag-values")
-def tag_values(field: str):
+def tag_values(field: str, path: Optional[str] = None):
     """
     Values of one tag with track counts; '' = tracks without it. A tag holding
     several ';'-separated values counts under each, so an album tagged
-    "Folk; Celtic" is listed under both.
+    "Folk; Celtic" is listed under both. `path` limits it to a node of the
+    Tags tree (see _path_filters).
     """
     if field not in BROWSE_FIELDS:
         raise HTTPException(400, "Invalid field")
+    clauses, params = _path_filters(path)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     with db() as conn:
         rows = conn.execute(
-            f"SELECT {field} AS value, COUNT(*) AS n FROM tracks GROUP BY {field}"
+            f"SELECT {field} AS value, COUNT(*) AS n FROM tracks {where} GROUP BY {field}", params
         ).fetchall()
     counts: dict[str, int] = {}
     for r in rows:

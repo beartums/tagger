@@ -63,6 +63,8 @@ class AppSettings(BaseModel):
     cover_embed_size: int = 500
     # Tags the search box looks in (core/search.py).
     search_fields: list[str] = ["title", "artist", "album", "album_artist", "genre"]
+    # Tags panel: each tag's values open to the next tag in its list, and so on.
+    browse_paths: dict[str, list[str]] = {"artist": ["album"], "album_artist": ["album"]}
 
 
 def get_music_dirs() -> list[str]:
@@ -240,11 +242,25 @@ def update_settings(update: AppSettings):
         sent["lyrics_groups"] = _check_lyrics_groups(update.lyrics_groups)
     if "library_lyrics_groups" in sent:
         sent["library_lyrics_groups"] = {os.path.normpath(k): v for k, v in sent["library_lyrics_groups"].items() if v}
+    if "browse_paths" in sent:
+        sent["browse_paths"] = _check_browse_paths(update.browse_paths)
     if "layout_libraries" in sent:
         sent["layout_libraries"] = sorted({os.path.normpath(p) for p in sent["layout_libraries"]})
     merged = _load().model_copy(update=sent)
     _save(merged)
     return get_settings()
+
+
+def _check_browse_paths(paths: dict[str, list[str]]) -> dict[str, list[str]]:
+    from api.library import BROWSE_FIELDS
+    out = {}
+    for top, chain in paths.items():
+        if top not in BROWSE_FIELDS or any(f not in BROWSE_FIELDS for f in chain):
+            raise HTTPException(400, f"Unknown tag in the {top} browse path")
+        if len(set([top, *chain])) != len(chain) + 1:
+            raise HTTPException(400, f"A tag appears twice in the {top} browse path")
+        out[top] = chain
+    return out
 
 
 def _check_layout(template: str, what: str) -> None:

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Browse paths in the Tags panel**: each tag opens down through the tags
+  you choose, in your order (Genre › Album Artist › Album, Year › Genre, …).
+  ✎ beside a tag opens its path: drag tags in or along it, × to remove (or
+  click a tag to add it at the end). Saved in Settings; the default keeps
+  Artist › Album and Album Artist › Album. Every level filters by the whole
+  path above it; links and the back button carry the path (old links still
+  open).
 - **Artist and composer chips**: with several tracks selected, artist and
   composer are edited like genre -- add or remove one value on every track,
   keeping the values each track already has. Album artist stays one value

@@ -76,8 +76,9 @@ gives it away, even though its format and bitrate say lossless.
 ## Features
 
 - **Libraries** — scan one or more music folders into a SQLite index (exclude
-  globs, optional auto-rescan). Browse by tag tree (artist → album, album
-  artist, genre, year, composer), folder, album grid or quality issue. Search
+  globs, optional auto-rescan). Browse a tag tree that opens down through
+  the tags you choose (Genre › Album Artist › Album…, set by drag and drop),
+  or by folder, album grid or quality issue. Search
   as full text, glob or regex over the fields you choose. Page through big
   views with rows per page and a jump-to row.
 - **Bulk tagging** — every common tag (composer, BPM, lyrics, compilation…)

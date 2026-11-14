@@ -231,6 +231,35 @@ body.resizing-pane, body.resizing-pane * { cursor: col-resize !important; user-s
 }
 .nav-item.active .nav-count { color: color-mix(in srgb, var(--accent) 60%, transparent); }
 
+/* A tag's browse path: shown after its name, edited under it. */
+.nav-chain { font-weight: 400; color: var(--text-dim); }
+.nav-path-btn {
+  background: none; border: none; padding: 0 4px; font-size: 12px; cursor: pointer;
+  color: var(--text-dim); visibility: hidden;
+}
+.nav-tag:hover .nav-path-btn, .nav-path-btn[aria-pressed="true"] { visibility: visible; }
+.nav-path-btn:hover, .nav-path-btn[aria-pressed="true"] { color: var(--accent); }
+.path-editor {
+  list-style: none; margin: 2px 8px 6px 26px; padding: 6px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+}
+.path-chain, .path-free { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 26px; padding: 2px; border-radius: var(--radius); }
+.path-free { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.path-root { font-weight: 600; color: var(--text-muted); }
+.path-sep { color: var(--text-dim); }
+.path-hint { color: var(--text-dim); font-style: italic; }
+.path-chip {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px 6px; cursor: grab;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); color: var(--text);
+}
+.path-chip-free { background: none; color: var(--text-muted); border-style: dashed; }
+.path-chip.dragging { opacity: 0.4; }
+.path-x { background: none; border: none; padding: 0 0 0 2px; cursor: pointer; color: var(--text-dim); font-size: 13px; line-height: 1; }
+.path-x:hover { color: var(--danger); }
+.path-chip.drop-before { box-shadow: -3px 0 0 var(--accent); }
+.path-chain.drop-end { box-shadow: inset -3px 0 0 var(--accent); }
+.path-free.drop-target { background: var(--accent-dim); }
+
 /* ─── Directory tree ────────────────────────────────────────────────────────── */
 
 .dir-tree { padding: 6px 0; }
