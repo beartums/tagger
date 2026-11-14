@@ -226,6 +226,19 @@ export const APP_HTML = `
         <label class="field-label">Providers to sync <span class="ma-dim">(instance ids, comma-separated; blank: all)</span>
           <input id="setting-ma-providers" type="text" spellcheck="false" placeholder="filesystem_local--ab12cd34" /></label>
         <div class="settings-hint" data-rescan-status="music_assistant"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Player rescans</div>
+        <p class="settings-hint">When Navidrome and Music Assistant are asked to rescan after Tagger changes files (tags, moves, covers, ReplayGain). A big write is always one rescan.</p>
+        <label class="field-label">Rescan
+          <select id="setting-rescan-mode">
+            <option value="quiet">After the last change — each change restarts the wait</option>
+            <option value="delay">After a change — later changes don't push it back</option>
+            <option value="off">Off — only "Rescan now"</option>
+          </select></label>
+        <label class="field-label" id="rescan-wait-wrap">Wait
+          <span class="secret-row"><input id="setting-rescan-wait" type="number" min="1" max="1440" step="1" /> <span id="rescan-wait-unit">minutes</span></span></label>
+        <div id="rescan-pending" class="settings-hint"></div>
         <button type="button" id="rescan-now" class="btn btn-ghost btn-sm" title="Ask Navidrome and Music Assistant to rescan now (saved settings)">Rescan now</button>
       </div>
       </div>

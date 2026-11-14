@@ -8,8 +8,10 @@ optional:
 - Music Assistant: POST /api {"command": "music/sync"} after files change
   (a long-lived token of an admin user; providers = instance ids, blank = all).
 
-Rescans are debounced: every write calls changed(), and the rescan fires
-RESCAN_DELAY seconds after the last one, so a 500-track write is one rescan.
+Every write calls changed(); when the rescan fires is a setting (rescan_mode):
+"off"; "delay" = rescan_delay_seconds after the first change, however many
+follow (they ride along); "quiet" = rescan_quiet_minutes after the LAST change,
+each change restarting the wait. Either way a 500-track write is one rescan.
 Checked against upstream source 2026-11-14 (Lidarr develop, Navidrome master,
 Music Assistant stable).
 """
@@ -27,7 +29,8 @@ import urllib.request
 
 logger = logging.getLogger("tagger.integrations")
 
-RESCAN_DELAY = 30.0
+RESCAN_MODES = ("off", "delay", "quiet")
+_SETTINGS_TTL = 10.0     # changed() runs per file written: don't re-read settings each time
 _UA = "tagger (https://github.com/beartums/tagger)"
 
 # Lidarr's ColonReplacementFormat (an int in the API) -> core.naming.COLONS.
@@ -37,6 +40,9 @@ LIDARR_COLONS = {0: "delete", 1: "dash", 2: "space_dash", 3: "space_dash_space",
 last: dict[str, dict] = {}
 _timer: threading.Timer | None = None
 _lock = threading.Lock()
+_cached: tuple[float, str, float] | None = None     # (read at, mode, wait seconds)
+pending_since: float | None = None                  # first change not yet rescanned
+due_at: float | None = None
 
 
 def _request(url: str, *, headers: dict | None = None, body: dict | None = None, timeout: float = 15) -> tuple[int, object]:
@@ -169,15 +175,66 @@ def _why(app: str, status: int, body) -> str:
 
 # ── Rescan after writes ────────────────────────────────────────────────────
 
-def changed() -> None:
-    """Files changed: (re)start the countdown to one rescan of each configured app."""
-    global _timer
+def timing(s) -> tuple[str, float]:
+    """(mode, wait in seconds) from settings."""
+    mode = s.rescan_mode if s.rescan_mode in RESCAN_MODES else "quiet"
+    wait = s.rescan_delay_seconds if mode == "delay" else s.rescan_quiet_minutes * 60
+    return mode, max(float(wait), 1.0)
+
+
+def _timing() -> tuple[str, float]:
+    global _cached
+    now = time.monotonic()
+    if _cached is None or now - _cached[0] > _SETTINGS_TTL:
+        from api.config import _load
+        _cached = (now, *timing(_load()))
+    return _cached[1], _cached[2]
+
+
+def cancel_pending() -> None:
+    global _timer, pending_since, due_at
     with _lock:
         if _timer is not None:
             _timer.cancel()
-        _timer = threading.Timer(RESCAN_DELAY, rescan_now)
+        _timer = pending_since = due_at = None
+
+
+def settings_changed() -> None:
+    """Saved settings: read the timing afresh; "off" cancels a pending rescan."""
+    global _cached
+    _cached = None
+    if _timing()[0] == "off":
+        cancel_pending()
+
+
+def changed() -> None:
+    """Files changed: start (or, waiting for quiet, restart) the countdown to one rescan."""
+    global _timer, pending_since, due_at
+    mode, wait = _timing()
+    if mode == "off":
+        return
+    with _lock:
+        if _timer is not None:
+            if mode == "delay":
+                return              # already due; this change rides along
+            _timer.cancel()
+        pending_since = pending_since or time.time()
+        due_at = time.time() + wait
+        _timer = threading.Timer(wait, _fire)
         _timer.daemon = True
         _timer.start()
+
+
+def _fire() -> None:
+    global _timer, pending_since, due_at
+    with _lock:
+        _timer = pending_since = due_at = None
+    rescan_now()
+
+
+def pending() -> dict | None:
+    """A rescan waiting to happen, for Settings: {since, due} (epoch seconds)."""
+    return {"since": pending_since, "due": due_at} if due_at else None
 
 
 def rescan_now() -> dict:

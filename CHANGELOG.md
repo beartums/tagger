@@ -10,9 +10,11 @@
   - **Lidarr**: Settings → Layouts → *Copy from Lidarr* sets *Characters in
     names* from Lidarr's own naming choices and shows its folder and track
     formats beside them.
-  - **Navidrome** and **Music Assistant** rescan 30 s after Tagger last
-    changes a file (tags, moves, covers, ReplayGain), so a big write is one
-    rescan. Both need an admin (Navidrome's `startScan`, MA's `music/sync`);
+  - **Navidrome** and **Music Assistant** rescan after Tagger changes files
+    (tags, moves, covers, ReplayGain); a big write is one rescan. *Player
+    rescans* sets when: N minutes after the last change (each change restarts
+    the wait; default 5), N seconds after a change (later changes don't push it
+    back), or off. A rescan that's waiting shows when it's due. Both need an admin (Navidrome's `startScan`, MA's `music/sync`);
     Test says so, and MA's Test lists its file providers to pick from. The
     last result shows under each; *Rescan now* forces one.
 - **Names follow Lidarr's character rules**: a "/" inside a tag no longer

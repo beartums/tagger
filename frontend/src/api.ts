@@ -191,6 +191,10 @@ export interface AppSettings {
   ma_token: string
   ma_providers: string[]
   rescans?: Record<string, RescanResult>
+  rescan_mode: 'off' | 'delay' | 'quiet'
+  rescan_delay_seconds: number
+  rescan_quiet_minutes: number
+  rescan_pending?: { since: number; due: number } | null
   secrets_set?: Record<string, boolean>   // keys/tokens are never sent back, only whether set
   secrets_encrypted?: boolean
   default_music_dir?: string

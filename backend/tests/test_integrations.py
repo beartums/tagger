@@ -82,14 +82,47 @@ def test_rescan_now_runs_each_configured_app_and_survives_failure(client, monkey
     assert client.get("/api/config").json()["rescans"]["navidrome"]["ok"]
 
 
-def test_changed_is_debounced(monkeypatch):
+def _timed(monkeypatch, mode, wait):
     runs = []
-    monkeypatch.setattr(integrations, "RESCAN_DELAY", 0.05)
-    monkeypatch.setattr(integrations, "rescan_now", lambda: runs.append(1))
-    for _ in range(5):
+    monkeypatch.setattr(integrations, "_timing", lambda: (mode, wait))
+    monkeypatch.setattr(integrations, "rescan_now", lambda: runs.append(time.monotonic()))
+    return runs
+
+
+def test_quiet_waits_for_the_last_change(monkeypatch):
+    runs = _timed(monkeypatch, "quiet", 0.15)
+    start = time.monotonic()
+    for _ in range(4):
         integrations.changed()
-    time.sleep(0.2)
-    assert runs == [1]
+        time.sleep(0.1)              # each change restarts the wait
+    time.sleep(0.3)
+    assert len(runs) == 1 and runs[0] - start >= 0.4      # last change at 0.3 s + 0.15
+
+
+def test_delay_does_not_restart(monkeypatch):
+    runs = _timed(monkeypatch, "delay", 0.15)
+    start = time.monotonic()
+    for _ in range(4):
+        integrations.changed()
+        time.sleep(0.1)
+    time.sleep(0.3)
+    # due 0.15 s after the first change; the changes after it start a second one
+    assert len(runs) == 2 and runs[0] - start < 0.3
+
+
+def test_off_never_rescans(monkeypatch):
+    runs = _timed(monkeypatch, "off", 0.01)
+    integrations.changed()
+    time.sleep(0.1)
+    assert runs == [] and integrations.pending() is None
+
+
+def test_timing_settings(client):
+    r = client.patch("/api/config", json={"rescan_mode": "delay", "rescan_delay_seconds": 45}).json()
+    assert r["rescan_mode"] == "delay"
+    assert integrations.timing(type("S", (), {"rescan_mode": "quiet", "rescan_delay_seconds": 45, "rescan_quiet_minutes": 3})) == ("quiet", 180.0)
+    assert client.patch("/api/config", json={"rescan_mode": "sometimes"}).status_code == 400
+    assert client.patch("/api/config", json={"rescan_quiet_minutes": 0}).status_code == 400
 
 
 def test_source_test_needs_settings(client):

@@ -78,6 +78,11 @@ class AppSettings(BaseModel):
     ma_url: str = ""
     ma_token: str = ""                 # long-lived token of an admin (music/sync needs library.manage)
     ma_providers: list[str] = []       # provider instance ids to sync; [] = all
+    # When Navidrome/MA rescan after Tagger changes files (core/integrations.py):
+    # off | delay (N s after the first change) | quiet (N min after the last change).
+    rescan_mode: str = "quiet"
+    rescan_delay_seconds: int = 30
+    rescan_quiet_minutes: int = 5
 
 
 def get_music_dirs() -> list[str]:
@@ -157,6 +162,7 @@ def get_settings():
         "secrets_set": {k: bool(getattr(s, k)) for k in secrets.FIELDS},
         "secrets_encrypted": secrets.enabled(),
         "rescans": integrations.last,
+        "rescan_pending": integrations.pending(),
         "default_music_dir": str(settings.music_dir),
         "env_library_roots": settings.library_roots,
         "effective_library_roots": [str(r) for r in get_library_roots()],
@@ -248,6 +254,7 @@ def lidarr_naming():
 def rescan_players():
     """Ask Navidrome / Music Assistant to rescan now (normally automatic after writes)."""
     from core import integrations
+    integrations.cancel_pending()          # this one covers whatever was waiting
     return integrations.rescan_now()
 
 
@@ -302,8 +309,15 @@ def update_settings(update: AppSettings):
         sent["browse_paths"] = _check_browse_paths(update.browse_paths)
     if "layout_libraries" in sent:
         sent["layout_libraries"] = sorted({os.path.normpath(p) for p in sent["layout_libraries"]})
+    if "rescan_mode" in sent and sent["rescan_mode"] not in ("off", "delay", "quiet"):
+        raise HTTPException(400, "rescan_mode: off, delay or quiet")
+    for k in ("rescan_delay_seconds", "rescan_quiet_minutes"):
+        if k in sent and not 1 <= sent[k] <= 1440:
+            raise HTTPException(400, f"{k}: 1 to 1440")
     merged = _load().model_copy(update=sent)
     _save(merged)
+    from core import integrations
+    integrations.settings_changed()
     return get_settings()
 
 
