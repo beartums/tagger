@@ -71,3 +71,25 @@ def test_value_edit_validation(client, lib):
     a, *_ = _lib_tracks(lib)
     assert client.post("/api/tags/values", json={"track_ids": [a], "field": "title", "add": ["x"]}).status_code == 400
     assert client.post("/api/tags/values", json={"track_ids": [a], "field": "genre"}).status_code == 400
+
+
+def test_tree_path_narrows_values_and_tracks(client, lib):
+    import json
+    a, b, c = _lib_tracks(lib)
+    path = lambda *steps: json.dumps([list(s) for s in steps])
+    vals = lambda field, *steps: {v["value"]: v["track_count"] for v in client.get(
+        "/api/library/tag-values", params={"field": field, "path": path(*steps)}).json()}
+    ids = lambda *steps: {t["id"] for t in client.get(
+        "/api/library/tracks", params={"path": path(*steps)}).json()["tracks"]}
+    assert vals("artist", ("genre", "Folk")) == {"Ann": 2, "Bob": 1}
+    assert vals("album", ("genre", "Folk"), ("artist", "Ann")) == {"X": 1, "": 1}
+    assert ids(("genre", "Folk"), ("artist", "Ann"), ("album", "")) == {b}
+    assert ids(("genre", ""),) == {c}
+    assert client.get("/api/library/tracks", params={"path": '[["title", "x"]]'}).status_code == 400
+
+
+def test_browse_paths_reject_unknown_and_repeated_tags(client):
+    ok = client.patch("/api/config", json={"browse_paths": {"genre": ["album_artist", "album"]}})
+    assert ok.json()["browse_paths"] == {"genre": ["album_artist", "album"]}
+    assert client.patch("/api/config", json={"browse_paths": {"genre": ["title"]}}).status_code == 400
+    assert client.patch("/api/config", json={"browse_paths": {"genre": ["album", "genre"]}}).status_code == 400

@@ -1,8 +1,8 @@
 import './style.css'
-import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, setUnauthorizedHandler, onSessionExpired } from './api'
+import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, TagValue, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
 import { esc, fmtDuration, debounce } from './util'
-import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder } from './state'
+import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
 import { COL_DEFS, orderedCols, viewCols, sourcePath } from './columns'
 import {
   trackQuality, qualityTitle, QUALITY_ISSUES,
@@ -178,13 +178,17 @@ function navRow(cls: string, arrow: 'open' | 'closed' | 'none', label: string, c
   return li
 }
 
+const fieldLabel = (f: string) => BROWSE_TAGS.find(t => t.field === f)?.label ?? f
+const parsePath = (key: string): TagStep[] => (JSON.parse(key) as string[][]).map(([field, value]) => ({ field, value }))
+let editingPath: string | null = null   // the top tag whose browse path is open for editing
+
 function renderTagsPanel() {
   artistListEl.innerHTML = ''
-  const nothingSelected = state.selectedArtist === null && !state.selectedTag
+  const selected = pathKey(state.tagPath)
 
   // All tracks
   const allLi = document.createElement('li')
-  allLi.className = 'nav-item nav-all' + (nothingSelected ? ' active' : '')
+  allLi.className = 'nav-item nav-all' + (state.tagPath.length ? '' : ' active')
   allLi.dataset.all = '1'
   allLi.innerHTML = `<span class="nav-icon">♪</span><span class="nav-label">All tracks</span>`
   artistListEl.appendChild(allLi)
@@ -192,40 +196,100 @@ function renderTagsPanel() {
   for (const { field, label } of BROWSE_TAGS) {
     const open = state.expandedTags.has(field)
     const values = state.tagValues.get(field)
+    const chain = state.browsePaths[field] ?? []
     const header = navRow('nav-tag', values && !values.length ? 'none' : (open ? 'open' : 'closed'),
                           esc(label), values ? values.length : undefined)
     header.dataset.tag = field
+    header.querySelector('.nav-label')!.insertAdjacentHTML('beforeend',
+      chain.map(f => `<span class="nav-chain"> › ${esc(fieldLabel(f))}</span>`).join(''))
+    header.querySelector('.nav-label')!.insertAdjacentHTML('afterend',
+      `<button type="button" class="nav-path-btn" data-edit-path="1" aria-pressed="${editingPath === field}"
+        title="Choose the tags to browse down through under ${esc(label)}">✎</button>`)
     artistListEl.appendChild(header)
-    if (!open || !values) continue
+    if (editingPath === field) artistListEl.appendChild(pathEditor(field))
+    if (open && values) renderLevel(field, [], values, selected)
+  }
+}
 
-    for (const v of values) {
-      const isArtist = field === 'artist'
-      const albums = isArtist ? (state.albumsByArtist.get(v.value) ?? []) : []
-      const expanded = isArtist && state.expandedArtists.has(v.value)
-      const selected = isArtist
-        ? state.selectedArtist === v.value && !state.selectedAlbum
-        : state.selectedTag?.field === field && state.selectedTag.value === v.value
-      const li = navRow('nav-value' + (selected ? ' active' : ''),
-                        albums.length ? (expanded ? 'open' : 'closed') : 'none',
-                        v.value ? esc(v.value) : '<span class="nav-none">(none)</span>', v.track_count)
-      li.dataset.tag = field
-      li.dataset.value = v.value
-      artistListEl.appendChild(li)
+/** One level of a tag's tree: `values` of the tag at this depth, under `parent`. */
+function renderLevel(top: string, parent: TagStep[], values: TagValue[], selected: string) {
+  const chain = state.browsePaths[top] ?? []
+  const field = parent.length ? chain[parent.length - 1] : top
+  const childField = chain[parent.length]
+  for (const v of values) {
+    const path = [...parent, { field, value: v.value }]
+    const key = pathKey(path)
+    const expanded = !!childField && state.expandedNodes.has(key)
+    const li = navRow('nav-value' + (key === selected ? ' active' : ''),
+                      childField ? (expanded ? 'open' : 'closed') : 'none',
+                      v.value ? esc(v.value) : '<span class="nav-none">(none)</span>', v.track_count)
+    li.style.paddingLeft = `${26 + 16 * parent.length}px`
+    li.dataset.path = key
+    artistListEl.appendChild(li)
+    const kids = state.nodeValues.get(key)
+    if (expanded && kids) renderLevel(top, path, kids, selected)
+  }
+}
 
-      if (!expanded) continue
-      for (const alb of albums) {
-        const albLi = document.createElement('li')
-        albLi.className = 'nav-item nav-album'
-          + (state.selectedArtist === v.value && state.selectedAlbum === alb.album ? ' active' : '')
-        albLi.dataset.artist = v.value
-        albLi.dataset.album  = alb.album
-        albLi.innerHTML = `
-          <span class="nav-label">${esc(alb.album || '(Unknown Album)')}</span>
-          <span class="nav-count">${alb.track_count}</span>
-        `
-        artistListEl.appendChild(albLi)
-      }
-    }
+/** Under a tag: the tags its values open to, in order. Drag to add or reorder, × to remove. */
+function pathEditor(top: string): HTMLLIElement {
+  const chain = state.browsePaths[top] ?? []
+  const free = BROWSE_TAGS.filter(t => t.field !== top && !chain.includes(t.field))
+  const li = document.createElement('li')
+  li.className = 'path-editor'
+  li.dataset.top = top
+  li.innerHTML = `
+    <div class="path-chain" data-zone="chain" title="Drop a tag here; drag to reorder">
+      <span class="path-root">${esc(fieldLabel(top))}</span>
+      ${chain.map(f => `<span class="path-sep">›</span><span class="path-chip" draggable="true" data-field="${f}">${esc(fieldLabel(f))}<button
+        type="button" class="path-x" data-remove="${f}" title="Stop browsing by ${esc(fieldLabel(f))}">×</button></span>`).join('')}
+      ${chain.length ? '' : '<span class="path-hint">drag a tag here</span>'}
+    </div>
+    <div class="path-free" data-zone="free">${free.length
+      ? free.map(t => `<span class="path-chip path-chip-free" draggable="true" data-field="${t.field}"
+          title="Drag into the path above (or click to add it at the end)">${esc(t.label)}</span>`).join('')
+      : '<span class="path-hint">every tag is in the path</span>'}</div>`
+  return li
+}
+
+/** Children of an open node, fetched once (forgotten by loadLibrary after a write). */
+async function loadNodeValues(path: TagStep[]) {
+  const key = pathKey(path)
+  const field = (state.browsePaths[path[0].field] ?? [])[path.length - 1]
+  if (!field || state.nodeValues.has(key)) return
+  try {
+    state.nodeValues.set(key, await api.library.tagValues(field, key))
+  } catch (e) {
+    toast(`Failed to load ${fieldLabel(field)} values: ${e}`, 'error')
+  }
+}
+
+/** Open the tree down to `path` (its tag, then each node above it) and load what that shows. */
+async function openPath(path: TagStep[]) {
+  if (!path.length) return
+  const top = path[0].field
+  state.expandedTags.add(top)
+  if (!state.tagValues.has(top)) await loadTagValues(top)
+  const chain = state.browsePaths[top] ?? []
+  for (let i = 1; i < path.length && chain[i - 1] === path[i].field; i++) {
+    state.expandedNodes.add(pathKey(path.slice(0, i)))
+    await loadNodeValues(path.slice(0, i))
+  }
+}
+
+async function saveBrowsePath(top: string, chain: string[]) {
+  const before = state.browsePaths
+  state.browsePaths = { ...before, [top]: chain }
+  // Nodes under this tag now open to other tags.
+  for (const k of [...state.expandedNodes]) if (parsePath(k)[0].field === top) state.expandedNodes.delete(k)
+  for (const k of [...state.nodeValues.keys()]) if (parsePath(k)[0].field === top) state.nodeValues.delete(k)
+  renderTagsPanel()
+  try {
+    state.browsePaths = (await api.settings.update({ browse_paths: state.browsePaths })).browse_paths
+  } catch (e) {
+    state.browsePaths = before
+    renderTagsPanel()
+    toast(`Couldn't save the browse path: ${e}`, 'error')
   }
 }
 
@@ -347,9 +411,8 @@ async function renderQualityPanel() {
 // ─── Album grid ───────────────────────────────────────────────────────────────
 
 function getVisibleAlbums(): Album[] {
-  if (state.sidebarMode === 'tags' && state.selectedArtist) {
-    return state.albumsByArtist.get(state.selectedArtist) ?? []
-  }
+  const artist = state.tagPath[0]?.field === 'artist' ? state.tagPath[0].value : ''
+  if (state.sidebarMode === 'tags' && artist) return state.albumsByArtist.get(artist) ?? []
   // Across artists, an album with an album artist is one tile, not one per track artist (compilations).
   const all: Album[] = []
   const byAlbumArtist = new Map<string, Album>()
@@ -532,7 +595,7 @@ async function renderAlbumList() {
     // track view filters by folder only in Files mode.)
     state.viewMode = 'list'
     state.sidebarMode = 'files'
-    state.selectedArtist = null; state.selectedAlbum = null; state.selectedTag = null; state.query = ''; searchEl.value = ''
+    state.tagPath = []; state.query = ''; searchEl.value = ''
     state.selectedDirectory = r.directory
     state.selectedIds.clear(); state.offset = 0
     if (!state.rootNode) await loadTree()
@@ -796,7 +859,7 @@ function renderTracks() {
 
   if (!state.tracks.length) {
     const pristine = state.total === 0 && !state.query && !state.artists.length
-      && state.selectedArtist === null && state.selectedAlbum === null && !state.selectedTag
+      && !state.tagPath.length
       && state.selectedDirectory === null && !state.selectedIssue
     trackEmpty.innerHTML = pristine
       ? 'Your library is empty. Click <strong>Scan Library</strong> to index your music.'
@@ -1733,7 +1796,9 @@ async function loadLibrary() {
     // Values change with every write: refetch the open tags, forget the rest.
     const open = [...state.expandedTags]
     state.tagValues = new Map()
+    state.nodeValues = new Map()
     await Promise.all(open.map(loadTagValues))
+    await Promise.all([...state.expandedNodes].map(k => loadNodeValues(parsePath(k))))
     renderTagsPanel()
   } catch (e) {
     toast(`Failed to load library: ${e}`, 'error')
@@ -2371,9 +2436,7 @@ function currentViewParams(): Record<string, string | number> {
       : {}
   }
   const params: Record<string, string | number> = {}
-  if (state.selectedTag) { params.tag = state.selectedTag.field; params.value = state.selectedTag.value }
-  if (state.selectedArtist !== null) params.artist = state.selectedArtist
-  if (state.selectedAlbum !== null) params.album = state.selectedAlbum
+  if (state.tagPath.length) params.path = pathKey(state.tagPath)
   return params
 }
 
@@ -2623,9 +2686,7 @@ document.querySelector('.sidebar-tabs')!.addEventListener('click', async (e) => 
     state.selectedDirectory = null
     if (!state.artists.length) await loadLibrary()
   } else if (mode === 'files') {
-    state.selectedArtist = null
-    state.selectedAlbum  = null
-    state.selectedTag    = null
+    state.tagPath = []
     if (!state.rootNode) await loadTree()
   } else {
     state.selectedIssue = null
@@ -2647,11 +2708,8 @@ document.querySelector('.sidebar-tabs')!.addEventListener('click', async (e) => 
 })
 
 // Tags panel: tag headers open/close; values and albums filter the tracks.
-async function selectInTags(apply: () => void) {
-  state.selectedArtist = null
-  state.selectedAlbum  = null
-  state.selectedTag    = null
-  apply()
+async function selectInTags(path: TagStep[]) {
+  state.tagPath = path
   state.selectedIds.clear()
   state.offset = 0
   renderTagsPanel()
@@ -2661,46 +2719,100 @@ async function selectInTags(apply: () => void) {
 
 artistListEl.addEventListener('click', async (e) => {
   const target = e.target as HTMLElement
+  const editor = target.closest<HTMLElement>('.path-editor')
+  if (editor) {
+    const top = editor.dataset.top!, chain = state.browsePaths[top] ?? []
+    const remove = target.closest<HTMLElement>('[data-remove]')
+    const add = target.closest<HTMLElement>('.path-chip-free')
+    if (remove) await saveBrowsePath(top, chain.filter(f => f !== remove.dataset.remove))
+    else if (add) await saveBrowsePath(top, [...chain, add.dataset.field!])
+    return
+  }
   const li = target.closest<HTMLElement>('.nav-item')
   if (!li) return
-  const onArrow = target.dataset.toggle === '1'
 
   if (li.dataset.all === '1') {
-    await selectInTags(() => {})
+    await selectInTags([])
     return
   }
 
-  // Album under an artist
-  if (li.dataset.album !== undefined) {
-    await selectInTags(() => {
-      state.selectedArtist = li.dataset.artist ?? ''
-      state.selectedAlbum  = li.dataset.album ?? ''
-    })
+  // A value at any depth: the arrow opens it, the label selects it.
+  if (li.dataset.path) {
+    const path = parsePath(li.dataset.path)
+    const key = li.dataset.path
+    if (target.dataset.toggle === '1' && (state.browsePaths[path[0].field] ?? []).length >= path.length) {
+      if (state.expandedNodes.has(key)) state.expandedNodes.delete(key)
+      else { state.expandedNodes.add(key); await loadNodeValues(path) }
+      renderTagsPanel()
+      return
+    }
+    await selectInTags(path)
     return
   }
 
   const field = li.dataset.tag!
-  // Tag header: open/close, loading its values the first time
-  if (li.dataset.value === undefined) {
-    if (state.expandedTags.has(field)) {
-      state.expandedTags.delete(field)
-    } else {
-      state.expandedTags.add(field)
-      if (!state.tagValues.has(field)) await loadTagValues(field)
-    }
+  if (target.closest('[data-edit-path]')) {
+    editingPath = editingPath === field ? null : field
     renderTagsPanel()
     return
   }
-
-  const value = li.dataset.value
-  if (field === 'artist') {
-    const toggle = () => state.expandedArtists.has(value)
-      ? state.expandedArtists.delete(value) : state.expandedArtists.add(value)
-    if (onArrow) { toggle(); renderTagsPanel(); return }
-    await selectInTags(() => { state.selectedArtist = value })
-    return
+  // Tag header: open/close, loading its values the first time
+  if (state.expandedTags.has(field)) {
+    state.expandedTags.delete(field)
+  } else {
+    state.expandedTags.add(field)
+    if (!state.tagValues.has(field)) await loadTagValues(field)
   }
-  await selectInTags(() => { state.selectedTag = { field, value } })
+  renderTagsPanel()
+})
+
+// Browse-path editor: drag a tag into the path or along it; drag one out to remove it.
+let dragField: string | null = null
+const clearDropMarks = () => artistListEl.querySelectorAll('.drop-before, .drop-end, .drop-target')
+  .forEach(el => el.classList.remove('drop-before', 'drop-end', 'drop-target'))
+
+/** Where in the path a drop at (x, y) lands: before the chip it's left of, across wrapped rows. */
+function dropIndex(zone: HTMLElement, x: number, y: number): { i: number; chips: HTMLElement[] } {
+  const chips = [...zone.querySelectorAll<HTMLElement>('.path-chip')].filter(c => c.dataset.field !== dragField)
+  const i = chips.findIndex(c => {
+    const r = c.getBoundingClientRect()
+    return y < r.top || (y <= r.bottom && x < r.left + r.width / 2)
+  })
+  return { i: i < 0 ? chips.length : i, chips }
+}
+
+artistListEl.addEventListener('dragstart', (e) => {
+  const chip = (e.target as HTMLElement).closest<HTMLElement>('.path-editor .path-chip')
+  if (!chip) return
+  dragField = chip.dataset.field!
+  e.dataTransfer!.effectAllowed = 'move'
+  e.dataTransfer!.setData('text/plain', dragField)
+  chip.classList.add('dragging')
+})
+artistListEl.addEventListener('dragend', (e) => {
+  dragField = null
+  clearDropMarks();
+  (e.target as HTMLElement).classList?.remove('dragging')
+})
+artistListEl.addEventListener('dragover', (e) => {
+  const zone = dragField && (e.target as HTMLElement).closest<HTMLElement>('.path-editor [data-zone]')
+  if (!zone) return
+  e.preventDefault()
+  clearDropMarks()
+  if (zone.dataset.zone === 'free') { zone.classList.add('drop-target'); return }
+  const { i, chips } = dropIndex(zone, e.clientX, e.clientY)
+  if (i < chips.length) chips[i].classList.add('drop-before')
+  else zone.classList.add('drop-end')
+})
+artistListEl.addEventListener('drop', async (e) => {
+  const zone = dragField && (e.target as HTMLElement).closest<HTMLElement>('.path-editor [data-zone]')
+  if (!zone || !dragField) return
+  e.preventDefault()
+  const top = zone.closest<HTMLElement>('.path-editor')!.dataset.top!
+  const chain = (state.browsePaths[top] ?? []).filter(f => f !== dragField)
+  if (zone.dataset.zone === 'chain') chain.splice(dropIndex(zone, e.clientX, e.clientY).i, 0, dragField)
+  dragField = null
+  await saveBrowsePath(top, chain)
 })
 
 // Tags panel: expand/collapse all
@@ -2712,7 +2824,7 @@ document.getElementById('expand-all-btn')!.addEventListener('click', async () =>
 
 document.getElementById('collapse-all-btn')!.addEventListener('click', () => {
   state.expandedTags.clear()
-  state.expandedArtists.clear()
+  state.expandedNodes.clear()
   renderTagsPanel()
 })
 
@@ -2748,29 +2860,21 @@ function findDirNode(path: string | null): DirNode | null {
 
 // Tag-link navigation
 async function navigateTo(artist: string, album?: string) {
-  state.sidebarMode     = 'tags'
-  state.selectedArtist  = artist || null
-  state.selectedAlbum   = album  || null
-  state.selectedTag     = null
-  state.expandedTags.add('artist')
-  if (!state.tagValues.has('artist')) await loadTagValues('artist')
-  state.selectedIds.clear()
-  state.offset = 0
-  if (artist) state.expandedArtists.add(artist)
-  renderSidebarTabs()
-  renderTagsPanel()
-  await loadTracks()
-  renderEditor()
+  const path: TagStep[] = []
+  if (artist) path.push({ field: 'artist', value: artist })
+  if (album) path.push({ field: 'album', value: album })
+  await revealPath(path)
 }
 
 /** A merged tile: the album under its album artist, whoever the track artists are. */
 async function navigateToAlbumArtist(albumArtist: string, album: string) {
-  state.sidebarMode     = 'tags'
-  state.selectedArtist  = null
-  state.selectedAlbum   = album
-  state.selectedTag     = { field: 'album_artist', value: albumArtist }
-  state.expandedTags.add('album_artist')
-  if (!state.tagValues.has('album_artist')) await loadTagValues('album_artist')
+  await revealPath([{ field: 'album_artist', value: albumArtist }, { field: 'album', value: album }])
+}
+
+async function revealPath(path: TagStep[]) {
+  state.sidebarMode = 'tags'
+  state.tagPath     = path
+  await openPath(path)
   state.selectedIds.clear()
   state.offset = 0
   renderSidebarTabs()
@@ -3572,12 +3676,8 @@ function updateStatusBar() {
     where.push('Files', state.selectedDirectory ? shortPath(state.selectedDirectory) : 'All tracks')
   } else if (state.sidebarMode === 'quality') {
     where.push('Quality', QUALITY_ISSUES.find(i => i.key === state.selectedIssue)?.label ?? 'pick an issue')
-  } else if (state.selectedArtist !== null) {
-    where.push(state.selectedArtist || '(no artist)')
-    if (state.selectedAlbum !== null) where.push(state.selectedAlbum || '(no album)')
-  } else if (state.selectedTag) {
-    where.push(BROWSE_TAGS.find(t => t.field === state.selectedTag!.field)?.label ?? state.selectedTag.field,
-               state.selectedTag.value || '(none)')
+  } else if (state.tagPath.length) {
+    where.push(fieldLabel(state.tagPath[0].field), ...state.tagPath.map(s => s.value || '(none)'))
   } else {
     where.push('All tracks')
   }
@@ -3633,7 +3733,7 @@ statusSel.addEventListener('click', (e) => {
 // The logo: home (all tracks, nothing selected, no search).
 document.getElementById('logo')!.addEventListener('click', async (e) => {
   e.preventDefault()
-  await restoreView({ mode: 'tags', view: 'list', offset: 0, q: '', qm: '', artist: null, album: null, tag: null, dir: null, issue: null })
+  await restoreView({ mode: 'tags', view: 'list', offset: 0, q: '', qm: '', path: [], dir: null, issue: null })
   recordView()
 })
 
@@ -3643,8 +3743,7 @@ document.getElementById('logo')!.addEventListener('click', async (e) => {
 
 interface View {
   mode: State['sidebarMode']; view: State['viewMode']; offset: number; q: string; qm: State['queryMode']
-  artist: string | null; album: string | null; tag: { field: string; value: string } | null
-  dir: string | null; issue: string | null
+  path: TagStep[]; dir: string | null; issue: string | null
 }
 
 let restoring = false
@@ -3654,8 +3753,7 @@ function currentView(): View {
   const m = state.sidebarMode
   return {
     mode: m, view: state.viewMode, offset: state.offset, q: state.query, qm: state.query ? state.queryMode : '',
-    artist: m === 'tags' ? state.selectedArtist : null, album: m === 'tags' ? state.selectedAlbum : null,
-    tag: m === 'tags' ? state.selectedTag : null,
+    path: m === 'tags' ? state.tagPath : [],
     dir: m === 'files' ? state.selectedDirectory : null, issue: m === 'quality' ? state.selectedIssue : null,
   }
 }
@@ -3666,9 +3764,7 @@ function viewHash(v: View): string {
   if (v.offset) p.set('row', String(v.offset + 1))
   if (v.q) p.set('q', v.q)
   if (v.q && v.qm) p.set('qm', v.qm)
-  if (v.artist !== null) p.set('artist', v.artist)
-  if (v.album !== null) p.set('album', v.album)
-  if (v.tag) { p.set('tag', v.tag.field); p.set('value', v.tag.value) }
+  if (v.path.length) p.set('path', pathKey(v.path))
   if (v.dir) p.set('dir', v.dir)
   if (v.issue) p.set('issue', v.issue)
   return '#' + p.toString()
@@ -3680,6 +3776,16 @@ function hashOffset(p: URLSearchParams): number {
   return Math.max(0, (parseInt(p.get('page') ?? '1', 10) || 1) - 1) * state.pageSize
 }
 
+/** The tree node from the hash; older links name an artist/album or a tag instead. */
+function hashPath(p: URLSearchParams): TagStep[] {
+  try { if (p.has('path')) return parsePath(p.get('path')!) } catch { return [] }
+  const path: TagStep[] = []
+  if (p.has('tag')) path.push({ field: p.get('tag')!, value: p.get('value') ?? '' })
+  if (p.has('artist')) path.push({ field: 'artist', value: p.get('artist')! })
+  if (p.has('album')) path.push({ field: 'album', value: p.get('album')! })
+  return path
+}
+
 function parseHash(): View | null {
   const p = new URLSearchParams(location.hash.slice(1))
   const mode = p.get('mode')
@@ -3688,9 +3794,7 @@ function parseHash(): View | null {
     mode, view: p.get('view') === 'albums' ? 'albums' : 'list',
     offset: hashOffset(p), q: p.get('q') ?? '',
     qm: p.get('qm') === 'glob' || p.get('qm') === 'regex' ? p.get('qm') as State['queryMode'] : '',
-    artist: p.get('artist'), album: p.get('album'),
-    tag: p.has('tag') ? { field: p.get('tag')!, value: p.get('value') ?? '' } : null,
-    dir: p.get('dir'), issue: p.get('issue'),
+    path: hashPath(p), dir: p.get('dir'), issue: p.get('issue'),
   }
 }
 
@@ -3722,12 +3826,11 @@ async function restoreView(v: View) {
     state.sidebarMode = v.mode; state.viewMode = v.view; state.offset = v.offset
     state.query = v.q; searchEl.value = v.q
     if (v.q) { state.queryMode = v.qm; renderSearchMode() }
-    state.selectedArtist = v.artist; state.selectedAlbum = v.album; state.selectedTag = v.tag
+    state.tagPath = v.path
     state.selectedDirectory = v.dir; state.selectedIssue = v.issue
     state.selectedIds.clear(); albumPicks.clear()
     if (v.mode === 'tags') {
-      if (v.artist !== null) { state.expandedTags.add('artist'); state.expandedArtists.add(v.artist) }
-      if (v.tag) state.expandedTags.add(v.tag.field)
+      await openPath(v.path)
       await Promise.all([...state.expandedTags].filter(f => !state.tagValues.has(f)).map(loadTagValues))
       renderTagsPanel()
     } else if (v.mode === 'files') {
@@ -3775,7 +3878,8 @@ async function startApp() {
     }
   }).catch(() => {})
   renderFormatOptions()
-  api.settings.get().then(s => {
+  const settingsLoaded = api.settings.get()
+  settingsLoaded.then(s => {
     state.libraryRoots = s.effective_library_roots ?? []
     state.musicDirs = [s.default_music_dir ?? '', ...s.music_dirs].filter(Boolean)
     renameOnSave = s.rename_on_save
@@ -3788,6 +3892,7 @@ async function startApp() {
   }).catch(() => {})
   api.spectrogram.status().then(s => { spectrogramAvailable = s.available }).catch(() => {})
   await refreshUndoButton()
+  await settingsLoaded.then(s => { if (s.browse_paths) state.browsePaths = s.browse_paths }).catch(() => {})
   await loadLibrary()
   const v = parseHash()
   if (v) await restoreView(v)

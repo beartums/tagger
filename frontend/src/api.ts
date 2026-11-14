@@ -169,6 +169,7 @@ export interface AppSettings {
   cover_embed_size: number
   search_fields: string[]
   cover_folder_size: number
+  browse_paths: Record<string, string[]>
   secrets_set?: Record<string, boolean>   // keys/tokens are never sent back, only whether set
   secrets_encrypted?: boolean
   default_music_dir?: string
@@ -430,8 +431,8 @@ export const api = {
     valueCounts: (ids: number[], field: string) =>
       request<{ count: number; values: { value: string; tracks: number }[] }>(
         'POST', '/api/library/value-counts', { track_ids: ids, field }),
-    tagValues: (field: string) =>
-      request<TagValue[]>('GET', `/api/library/tag-values?field=${encodeURIComponent(field)}`),
+    tagValues: (field: string, path?: string) =>
+      request<TagValue[]>('GET', `/api/library/tag-values?field=${encodeURIComponent(field)}${path ? '&path=' + encodeURIComponent(path) : ''}`),
     albumList: (params: Record<string, string | number> = {}) => {
       const qs = new URLSearchParams(params as Record<string, string>).toString()
       return request<AlbumRow[]>('GET', `/api/library/album-list${qs ? '?' + qs : ''}`)
