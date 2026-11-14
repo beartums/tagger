@@ -344,9 +344,31 @@ function getVisibleAlbums(): Album[] {
   if (state.sidebarMode === 'tags' && state.selectedArtist) {
     return state.albumsByArtist.get(state.selectedArtist) ?? []
   }
+  // Across artists, an album with an album artist is one tile, not one per track artist (compilations).
   const all: Album[] = []
-  for (const albs of state.albumsByArtist.values()) all.push(...albs)
-  return all
+  const byAlbumArtist = new Map<string, Album>()
+  for (const albs of state.albumsByArtist.values()) for (const a of albs) {
+    const key = JSON.stringify([a.album_artist, a.album])
+    const m = a.album_artist ? byAlbumArtist.get(key) : undefined
+    if (!m) {
+      const copy = { ...a }
+      if (a.album_artist) byAlbumArtist.set(key, copy)
+      all.push(copy)
+      continue
+    }
+    m.artist = null   // several track artists: the tile is the album artist's
+    m.track_count += a.track_count
+    m.cover_track_id = Math.min(m.cover_track_id, a.cover_track_id)
+  }
+  const name = (a: Album) => (a.album_artist || a.artist || '').toLowerCase()
+  return all.sort((a, b) => name(a).localeCompare(name(b)) || a.album.toLowerCase().localeCompare(b.album.toLowerCase()))
+}
+
+/** The track filter for a tile: its artist's tracks, or the album artist's for a merged one. */
+function albumParams(a: Album): Record<string, string> {
+  return a.artist === null
+    ? { tag: 'album_artist', value: a.album_artist ?? '', album: a.album }
+    : { artist: a.artist, album: a.album }
 }
 
 // Album views multi-select: Ctrl/⌘-click picks an album, Shift-click a range;
@@ -375,7 +397,7 @@ function markAlbumPicks() {
     el.classList.toggle('album-picked', albumPicks.has(el.dataset.albumKey!)))
 }
 
-const tileKey = (a: Album) => JSON.stringify([a.artist ?? '', a.album])
+const tileKey = (a: Album) => JSON.stringify(a.artist === null ? ['aa', a.album_artist, a.album] : [a.artist, a.album])
 
 function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
   const card = document.createElement('div')
@@ -402,13 +424,14 @@ function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
   card.addEventListener('click', (e) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey) {
       pickAlbum(e, i, j => tileKey(albums[j]), async j => albums[j].album
-        ? (await api.library.trackIds({ artist: albums[j].artist ?? '', album: albums[j].album })).ids : [])
+        ? (await api.library.trackIds(albumParams(albums[j]))).ids : [])
       return
     }
     albumPicks.clear()
     state.viewMode = 'list'
     renderViewMode()
-    navigateTo(alb.artist ?? '', alb.album)
+    if (alb.artist === null) navigateToAlbumArtist(alb.album_artist ?? '', alb.album)
+    else navigateTo(alb.artist, alb.album)
   })
   return card
 }
@@ -2726,6 +2749,22 @@ async function navigateTo(artist: string, album?: string) {
   state.selectedIds.clear()
   state.offset = 0
   if (artist) state.expandedArtists.add(artist)
+  renderSidebarTabs()
+  renderTagsPanel()
+  await loadTracks()
+  renderEditor()
+}
+
+/** A merged tile: the album under its album artist, whoever the track artists are. */
+async function navigateToAlbumArtist(albumArtist: string, album: string) {
+  state.sidebarMode     = 'tags'
+  state.selectedArtist  = null
+  state.selectedAlbum   = album
+  state.selectedTag     = { field: 'album_artist', value: albumArtist }
+  state.expandedTags.add('album_artist')
+  if (!state.tagValues.has('album_artist')) await loadTagValues('album_artist')
+  state.selectedIds.clear()
+  state.offset = 0
   renderSidebarTabs()
   renderTagsPanel()
   await loadTracks()

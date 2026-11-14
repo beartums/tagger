@@ -59,6 +59,12 @@ since 2026-09.
 - *Not in layout*: a resizable Layout column; hovering shows both paths with
   the differences marked.
 
+### Fixes
+- The page bar under the table hid itself only in name: after a search
+  shrank the view it stayed, with the old "1–50 of 78".
+- Album tiles showed a compilation once per track artist; across artists it
+  is now one tile for its album artist, opening all its tracks.
+
 ### Project
 - Repository, badges, image and user agents point at beartums/tagger; the
   README credits the original. Renovate keeps dependencies current.
