@@ -2,7 +2,8 @@
 
 ## Supported versions
 
-Only the latest release receives security fixes.
+Security fixes go to `main` (published as `ghcr.io/beartums/tagger:latest`)
+and the next release; older releases aren't patched.
 
 ## Reporting a vulnerability
 
