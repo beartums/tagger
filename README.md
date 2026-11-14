@@ -10,8 +10,10 @@
 Self-hosted web app for editing audio tags (FLAC, MP3, AAC/M4A, OGG) — run it
 on a NAS or server and tag your library from any browser.
 
-[![CI](https://github.com/rnhinson/tagger/actions/workflows/ci.yml/badge.svg)](https://github.com/rnhinson/tagger/actions/workflows/ci.yml)
-[![Publish image](https://github.com/rnhinson/tagger/actions/workflows/publish.yml/badge.svg)](https://github.com/rnhinson/tagger/actions/workflows/publish.yml)
+Forked from [rnhinson/tagger](https://github.com/rnhinson/tagger) (MIT) and developed separately since 2026-09.
+
+[![CI](https://github.com/beartums/tagger/actions/workflows/ci.yml/badge.svg)](https://github.com/beartums/tagger/actions/workflows/ci.yml)
+[![Publish image](https://github.com/beartums/tagger/actions/workflows/publish.yml/badge.svg)](https://github.com/beartums/tagger/actions/workflows/publish.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Quick start
@@ -23,7 +25,7 @@ Save this as `docker-compose.yml`, set your music path, and run `docker compose 
 ```yaml
 services:
   tagger:
-    image: ghcr.io/rnhinson/tagger:latest
+    image: ghcr.io/beartums/tagger:latest
     container_name: tagger
     restart: unless-stopped
     ports:
@@ -46,7 +48,7 @@ volumes:
 docker run -d -p 8000:8000 \
   -v /your/music:/music \
   -v tagger-config:/config \
-  ghcr.io/rnhinson/tagger:latest
+  ghcr.io/beartums/tagger:latest
 # → http://localhost:8000
 ```
 

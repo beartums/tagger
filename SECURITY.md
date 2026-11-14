@@ -8,7 +8,7 @@ Only the latest release receives security fixes.
 
 Please report security issues **privately** — do not open a public issue.
 
-Use GitHub's **[Report a vulnerability](https://github.com/rnhinson/tagger/security/advisories/new)**
+Use GitHub's **[Report a vulnerability](https://github.com/beartums/tagger/security/advisories/new)**
 (Security → Advisories) to open a private advisory. Include:
 
 - a description of the issue and its impact,
