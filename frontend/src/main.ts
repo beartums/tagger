@@ -167,18 +167,20 @@ function renderSidebarTabs() {
 
 // ─── Tags panel ───────────────────────────────────────────────────────────────
 
-function navRow(cls: string, arrow: 'open' | 'closed' | 'none', label: string, count?: number): HTMLLIElement {
+function navRow(cls: string, arrow: 'open' | 'closed' | 'none', label: string, count?: number | string, sub?: string): HTMLLIElement {
   const li = document.createElement('li')
   li.className = 'nav-item ' + cls
   const a = arrow === 'none' ? '' : (arrow === 'open' ? '▾' : '▸')
   li.innerHTML = `
     <span class="nav-arrow${arrow === 'none' ? ' nav-arrow-empty' : ''}" data-toggle="1">${a}</span>
     <span class="nav-label">${label}</span>
-    ${count !== undefined ? `<span class="nav-count">${count.toLocaleString()}</span>` : ''}`
+    ${count !== undefined ? `<span class="nav-count">${sub ? `<span class="nav-sub">${sub} · </span>` : ''}${count.toLocaleString()}</span>` : ''}`
   return li
 }
 
 const fieldLabel = (f: string) => BROWSE_TAGS.find(t => t.field === f)?.label ?? f
+/** "3 albums", "1 album artist". */
+const countOf = (n: number, f: string) => `${n.toLocaleString()} ${fieldLabel(f).toLowerCase()}${n === 1 ? '' : 's'}`
 const parsePath = (key: string): TagStep[] => (JSON.parse(key) as string[][]).map(([field, value]) => ({ field, value }))
 let editingPath: string | null = null   // the top tag whose browse path is open for editing
 
@@ -198,7 +200,7 @@ function renderTagsPanel() {
     const values = state.tagValues.get(field)
     const chain = state.browsePaths[field] ?? []
     const header = navRow('nav-tag', values && !values.length ? 'none' : (open ? 'open' : 'closed'),
-                          esc(label), values ? values.length : undefined)
+                          esc(label), values ? countOf(values.length, field) : undefined)
     header.dataset.tag = field
     header.querySelector('.nav-label')!.insertAdjacentHTML('beforeend',
       chain.map(f => `<span class="nav-chain"> › ${esc(fieldLabel(f))}</span>`).join(''))
@@ -220,9 +222,11 @@ function renderLevel(top: string, parent: TagStep[], values: TagValue[], selecte
     const path = [...parent, { field, value: v.value }]
     const key = pathKey(path)
     const expanded = !!childField && state.expandedNodes.has(key)
+    const sub = childField && v.child_count !== undefined ? countOf(v.child_count, childField) : undefined
     const li = navRow('nav-value' + (key === selected ? ' active' : ''),
                       childField ? (expanded ? 'open' : 'closed') : 'none',
-                      v.value ? esc(v.value) : '<span class="nav-none">(none)</span>', v.track_count)
+                      v.value ? esc(v.value) : '<span class="nav-none">(none)</span>', v.track_count, sub)
+    li.title = `${sub ? sub + ', ' : ''}${v.track_count.toLocaleString()} track${v.track_count === 1 ? '' : 's'}`
     li.style.paddingLeft = `${26 + 16 * parent.length}px`
     li.dataset.path = key
     artistListEl.appendChild(li)
@@ -258,7 +262,7 @@ async function loadNodeValues(path: TagStep[]) {
   const field = (state.browsePaths[path[0].field] ?? [])[path.length - 1]
   if (!field || state.nodeValues.has(key)) return
   try {
-    state.nodeValues.set(key, await api.library.tagValues(field, key))
+    state.nodeValues.set(key, await api.library.tagValues(field, key, (state.browsePaths[path[0].field] ?? [])[path.length]))
   } catch (e) {
     toast(`Failed to load ${fieldLabel(field)} values: ${e}`, 'error')
   }
@@ -283,6 +287,8 @@ async function saveBrowsePath(top: string, chain: string[]) {
   // Nodes under this tag now open to other tags.
   for (const k of [...state.expandedNodes]) if (parsePath(k)[0].field === top) state.expandedNodes.delete(k)
   for (const k of [...state.nodeValues.keys()]) if (parsePath(k)[0].field === top) state.nodeValues.delete(k)
+  state.tagValues.delete(top)   // its counts are of the old next tag
+  if (state.expandedTags.has(top)) await loadTagValues(top)
   renderTagsPanel()
   try {
     state.browsePaths = (await api.settings.update({ browse_paths: state.browsePaths })).browse_paths
@@ -295,7 +301,7 @@ async function saveBrowsePath(top: string, chain: string[]) {
 
 async function loadTagValues(field: string) {
   try {
-    state.tagValues.set(field, await api.library.tagValues(field))
+    state.tagValues.set(field, await api.library.tagValues(field, undefined, state.browsePaths[field]?.[0]))
   } catch (e) {
     toast(`Failed to load ${field} values: ${e}`, 'error')
   }
