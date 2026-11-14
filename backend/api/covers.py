@@ -46,7 +46,7 @@ def _public_image(url: str) -> tuple[str, bytes]:
             return super().redirect_request(req, fp, code, msg, headers, newurl)
 
     check(url)
-    req = urllib.request.Request(url.strip(), headers={"User-Agent": "tagger/0.2"})
+    req = urllib.request.Request(url.strip(), headers={"User-Agent": "tagger/0.3.0"})
     try:
         with urllib.request.build_opener(Checked).open(req, timeout=30) as r:
             mime = r.headers.get("Content-Type", "").split(";")[0].strip()

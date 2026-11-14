@@ -4,7 +4,7 @@ Thanks for your interest in improving tagger.
 
 ## Development setup
 
-Requires Python 3.11+ and Node 18+.
+Requires Python 3.12+ and Node 20+.
 
 ```bash
 # Backend (from ./backend)
@@ -36,9 +36,10 @@ cd frontend && npx tsc --noEmit && npm run build
 
 - `backend/api/` — FastAPI routers (one file per area).
 - `backend/core/` — logic: scanning, tagging, DB, providers, auth, history.
-- `frontend/src/` — the SPA. `main.ts` holds app logic; `template.ts` the
-  markup; `state.ts` / `columns.ts` / `quality.ts` / `util.ts` are extracted
-  modules; `api.ts` is the typed REST client.
+- `frontend/src/` — the SPA. `main.ts` wires the app and the track table;
+  `template.ts` holds the markup; `api.ts` is the typed REST client; dialogs
+  and features have their own modules (`staged.ts` Review, `gridedit.ts` edit
+  mode, `findreplace.ts`, `covers.ts`, `duplicates.ts`, …).
 
 `core.tagger.TAG_FIELDS` is the single source of truth for editable tag fields —
 adding one there cascades through the DB schema, scanner, and undo. Match the

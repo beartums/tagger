@@ -21,6 +21,8 @@ services:
     environment:
       - TAGGER_PASSWORD=change-me            # omit to run without a login
       - TAGGER_SECURE_COOKIE=1               # set when served over HTTPS
+      # - TAGGER_SECRET_KEY=...              # encrypts API keys in settings.json
+      # - TAGGER_LIBRARY_ROOTS=/music/Shared:/music/Libraries/*   # see Library roots
       # - ACOUSTID_API_KEY=...               # optional fingerprint lookup
 
 volumes:
@@ -65,6 +67,22 @@ server {
 }
 ```
 
+## Library roots
+
+Layouts (the file-structure templates) are relative to a *library root*, and
+Tagger never moves a file out of the deepest root that contains it. By default
+the root is the music mount; set `TAGGER_LIBRARY_ROOTS` (colon-separated,
+globs allowed) or Settings → Libraries when the mount holds several
+libraries, e.g. `/music/Shared:/music/Libraries/*`.
+
+## API keys
+
+The AcoustID key, Discogs token and LRCLIB key entered in Settings are saved
+in `settings.json`. Set `TAGGER_SECRET_KEY` to a Fernet key (see the README)
+and they're stored encrypted; keys already saved in plain text are encrypted
+at the next start. Keep the secret key out of the config volume (an env file,
+Docker secret or Kubernetes Secret). If it's lost, enter the keys again.
+
 ## Health check
 
 `GET /api/health` returns `{"status":"ok","version":"…"}` without auth — use it
@@ -81,8 +99,10 @@ for a container `HEALTHCHECK` or an uptime monitor:
 ## Backups
 
 Everything worth keeping lives in the config volume: `library.db` (the index,
-scan jobs, and undo history) and `settings.json`. Back that volume up. The
-index can always be rebuilt with a rescan, but settings and undo history can't.
+staged changes, groups and undo history) and `settings.json`. Back that volume
+up. The index can always be rebuilt with a rescan, but settings, staged
+changes and undo history can't. Without `TAGGER_SECRET_KEY`, the backup holds
+your API keys in plain text.
 
 Deleted files are moved to `/config/trash` (recoverable via Undo) until you
 empty the trash from Settings.
