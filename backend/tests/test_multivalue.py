@@ -93,3 +93,11 @@ def test_browse_paths_reject_unknown_and_repeated_tags(client):
     assert ok.json()["browse_paths"] == {"genre": ["album_artist", "album"]}
     assert client.patch("/api/config", json={"browse_paths": {"genre": ["title"]}}).status_code == 400
     assert client.patch("/api/config", json={"browse_paths": {"genre": ["album", "genre"]}}).status_code == 400
+
+
+def test_tag_values_count_the_next_level(client, lib):
+    _lib_tracks(lib)
+    r = client.get("/api/library/tag-values", params={"field": "genre", "child": "artist"}).json()
+    assert {v["value"]: (v["track_count"], v["child_count"]) for v in r} == {
+        "Folk": (2, 2), "Celtic": (1, 2), "": (1, 1)}   # Folk: Ann, Bob; Celtic: Ann, Bob
+    assert client.get("/api/library/tag-values", params={"field": "genre", "child": "title"}).status_code == 400

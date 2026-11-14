@@ -566,27 +566,33 @@ def get_track(track_id: int):
 
 
 @router.get("/tag-values")
-def tag_values(field: str, path: Optional[str] = None):
+def tag_values(field: str, path: Optional[str] = None, child: Optional[str] = None):
     """
     Values of one tag with track counts; '' = tracks without it. A tag holding
     several ';'-separated values counts under each, so an album tagged
     "Folk; Celtic" is listed under both. `path` limits it to a node of the
-    Tags tree (see _path_filters).
+    Tags tree (see _path_filters); `child` adds, per value, how many values
+    of that tag (the tree's next level, '' included) its tracks have.
     """
-    if field not in BROWSE_FIELDS:
+    if field not in BROWSE_FIELDS or (child is not None and child not in BROWSE_FIELDS):
         raise HTTPException(400, "Invalid field")
     clauses, params = _path_filters(path)
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    cols = f"{field} AS value, {child} AS child" if child else f"{field} AS value, NULL AS child"
+    group = f"{field}, {child}" if child else field
     with db() as conn:
         rows = conn.execute(
-            f"SELECT {field} AS value, COUNT(*) AS n FROM tracks {where} GROUP BY {field}", params
+            f"SELECT {cols}, COUNT(*) AS n FROM tracks {where} GROUP BY {group}", params
         ).fetchall()
     counts: dict[str, int] = {}
+    children: dict[str, set[str]] = {}
     for r in rows:
         for v in split_values(r["value"]) or [""]:
             counts[v] = counts.get(v, 0) + r["n"]
+            if child:
+                children.setdefault(v, set()).update(split_values(r["child"]) or [""])
     key = (lambda v: v) if field == "year" else (lambda v: v.casefold())
-    return [{"value": v, "track_count": n}
+    return [{"value": v, "track_count": n, **({"child_count": len(children[v])} if child else {})}
             for v, n in sorted(counts.items(), key=lambda kv: key(kv[0]), reverse=field == "year")]
 
 

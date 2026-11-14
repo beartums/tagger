@@ -9,6 +9,9 @@
   Artist › Album and Album Artist › Album. Every level filters by the whole
   path above it; links and the back button carry the path (old links still
   open).
+- Each level of the Tags tree counts the level below and the tracks:
+  "Electronic — 3 album artists · 21"; the last level shows tracks only.
+  Tag headers count their values ("10 artists").
 - **Artist and composer chips**: with several tracks selected, artist and
   composer are edited like genre -- add or remove one value on every track,
   keeping the values each track already has. Album artist stays one value

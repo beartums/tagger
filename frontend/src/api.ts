@@ -343,6 +343,7 @@ export interface LibraryInfo {
 export interface TagValue {
   value: string
   track_count: number
+  child_count?: number   // values of the tree's next tag among these tracks, when asked for
 }
 
 export interface StagedCount {
@@ -431,8 +432,10 @@ export const api = {
     valueCounts: (ids: number[], field: string) =>
       request<{ count: number; values: { value: string; tracks: number }[] }>(
         'POST', '/api/library/value-counts', { track_ids: ids, field }),
-    tagValues: (field: string, path?: string) =>
-      request<TagValue[]>('GET', `/api/library/tag-values?field=${encodeURIComponent(field)}${path ? '&path=' + encodeURIComponent(path) : ''}`),
+    tagValues: (field: string, path?: string, child?: string) => {
+      const qs = new URLSearchParams({ field, ...(path ? { path } : {}), ...(child ? { child } : {}) })
+      return request<TagValue[]>('GET', `/api/library/tag-values?${qs}`)
+    },
     albumList: (params: Record<string, string | number> = {}) => {
       const qs = new URLSearchParams(params as Record<string, string>).toString()
       return request<AlbumRow[]>('GET', `/api/library/album-list${qs ? '?' + qs : ''}`)
