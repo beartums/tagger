@@ -10,7 +10,7 @@ rename/move files) and a config directory that holds `library.db` and
 ```yaml
 services:
   tagger:
-    image: ghcr.io/rnhinson/tagger:latest   # or `build: .` to build locally
+    image: ghcr.io/beartums/tagger:latest   # or `build: .` to build locally
     container_name: tagger
     restart: unless-stopped
     ports:
