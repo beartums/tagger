@@ -24,11 +24,11 @@ from pathlib import Path
 
 from core.config import settings
 from core.fileops import MoveError, move_file, prune_empty_dirs, root_for
-from core.tagger import MB_FIELDS, RG_FIELDS, TAG_FIELDS, write_tags
+from core.tagger import MB_FIELDS, READ_LATE_FIELDS, TAG_FIELDS, write_tags
 
 # Columns restored when undoing a tag edit (writable to file + DB).
 _MB_FIELDS = MB_FIELDS
-_WRITABLE = TAG_FIELDS + _MB_FIELDS + RG_FIELDS
+_WRITABLE = TAG_FIELDS + _MB_FIELDS + READ_LATE_FIELDS
 # Fields a staged edit may change (core/staging.py).
 STAGEABLE = _WRITABLE
 
@@ -36,7 +36,7 @@ STAGEABLE = _WRITABLE
 _ALL_COLUMNS = [
     "id", "path", "filename", "directory", "format", "size", "mtime", "duration",
     "bitrate", "sample_rate", "channels",
-    *TAG_FIELDS, *_MB_FIELDS, *RG_FIELDS, "scanned_at", "tagged_at",
+    *TAG_FIELDS, *_MB_FIELDS, *READ_LATE_FIELDS, "scanned_at", "tagged_at",
 ]
 
 
@@ -193,9 +193,9 @@ def _undo_tag_edits(conn, snapshots: list[dict], errors: list[dict]) -> int:
         if not Path(old_path).exists():
             errors.append({"id": snap["id"], "name": name, "error": f"file missing: {cur_path}"})
             continue
-        # ReplayGain NULL = never read from the file (rows scanned before it was
+        # ReplayGain / disc tags NULL = never read from the file (rows scanned before it was
         # read): leave the file's values alone. "" = read, and there were none.
-        fields = [k for k in _WRITABLE if k not in RG_FIELDS or snap.get(k) is not None]
+        fields = [k for k in _WRITABLE if k not in READ_LATE_FIELDS or snap.get(k) is not None]
         try:
             write_tags(old_path, {k: snap.get(k) for k in fields})
         except Exception as exc:

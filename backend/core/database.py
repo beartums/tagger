@@ -68,6 +68,12 @@ def _migrate(conn) -> None:
         ("rg_track_peak", "TEXT"),
         ("rg_album_gain", "TEXT"),
         ("rg_album_peak", "TEXT"),
+        ("mb_disc_id", "TEXT"),        # from a CD rip (core/tagger.py DISC_FIELDS)
+        ("cd_toc", "TEXT"),
+        ("barcode", "TEXT"),
+        ("isrc", "TEXT"),
+        ("rip_match", "TEXT"),
+        ("rip_quality", "TEXT"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {decl}")

@@ -11,7 +11,7 @@ type Item = { kind: Kind; key: string; label: string; icon: string; group: strin
 
 const GROUP_ICON: Record<string, string> = {
   Tags: ICON.tag, Files: ICON.file, 'Cover art': ICON.image, MusicBrainz: ICON.brain,
-  Quality: ICON.star, Format: ICON.file, Has: ICON.check,
+  'CD rips': ICON.album, Quality: ICON.star, Format: ICON.file, Has: ICON.check,
 }
 // Quality checks without a group: the tag ones, then the file ones.
 const FILE_CHECKS = new Set(['duplicate_tracks', 'duplicate_albums', 'not_in_layout', 'missing_lyrics'])
@@ -58,8 +58,8 @@ const btnEl = () => document.getElementById('filter-btn')!
 function renderMenu() {
   const groups = new Map<string, Item[]>()
   for (const it of items()) groups.set(it.group, [...(groups.get(it.group) ?? []), it])
-  // Three columns: tag and file checks | cover art and MusicBrainz | the rest.
-  const cols = [['Tags', 'Files'], ['Cover art', 'MusicBrainz'], ['Quality', 'Format', 'Has']]
+  // Three columns: tag and file checks | cover art, MusicBrainz, CD rips | the rest.
+  const cols = [['Tags', 'Files'], ['Cover art', 'MusicBrainz', 'CD rips'], ['Quality', 'Format', 'Has']]
   menuEl().innerHTML = cols.map(names => `<div class="fm-col">${names.filter(n => groups.has(n)).map(n =>
     `<div class="fm-h">${GROUP_ICON[n]}${esc(n)}</div>` + groups.get(n)!.map(it =>
       `<button type="button" class="fm-i" role="menuitemcheckbox" aria-checked="${isOn(it)}" data-kind="${it.kind}" data-key="${esc(it.key)}">${esc(it.label)}</button>`).join('')

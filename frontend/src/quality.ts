@@ -80,6 +80,8 @@ export const QUALITY_ISSUES: { key: IssueKey; label: string; warn?: boolean; gro
   { key: 'mb_no_release_group',  label: 'No release group ID',    group: 'MusicBrainz' },
   { key: 'mb_track_ids',         label: 'Track IDs incomplete',   group: 'MusicBrainz' },
   { key: 'mb_mixed_album',       label: 'Several releases in one folder', group: 'MusicBrainz', warn: true },
+  { key: 'rip_near',             label: 'Named by a near match (check it)', group: 'CD rips', warn: true },
+  { key: 'rip_trouble',          label: 'Read trouble while ripping', group: 'CD rips', warn: true },
 ]
 
 // ─── Case normalization ─────────────────────────────────────────────────────────

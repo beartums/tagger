@@ -223,6 +223,27 @@ class AlbumSearch(BaseModel):
     by: str = "album"                # album | artist (releases by the artist) | track (releases containing it)
     track: Optional[str] = None      # title for by="track"
     source: str = "auto"             # auto (tags; Unknown/missing -> folder names) | names | tags
+    release: Optional[str] = None    # a release to put first (one just added to MusicBrainz)
+
+
+async def _pinned(req: "AlbumSearch", tracks: list[dict]) -> list[dict]:
+    """
+    Candidates that come before any search: the release just added (req.release),
+    then the releases MusicBrainz has the rip's disc ID on -- an exact match.
+    """
+    out: list[dict] = []
+    if req.release and _UUID_RE.match(req.release):
+        rel = await asyncio.to_thread(mbp.get_release, req.release)
+        if rel:
+            out.append({"mb_album_id": req.release, "album": rel["album"], "artist": rel["album_artist"],
+                        "date": rel["date"], "country": rel["country"], "formats": [], "discs": rel["discs"],
+                        "tracks": len(rel["tracks"]), "type": None, "score": 1.0, "added": True})
+    disc = _common(tracks, "mb_disc_id")
+    if disc:
+        for c in await asyncio.to_thread(mbp.releases_by_discid, disc):
+            if all(c["mb_album_id"] != o["mb_album_id"] for o in out):
+                out.append({**c, "by_disc_id": True})
+    return out
 
 
 def _selection(conn, ids: list[int]) -> list[dict]:
@@ -306,6 +327,10 @@ async def album_search(req: AlbumSearch):
             raise HTTPException(400, "No artist to search for -- type one")
         found = await asyncio.to_thread(_artist_releases, artist, tracks)
         return {"album": album, "artist": artist, "by": "artist", "source": req.source, "local_tracks": len(tracks), "candidates": found}
+    pinned = await _pinned(req, tracks)
+    if not album and pinned:
+        return {"album": album, "artist": artist, "by": "album", "source": req.source,
+                "local_tracks": len(tracks), "candidates": pinned}
     if not album:
         raise HTTPException(400, "No album name to search for -- type one, or try " +
                             ("tags" if req.source == "names" else "folder names" if req.source == "tags" else "naming the folder"))
@@ -319,6 +344,8 @@ async def album_search(req: AlbumSearch):
                              "date": rel["date"], "country": rel["country"], "formats": [],
                              "discs": rel["discs"], "tracks": len(rel["tracks"]), "type": None,
                              "score": 1.0, "tagged": True})
+    ids = {c["mb_album_id"] for c in pinned}
+    found = pinned + [c for c in found if c["mb_album_id"] not in ids]
     return {"album": album, "artist": artist, "by": "album", "source": req.source, "local_tracks": len(tracks), "candidates": found}
 
 
@@ -444,3 +471,185 @@ async def album_apply(req: AlbumApply):
             errors.append({"id": None, "error": f"cover art: {e}"})
     return {**res, "changed": len(todo), "covers": covered, "folder_covers": folders,
             "errors": errors + res.get("errors", [])}
+
+
+# ─── CD rips: disc IDs, adding a release, what the rip recorded ──────────────
+
+def _disc_key(r) -> tuple[str, str, str]:
+    """One disc: folder, album, disc number (no number = disc 1)."""
+    return (r["directory"], r["album"] or "", (str(r["disc_number"] or "1").split("/")[0] or "1"))
+
+
+def _discs(conn, ids: list[int]) -> dict[tuple, list[dict]]:
+    """The selected tracks by disc, with whether the selection holds the whole disc."""
+    from api.tags import _rows
+    groups: dict[tuple, list[dict]] = {}
+    for r in _rows(conn, ids):
+        groups.setdefault(_disc_key(r), []).append(dict(r))
+    return groups
+
+
+def _whole(conn, key: tuple, got: list[dict]) -> bool:
+    rows = conn.execute("SELECT album, disc_number, directory FROM tracks WHERE directory = ?", (key[0],)).fetchall()
+    return sum(1 for r in rows if _disc_key(r) == key) == len(got)
+
+
+class TrackIds(BaseModel):
+    track_ids: list[int]
+
+
+VERIFY_MAX = 15     # MusicBrainz allows ~1 request/s; a request must finish inside the proxy's 30 s
+
+
+@router.post("/disc-ids")
+async def fill_disc_ids(req: TrackIds):
+    """
+    Work out each selected disc's MusicBrainz disc ID and TOC from its tracks'
+    exact lengths (core/discid.py) and stage them, for rips made before the
+    ripper tagged them. Discs that already have one are left alone. The first
+    few are checked against MusicBrainz.
+    """
+    from api.tags import _finish
+    from core.discid import from_lengths
+    from core.tagger import DISC_FIELDS, read_disc_tags
+    if not req.track_ids:
+        raise HTTPException(400, "No track IDs provided")
+    with db() as conn:
+        groups = _discs(conn, req.track_ids)
+        results, todo = [], []
+        for key, g in groups.items():
+            name = key[1] or key[0].rsplit("/", 1)[-1]
+            if len(groups) > 1 and any(k[:2] == key[:2] and k != key for k in groups):
+                name += f" (disc {key[2]})"
+            if all(r.get("mb_disc_id") for r in g):
+                results.append({"album": name, "status": "has one", "disc_id": g[0]["mb_disc_id"]})
+                continue
+            if not _whole(conn, key, g):
+                results.append({"album": name, "status": "skipped", "why": "select the whole disc"})
+                continue
+            got = from_lengths(g)
+            if isinstance(got, str):
+                results.append({"album": name, "status": "skipped", "why": got})
+                continue
+            res = {"album": name, "status": "staged", "disc_id": got[0], "toc": got[1],
+                   "mb_album_id": _common(g, "mb_album_id")}
+            results.append(res)
+            todo.append((res, g))
+    for res, _ in todo[:VERIFY_MAX]:
+        rels = await asyncio.to_thread(mbp.releases_by_discid, res["disc_id"])
+        res["on_musicbrainz"] = [c["mb_album_id"] for c in rels]
+        res["matches_album"] = bool(res["mb_album_id"]) and res["mb_album_id"] in res["on_musicbrainz"]
+    if not todo:
+        return {"results": results, "staged": False}
+    with db() as conn:
+        n = sum(len(g) for _, g in todo)
+        step = staging.Step(conn, f"Disc IDs from track lengths for {len(todo)} disc{'s' if len(todo) != 1 else ''}")
+        for res, g in todo:
+            for t in g:
+                cur = read_disc_tags(t["path"])     # what the file holds: Review's "old", undo's target
+                conn.execute(f"UPDATE tracks SET {', '.join(f'{f} = ?' for f in DISC_FIELDS)} WHERE id = ?",
+                             [*(cur[f] for f in DISC_FIELDS), t["id"]])
+                row = conn.execute("SELECT * FROM tracks WHERE id = ?", (t["id"],)).fetchone()
+                staging.stage(conn, row, {"mb_disc_id": res["disc_id"], "cd_toc": res["toc"]}, step=step)
+        out = _finish(conn, step, [t["id"] for _, g in todo for t in g])
+    return {"results": results, "tracks": n, **out}
+
+
+def _credit(prefix: str, names: str | None, mbid: str | None = None) -> list[tuple[str, str]]:
+    """artist_credit fields for a "; "-joined artist value: "A", "A & B", "A, B & C"."""
+    from core.multivalue import split_values
+    parts = split_values(names or "") if names else []
+    out = []
+    for i, p in enumerate(parts):
+        out.append((f"{prefix}artist_credit.names.{i}.name", p))
+        out.append((f"{prefix}artist_credit.names.{i}.artist.name", p))
+        if mbid and len(parts) == 1:
+            out.append((f"{prefix}artist_credit.names.{i}.mbid", mbid))
+        if i < len(parts) - 1:
+            out.append((f"{prefix}artist_credit.names.{i}.join_phrase", " & " if i == len(parts) - 2 else ", "))
+    return out
+
+
+class Seed(BaseModel):
+    track_ids: list[int]
+    redirect_uri: Optional[str] = None
+
+
+@router.post("/mb-seed")
+def mb_seed(req: Seed):
+    """
+    The fields that open MusicBrainz's Add release page filled in from one
+    album (https://musicbrainz.org/doc/Development/Release_Editor_Seeding):
+    the browser POSTs them to /release/add, the user reviews and submits.
+    """
+    with db() as conn:
+        groups = _discs(conn, req.track_ids)
+    albums = {k[:2] for k in groups}
+    if len(albums) != 1:
+        raise HTTPException(400, "Select one album")
+    tracks = [t for g in groups.values() for t in g]
+    album = _common(tracks, "album") or next(iter(albums))[0].rsplit("/", 1)[-1]
+    album_artist = _common(tracks, "album_artist") or _common(tracks, "artist")
+    f: list[tuple[str, str]] = [("name", album), ("status", "official")]
+    f += _credit("", album_artist, _common(tracks, "mb_album_artist_id"))
+    year = (_common(tracks, "year") or "")[:4]
+    if year.isdigit():
+        f.append(("events.0.date.year", year))
+    barcode = _common(tracks, "barcode")
+    if barcode:
+        f.append(("barcode", barcode))
+    has_toc = False
+    for m, key in enumerate(sorted(groups, key=lambda k: int(k[2]) if k[2].isdigit() else 0)):
+        g = sorted(groups[key], key=lambda t: int(str(t["track_number"] or 0).split("/")[0] or 0)
+                   if str(t["track_number"] or "0").split("/")[0].isdigit() else 0)
+        p = f"mediums.{m}."
+        f += [(p + "format", "CD"), (p + "position", str(m + 1))]
+        toc = _common(g, "cd_toc")
+        if toc:
+            f.append((p + "toc", toc))
+            has_toc = True
+        for i, t in enumerate(g):
+            tp = f"{p}track.{i}."
+            f.append((tp + "name", t["title"] or t["filename"].rsplit(".", 1)[0]))
+            f.append((tp + "number", str(t["track_number"] or i + 1).split("/")[0]))
+            if t.get("duration"):
+                f.append((tp + "length", str(round(t["duration"] * 1000))))
+            if t.get("artist") and t["artist"] != album_artist:
+                f += _credit(tp, t["artist"])
+            if t.get("mb_track_id"):
+                f.append((tp + "recording", t["mb_track_id"]))
+    f.append(("edit_note", "Added with tggr from a CD rip (FLAC): titles and order from the tags, lengths from the files"
+              + (", disc ID from the CD's table of contents." if has_toc else ".")))
+    if req.redirect_uri:
+        f.append(("redirect_uri", req.redirect_uri))
+    return {"action": "https://musicbrainz.org/release/add", "album": album, "fields": f}
+
+
+@router.post("/disc-info")
+def disc_info(req: TrackIds):
+    """What a rip recorded about its disc(s), with MusicBrainz links that use it."""
+    import urllib.parse
+    with db() as conn:
+        groups = _discs(conn, req.track_ids)
+    tracks = [t for g in groups.values() for t in g]
+    mb_album_id = _common(tracks, "mb_album_id")
+    discs = []
+    for key, g in sorted(groups.items(), key=lambda kv: kv[0]):
+        disc_id, toc = _common(g, "mb_disc_id"), _common(g, "cd_toc")
+        attach = None
+        if disc_id and toc:
+            attach = "https://musicbrainz.org/cdtoc/attach?" + urllib.parse.urlencode(
+                {"id": disc_id, "tracks": len(toc.split()) - 3, "toc": toc})
+        discs.append({"disc": key[2], "disc_id": disc_id, "toc": toc, "attach_url": attach})
+    ordered = sorted(tracks, key=lambda t: (_disc_key(t)[2].zfill(3), str(t["track_number"] or "").split("/")[0].zfill(3)))
+    isrcs = [t.get("isrc") or "" for t in ordered]
+    isrc_url = None
+    if mb_album_id and any(isrcs):
+        q = {"mbid": mb_album_id, **{f"isrc{i + 1}": v for i, v in enumerate(isrcs) if v}}
+        isrc_url = "https://magicisrc.kepstin.ca/?" + urllib.parse.urlencode(q)
+    trouble = [{"title": t["title"] or t["filename"], "quality": t["rip_quality"]} for t in ordered
+               if t.get("rip_quality") not in (None, "", "clean")]
+    matches = sorted({t["rip_match"] for t in tracks if t.get("rip_match")})
+    return {"discs": discs, "barcode": _common(tracks, "barcode"), "isrcs": sum(1 for v in isrcs if v),
+            "isrc_url": isrc_url, "rip_match": matches, "trouble": trouble,
+            "ripped": any(t.get("rip_quality") for t in tracks), "mb_album_id": mb_album_id}

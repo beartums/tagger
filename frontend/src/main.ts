@@ -1,6 +1,6 @@
 import { exportPrefs, importPrefs } from './prefs'
 import './style.css'
-import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, Naming, RescanResult, TagValue, IssueCount, IssueEntry, IssueKey, setUnauthorizedHandler, onSessionExpired } from './api'
+import { api, DiscIdResult, DiscInfo, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, Naming, RescanResult, TagValue, IssueCount, IssueEntry, IssueKey, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
 import { esc, fmtDuration, debounce } from './util'
 import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
@@ -1503,6 +1503,7 @@ function applyEditorRules() {
     setFieldLock(label, el, chips, lock, `Locked: anything you enter here replaces the ${fieldName(field)} on all ${plural(n, 'track')}. Click the lock to edit.`)
   }
   albumNote.hidden = !album
+  renderCdBox()
 }
 
 function setFieldLock(label: HTMLElement, el: HTMLInputElement | HTMLTextAreaElement, chips: ValueChips | undefined, on: boolean, tip: string) {
@@ -1527,6 +1528,39 @@ albumNote.className = 'editor-album-note'
 albumNote.hidden = true
 albumNote.textContent = 'Title, track #, disc #, BPM, comment and lyrics differ by track. Open the album or switch to the track list to edit them.'
 compilationCheckbox().closest('label')!.after(albumNote)
+
+// One album: what its CD rip recorded, and the MusicBrainz links that use it.
+const cdBox = document.createElement('div')
+cdBox.className = 'editor-cd-box'
+cdBox.hidden = true
+albumNote.after(cdBox)
+let cdToken = 0
+async function renderCdBox() {
+  const t = ++cdToken
+  if (!(albumSelection() && albumPicks.size === 1)) { cdBox.hidden = true; return }
+  let info: DiscInfo
+  try { info = await api.lookup.discInfo([...state.selectedIds]) } catch { cdBox.hidden = true; return }
+  if (t !== cdToken) return
+  const ids = info.discs.filter(d => d.disc_id)
+  if (!info.ripped && !ids.length) { cdBox.hidden = true; return }
+  const link = (href: string, text: string) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)} ↗</a>`
+  const lines: string[] = []
+  for (const d of info.discs) {
+    const which = info.discs.length > 1 ? `Disc ${esc(d.disc)}: ` : ''
+    lines.push(d.disc_id
+      ? `${which}disc ID <code title="${esc(d.toc ?? '')}">${esc(d.disc_id)}</code>${d.attach_url ? ' · ' + link(d.attach_url, 'Attach on MusicBrainz') : ''}`
+      : `${which}no disc ID · Tags ▾ → Disc IDs from track lengths`)
+  }
+  if (info.barcode) lines.push(`Barcode ${esc(info.barcode)}`)
+  if (info.isrcs) lines.push(`${info.isrcs} ISRC${info.isrcs === 1 ? '' : 's'}${info.isrc_url ? ' · ' + link(info.isrc_url, 'Submit to MusicBrainz (MagicISRC)') : info.mb_album_id ? '' : ' · match the album first to submit them'}`)
+  const how: Record<string, string> = { exact: 'named by its disc ID', near: 'named by a near match: check it', none: 'not on MusicBrainz when ripped' }
+  if (info.rip_match.length) lines.push(info.rip_match.map(m => how[m] ?? m).join('; '))
+  if (info.ripped) lines.push(info.trouble.length
+    ? `<span title="${esc(info.trouble.map(x => `${x.title}: ${x.quality}`).join('\n'))}">Read trouble on ${plural(info.trouble.length, 'track')}</span>`
+    : 'Ripped clean')
+  cdBox.innerHTML = `<b>From the CD</b>${lines.map(l => `<div>${l}</div>`).join('')}`
+  cdBox.hidden = false
+}
 
 tagForm.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest<HTMLElement>('.field-lock')
@@ -2552,6 +2586,78 @@ document.getElementById('mb-album-btn')!.addEventListener('click', async () => {
   if (plan.albums.length > 1) openMbAlbums(plan.albums, refreshAfterEdit)
   else openMbAlbum(ids, refreshAfterEdit)
 })
+// Add to MusicBrainz: POST the album to MusicBrainz's Add release page in a
+// new tab (the server builds the fields); MusicBrainz sends you back with
+// ?release_mbid=… once it's submitted (handleMbReturn).
+const MB_ADD_KEY = 'tggr.mbAddPending'
+document.getElementById('mb-add-btn')!.addEventListener('click', async () => {
+  const ids = [...state.selectedIds]
+  if (!ids.length) return
+  let seed
+  try { seed = await api.lookup.mbSeed(ids, location.origin + location.pathname) } catch (e) { toast(`Add to MusicBrainz: ${errText(e)}`, 'error'); return }
+  try { localStorage.setItem(MB_ADD_KEY, JSON.stringify({ ids, at: Date.now() })) } catch { /* storage blocked */ }
+  const form = document.createElement('form')
+  form.method = 'POST'; form.action = seed.action; form.target = '_blank'; form.acceptCharset = 'UTF-8'
+  for (const [k, v] of seed.fields) {
+    const i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = v; form.appendChild(i)
+  }
+  document.body.appendChild(form); form.submit(); form.remove()
+  toast(`MusicBrainz is open with ${seed.album} filled in: check it and submit there. It sends you back here to match the album.`, 'info', 9000)
+})
+
+function handleMbReturn() {
+  const p = new URLSearchParams(location.search)
+  const rel = p.get('release_mbid')
+  if (!rel) return
+  p.delete('release_mbid')
+  history.replaceState(history.state, '', location.pathname + (p.toString() ? '?' + p : '') + location.hash)
+  let ids: number[] = []
+  try {
+    const v = JSON.parse(localStorage.getItem(MB_ADD_KEY) || 'null')
+    if (v && Date.now() - v.at < 864e5) ids = v.ids
+    localStorage.removeItem(MB_ADD_KEY)
+  } catch { /* storage blocked */ }
+  if (!ids.length) { toast(`Added to MusicBrainz (${rel}). Select the album and Match it to fill its IDs.`, 'success', 8000); return }
+  toast('Added to MusicBrainz: match the album to it to fill its IDs', 'success')
+  openMbAlbum(ids, refreshAfterEdit, { release: rel })
+}
+
+document.getElementById('disc-ids-btn')!.addEventListener('click', async () => {
+  const ids = [...state.selectedIds]
+  if (!ids.length) return
+  toast('Working out disc IDs and checking MusicBrainz…', 'info')
+  let res
+  try { res = await api.lookup.discIds(ids) } catch (e) { toast(`Disc IDs: ${errText(e)}`, 'error'); return }
+  showDiscIdResults(res.results)
+  if (res.results.some(r => r.status === 'staged')) await (res.staged ? refreshAfterStage() : refreshAfterWrite())
+})
+
+function showDiscIdResults(results: DiscIdResult[]) {
+  const line = (r: DiscIdResult) => {
+    if (r.status === 'has one') return 'already has a disc ID'
+    if (r.status === 'skipped') return `skipped: ${r.why}`
+    const on = r.on_musicbrainz
+    const where = on === undefined ? 'not checked on MusicBrainz (only the first 15 are)'
+      : r.matches_album ? '✓ MusicBrainz has it on this album\'s release'
+      : on.length ? `on MusicBrainz, on ${plural(on.length, 'other release')}: is this album matched to the right one?`
+      : 'not on MusicBrainz yet: Attach it from the album (From the CD), or Add to MusicBrainz'
+    return `<code>${esc(r.disc_id ?? '')}</code> · ${where}`
+  }
+  const staged = results.filter(r => r.status === 'staged').length
+  const overlay = document.createElement('div')
+  overlay.className = 'fix-confirm-overlay'
+  overlay.innerHTML = `<div class="fix-confirm-modal" role="dialog" aria-label="Disc IDs from track lengths">
+      <div class="fix-confirm-header"><span class="fix-confirm-title">Disc IDs from track lengths · ${plural(staged, 'disc')} staged</span>
+        <button class="btn btn-ghost btn-icon fix-confirm-close" aria-label="Close">✕</button></div>
+      <div class="fix-confirm-body"><table class="pr-table"><tbody>
+        ${results.map(r => `<tr><td>${esc(r.album)}</td><td>${line(r)}</td></tr>`).join('')}
+      </tbody></table>
+      <p class="ma-dim">Worked out from each track's exact length: right for a plain audio CD, wrong for one with a hidden track before track 1 or a data track. Review lists the tags before anything is written.</p></div></div>`
+  const close = () => overlay.remove()
+  overlay.addEventListener('click', e => { if (e.target === overlay || (e.target as HTMLElement).closest('.fix-confirm-close')) close() })
+  document.body.appendChild(overlay)
+}
+
 document.getElementById('lyrics-btn')!.addEventListener('click', () => {
   const ids = [...state.selectedIds]
   if (ids.length) openLyrics(ids, refreshAfterEdit)
@@ -4518,6 +4624,7 @@ async function startApp() {
     }
   }).catch(() => {})
   refreshFormats()
+  handleMbReturn()
   const settingsLoaded = api.settings.get()
   settingsLoaded.then(s => {
     state.libraryRoots = s.effective_library_roots ?? []

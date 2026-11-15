@@ -1777,3 +1777,10 @@ button.scan-status[hidden] { display: none; }
 .mbb-line-off .mbb-next, .mbb-line-off .mbb-arrow { color: var(--text-dim); text-decoration: line-through; font-weight: 400; }
 .mbb-next.mbb-chips { font-weight: 400; }
 .mbb-same { margin-top: 6px; font-size: 12px; color: var(--text-muted); }
+
+/* Album editor: what the CD rip recorded */
+.editor-cd-box { font-size: 12px; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+.editor-cd-box[hidden] { display: none; }
+.editor-cd-box b { color: var(--text); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+.editor-cd-box code { font-size: 11px; color: var(--text); word-break: break-all; }
+.editor-cd-box a { color: var(--accent); }

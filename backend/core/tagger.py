@@ -79,9 +79,28 @@ _RG_NAMES = {
 }
 RG_FIELDS: list[str] = list(_RG_NAMES)
 
+# What a CD rip records about its disc (griflab tools/cd-ripper): the disc ID
+# as Picard names it, the table of contents in MusicBrainz's toc form, the
+# disc's barcode (MCN), the track's ISRC, how the ripper named it (exact /
+# near / none) and what cdparanoia had to repair. TXXX names for MP3 (an MP3
+# ISRC in TSRC isn't read), Vorbis comments, MP4 freeform.
+_DISC_TXXX = {
+    "mb_disc_id":  "MusicBrainz Disc Id",
+    "cd_toc":      "MUSICBRAINZ_TOC",
+    "barcode":     "BARCODE",
+    "isrc":        "ISRC",
+    "rip_match":   "RIP_MATCH",
+    "rip_quality": "RIP_QUALITY",
+}
+_DISC_VORBIS = {"mb_disc_id": "musicbrainz_discid", **{k: v.lower() for k, v in _DISC_TXXX.items() if k != "mb_disc_id"}}
+DISC_FIELDS: list[str] = list(_DISC_TXXX)
+# Read from the file only when asked (NULL in the DB = never read): undo
+# leaves those alone.
+READ_LATE_FIELDS: list[str] = RG_FIELDS + DISC_FIELDS
+
 # Every field kept in a format's free-form tags.
-_FREE_TXXX = {**_MB_TXXX, **_RG_NAMES}
-_FREE_VORBIS = {**_MB_VORBIS, **{k: v.lower() for k, v in _RG_NAMES.items()}}
+_FREE_TXXX = {**_MB_TXXX, **_RG_NAMES, **_DISC_TXXX}
+_FREE_VORBIS = {**_MB_VORBIS, **{k: v.lower() for k, v in _RG_NAMES.items()}, **_DISC_VORBIS}
 
 
 def _joined(val: Any) -> str | None:
@@ -223,7 +242,7 @@ def _write_mb_ids(path: str, mb_updates: dict) -> None:
 
 def _read_mb_ids(path: str) -> dict:
     """The MusicBrainz IDs and ReplayGain values from their format-specific tags. Never raises."""
-    out: dict = dict.fromkeys([*MB_FIELDS, *RG_FIELDS])
+    out: dict = dict.fromkeys([*MB_FIELDS, *RG_FIELDS, *DISC_FIELDS])
     ext = Path(path).suffix.lower()
     try:
         if ext == ".mp3":
@@ -252,6 +271,12 @@ def _read_mb_ids(path: str) -> dict:
     except Exception:
         pass
     return out
+
+
+def read_disc_tags(path: str) -> dict:
+    """The file's disc tags (DISC_FIELDS), "" for each it doesn't have."""
+    got = _read_mb_ids(path)
+    return {f: got.get(f) or "" for f in DISC_FIELDS}
 
 
 def read_replaygain(path: str) -> dict:
