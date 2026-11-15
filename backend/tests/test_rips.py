@@ -1,4 +1,5 @@
 """CD rips: disc IDs from track lengths, the MusicBrainz pre-fill, rip info and checks."""
+import re
 from core.discid import disc_id, parse_toc
 from core.database import db
 
@@ -52,6 +53,15 @@ def test_mb_seed_fills_the_add_release_form(client):
     assert f["mediums.0.track.0.recording"] == "11111111-1111-1111-1111-111111111111"
     assert "mediums.0.track.0.artist_credit.names.0.name" not in f      # same as the album artist
     assert f["redirect_uri"] == "https://tggr.example/"
+    # Only fields MusicBrainz documents (wiki: Development/Seeding/Release_Editor);
+    # anything else shows as "Unknown field" on its page.
+    ac = r"artist_credit\.names\.\d+\.(mbid|name|artist\.name|join_phrase)"
+    documented = re.compile("|".join([
+        r"name|release_group|type|comment|annotation|barcode|language|script|status|packaging|edit_note|redirect_uri",
+        r"events\.\d+\.(date\.(year|month|day)|country)", r"labels\.\d+\.(mbid|catalog_number|name)", ac,
+        r"mediums\.\d+\.(format|name)", r"mediums\.\d+\.track\.\d+\.(name|number|recording|length)",
+        rf"mediums\.\d+\.track\.\d+\.{ac}", r"urls\.\d+\.(url|link_type)"]))
+    assert [k for k, _ in s["fields"] if not documented.fullmatch(k)] == []
 
 
 def test_disc_info_links_and_rip_checks(client):

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Add to MusicBrainz: no "Unknown field" warning.** It sent a medium
+  position MusicBrainz doesn't take; now only documented fields go, and a test
+  holds it to that list.
 - **Undo one piece at a time, in any order.** In Review, ✕ on any line drops
   that one staged field (or move) and **Discard** on any action drops what it
   staged, oldest or newest. In History, open a change (▸) to undo one field or

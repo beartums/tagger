@@ -604,7 +604,7 @@ def mb_seed(req: Seed):
         g = sorted(groups[key], key=lambda t: int(str(t["track_number"] or 0).split("/")[0] or 0)
                    if str(t["track_number"] or "0").split("/")[0].isdigit() else 0)
         p = f"mediums.{m}."
-        f += [(p + "format", "CD"), (p + "position", str(m + 1))]
+        f.append((p + "format", "CD"))       # mediums are numbered by their index: no position field
         for i, t in enumerate(g):
             tp = f"{p}track.{i}."
             f.append((tp + "name", t["title"] or t["filename"].rsplit(".", 1)[0]))
