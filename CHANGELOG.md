@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Fixed: staging during a scan failed with "database is locked".** The scan
+  held the database's write lock while it read the next 200 files (seconds on
+  a NAS), longer than other writes waited (5 s). It now reads with no lock
+  held and writes each batch (200 files or 1 s) in one short transaction, and
+  other writes wait up to 30 s.
 - **The list's quality dot checks more**: red when a track has no title,
   artist or album; yellow for no album artist, year, track #, genre, cover art
   (in the file or the folder) or MusicBrainz album ID, or incomplete
