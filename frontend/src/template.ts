@@ -376,7 +376,7 @@ export const APP_HTML = `
                 <button id="parse-names-btn" class="ib-mi" type="button" role="menuitem" title="Read tags from the file and folder names with a pattern like %artist%/%album%/%track% - %title% — previewed, then staged">Tags from names…</button>
                 <hr>
                 <button id="lyrics-btn" class="ib-mi" type="button" role="menuitem" title="Fetch lyrics (synced when available) from LRCLIB — reviewed, then staged">Lyrics…</button>
-                <button id="replaygain-btn" class="ib-mi" type="button" role="menuitem" title="Scan ReplayGain for the selection" hidden>ReplayGain</button>
+                <button id="replaygain-btn" class="ib-mi" type="button" role="menuitem" title="Measure loudness and stage ReplayGain tags: each album on its own, with album gain when the whole album is selected" hidden>ReplayGain…</button>
               </div>
             </div>
             <div class="ib-wrap">

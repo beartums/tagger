@@ -2764,19 +2764,20 @@ async function scanReplayGain() {
   const ids = [...state.selectedIds]
   if (!ids.length) return
   replaygainBtn.disabled = true
-  replaygainBtn.textContent = 'Scanning…'
+  toast(`Measuring ReplayGain for ${plural(ids.length, 'track')}…`, 'info')
   try {
-    const res = await api.tags.replaygain(ids, ids.length > 1)
-    if (res.ok) {
-      toast(`ReplayGain written to ${res.processed} track${res.processed !== 1 ? 's' : ''} (${res.tool})`, 'success')
-    } else {
-      toast(`ReplayGain failed: ${res.error ?? 'unknown error'}`, 'error')
+    const res = await api.tags.replaygain(ids)
+    const failed = res.errors.filter(e => !e.id)
+    if (failed.length) toast(`ReplayGain failed for ${failed.map(e => `${e.name} (${e.error})`).join(', ')}`, 'error')
+    if (res.measured) {
+      const what = `ReplayGain for ${plural(res.measured, 'track')}${res.albums ? ` (album gain for ${plural(res.albums, 'album')})` : ''}`
+      toast(res.staged ? `Staged ${what} — Review to write it` : `Wrote ${what}`, 'success')
+      await (res.staged ? refreshAfterStage() : refreshAfterWrite())
     }
   } catch (e) {
-    toast(`ReplayGain failed: ${e}`, 'error')
+    toast(`ReplayGain failed: ${errText(e)}`, 'error')
   } finally {
     replaygainBtn.disabled = false
-    replaygainBtn.textContent = 'ReplayGain'
   }
 }
 

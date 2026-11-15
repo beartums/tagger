@@ -1,67 +1,58 @@
 """
-ReplayGain scanning via an external tool (rsgain or loudgain).
-
-The tool writes ReplayGain tags directly into the audio files; tagger does not
-store gain values in its own DB. Detection is graceful: if no tool is installed,
-the feature reports itself unavailable rather than erroring.
+ReplayGain: rsgain measures the files without writing them; the values are
+then staged like any other tag edit (api/tags.py), so they show in Review,
+write with the rest and can be undone.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 
 
 def rg_tool() -> str | None:
-    """Return the name of an available ReplayGain tool, or None."""
-    for tool in ("rsgain", "loudgain"):
-        if shutil.which(tool):
-            return tool
-    return None
+    return "rsgain" if shutil.which("rsgain") else None
 
 
-def _command(tool: str, paths: list[str], album_mode: bool) -> list[str]:
-    if tool == "rsgain":
-        # `rsgain custom` scans an explicit file list and writes tags in place.
-        cmd = ["rsgain", "custom", "-s", "i"]  # -s i: write ID3v2/Vorbis tags
-        if album_mode:
-            cmd.append("-a")  # also compute album gain across the given files
-        return cmd + paths
-    # loudgain
-    cmd = ["loudgain", "-s", "e"]  # -s e: write tags (EBU R128)
-    if album_mode:
-        cmd.append("-a")
-    return cmd + paths
+class RgError(RuntimeError):
+    pass
 
 
-def scan(paths: list[str], album_mode: bool = False) -> dict:
+def _gain(v: str) -> str:
+    return f"{float(v):.2f} dB"
+
+
+def _peak(v: str) -> str:
+    return f"{float(v):.6f}"
+
+
+def measure(paths: list[str], album: bool) -> dict[str, dict[str, str]]:
     """
-    Run ReplayGain analysis on the given files. Returns a summary dict:
-      {ok, tool, processed, error?}
-    Raises RuntimeError if no tool is available.
+    Gain and peak per file ({path: {rg_track_gain, rg_track_peak, ...}}), plus
+    the album's when `album` (the files must be one album). Raises RgError.
     """
-    tool = rg_tool()
-    if not tool:
-        raise RuntimeError("No ReplayGain tool found — install rsgain or loudgain")
-    if not paths:
-        return {"ok": True, "tool": tool, "processed": 0}
-
+    if not rg_tool():
+        raise RgError("rsgain isn't installed")
+    cmd = ["rsgain", "custom", "-s", "s", "-O", "-q", *(["-a"] if album else []), *paths]
     try:
-        proc = subprocess.run(
-            _command(tool, paths, album_mode),
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     except subprocess.TimeoutExpired:
-        return {"ok": False, "tool": tool, "processed": 0, "error": "ReplayGain scan timed out"}
-
+        raise RgError("rsgain timed out")
     if proc.returncode != 0:
-        msg = (proc.stderr or proc.stdout or "unknown error").strip().splitlines()
-        return {
-            "ok": False,
-            "tool": tool,
-            "processed": 0,
-            "error": msg[-1] if msg else "ReplayGain scan failed",
-        }
-    from core import integrations; integrations.changed(*paths)   # rsgain wrote the tags: Navidrome/MA rescan
-    return {"ok": True, "tool": tool, "processed": len(paths)}
+        msg = (proc.stderr or proc.stdout or "").strip().splitlines()
+        raise RgError(msg[-1] if msg else "rsgain failed")
+    # Filename, Loudness (LUFS), Gain (dB), Peak, Peak (dB), Peak Type, Clipping Adjustment?
+    # One row per file in the order given, then "Album" with -a.
+    rows = [line.split("\t") for line in proc.stdout.splitlines()[1:] if line.strip()]
+    if len(rows) != len(paths) + (1 if album else 0):
+        raise RgError(f"rsgain returned {len(rows)} rows for {len(paths)} files")
+    out: dict[str, dict[str, str]] = {}
+    for path, row in zip(paths, rows):
+        if os.path.basename(row[0]) != os.path.basename(path):
+            raise RgError(f"rsgain output out of order at {os.path.basename(path)}")
+        out[path] = {"rg_track_gain": _gain(row[2]), "rg_track_peak": _peak(row[3])}
+    if album:
+        a = rows[-1]
+        for v in out.values():
+            v.update(rg_album_gain=_gain(a[2]), rg_album_peak=_peak(a[3]))
+    return out

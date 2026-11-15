@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **ReplayGain is staged.** ReplayGain… (Tags menu) measures the selection and
+  stages the gain and peak tags, so they show in Review, write with the rest
+  and can be undone. Each album is measured on its own; album gain is set only
+  when the whole album is selected (before, several albums got one shared
+  album gain).
 - **A cleaner toolbar.** The top line holds the count and the view controls as
   icons (tracks | albums, list | tiles, sheet edit in the track list only,
   columns). Select something and it turns into the selection: Match, Tags ▾,
