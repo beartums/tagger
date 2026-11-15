@@ -5,7 +5,7 @@ import { esc, fmtDuration, debounce } from './util'
 import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
 import { COL_DEFS, orderedCols, viewCols, sourcePath } from './columns'
 import {
-  trackQuality, qualityTitle, QUALITY_ISSUES,
+  trackQuality, qualityTitle, QUALITY_ISSUES, setQualityOff,
   toTitleCase, needsNormalization, NORMALIZE_FIELDS,
 } from './quality'
 import { APP_HTML } from './template'
@@ -709,7 +709,7 @@ function navigateTrack(dir: 1 | -1) {
 // ─── Track table ──────────────────────────────────────────────────────────────
 
 function renderColHeaders() {
-  const qualityTh = state.visibleCols.has('quality') ? '<th class="col-quality" title="Tag quality — green: all key tags · yellow: missing album, year or track # · red: missing title or artist. Hover a dot for details."></th>' : ''
+  const qualityTh = state.visibleCols.has('quality') ? '<th class="col-quality" title="Quality — red: no title, artist or album · yellow: no album artist, year, track #, genre, cover art or MusicBrainz IDs · green: nothing missing. Checks turned off in Settings → Quality are skipped. Hover a dot for details."></th>' : ''
   trackTheadRow.innerHTML = `${qualityTh}<th class="col-check"><input type="checkbox" id="select-all" /></th>`
   for (const col of orderedCols()) {
     if (col.key === 'quality') continue
@@ -3828,6 +3828,8 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     renameOnSave = saved.rename_on_save
     renameTemplate = saved.rename_template
     stageChanges = saved.stage_changes ?? true
+    setQualityOff(saved.quality_off)
+    renderTracks()
     state.qualityIssues = null   // layouts / lyrics groups may have changed the Quality counts
     if (state.sidebarMode === 'quality') renderQualityPanel()
     // Refresh lookup status after saving
@@ -4077,6 +4079,8 @@ async function startApp() {
     renameOnSave = s.rename_on_save
     renameTemplate = s.rename_template
     stageChanges = s.stage_changes ?? true
+    setQualityOff(s.quality_off)
+    if (state.tracks.length) renderTracks()   // the dots skip checks turned off
   }).catch(() => {})
   api.tags.replaygainStatus().then(s => {
     replaygainAvailable = s.available

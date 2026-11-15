@@ -2,31 +2,57 @@ import { Track, IssueKey } from './api'
 
 // ─── Track quality rating ───────────────────────────────────────────────────────
 
-export function trackQuality(t: Track): 'good' | 'fair' | 'poor' {
-  if (!t.title || !t.artist) return 'poor'
-  if (!t.album || !t.year || !t.track_number) return 'fair'
-  return 'good'
+// The row's dot runs the per-track Quality checks; one turned off in Settings → Quality
+// is left out here too. Poor: the track can't be identified. Fair: incomplete.
+type DotCheck = { key: IssueKey; label: string; poor?: boolean; missing: (t: Track) => boolean }
+const blank = (v: unknown) => v == null || v === ''
+const DOT_CHECKS: DotCheck[] = [
+  { key: 'missing_title',        label: 'title',        poor: true, missing: t => blank(t.title) },
+  { key: 'missing_artist',       label: 'artist',       poor: true, missing: t => blank(t.artist) },
+  { key: 'missing_album',        label: 'album',        poor: true, missing: t => blank(t.album) },
+  { key: 'missing_album_artist', label: 'album artist', missing: t => blank(t.album_artist) },
+  { key: 'missing_year',         label: 'year',         missing: t => blank(t.year) },
+  { key: 'missing_track_number', label: 'track #',      missing: t => blank(t.track_number) },
+  { key: 'missing_genre',        label: 'genre',        missing: t => blank(t.genre) },
+  { key: 'covers_none',          label: 'cover art',    missing: t => !t.has_cover && t.folder_cover === false },
+  { key: 'mb_no_album',          label: 'MusicBrainz album ID', missing: t => blank(t.mb_album_id) },
+  { key: 'mb_no_release_group',  label: 'MusicBrainz release group ID',
+    missing: t => !blank(t.mb_album_id) && blank(t.mb_release_group_id) },
+  { key: 'mb_track_ids',         label: 'MusicBrainz track IDs',
+    missing: t => !blank(t.mb_album_id) && (blank(t.mb_track_id) || blank(t.mb_release_track_id)) },
+]
+
+let dotOff = new Set<string>()
+/** The checks turned off in Settings → Quality (the dot skips them). */
+export function setQualityOff(keys: string[] | undefined) { dotOff = new Set(keys ?? []) }
+
+function dotMissing(t: Track): DotCheck[] {
+  return DOT_CHECKS.filter(c => !dotOff.has(c.key) && c.missing(t))
 }
 
-/** The dot's tooltip: the rating and exactly which key tags are missing. */
+export function trackQuality(t: Track): 'good' | 'fair' | 'poor' {
+  const m = dotMissing(t)
+  return m.some(c => c.poor) ? 'poor' : m.length ? 'fair' : 'good'
+}
+
+/** The dot's tooltip: the rating and exactly what's missing. */
 export function qualityTitle(t: Track): string {
-  const missing = ([['title', t.title], ['artist', t.artist], ['album', t.album], ['year', t.year],
-    ['track #', t.track_number]] as [string, unknown][]).filter(([, v]) => !v).map(([k]) => k)
-  const q = trackQuality(t)
-  if (q === 'good') return 'Good: title, artist, album, year and track # all present'
-  return `${q === 'poor' ? 'Poor' : 'Fair'}: missing ${missing.join(', ')}`
+  const m = dotMissing(t)
+  if (!m.length) return 'Good: nothing missing'
+  return `${m.some(c => c.poor) ? 'Poor' : 'Fair'}: no ${m.map(c => c.label).join(', ')}`
 }
 
 export const QUALITY_TITLES = {
-  good: 'All key tags present',
-  fair: 'Missing some tags (album, year, or track #)',
-  poor: 'Missing critical tags (title or artist)',
+  good: 'Nothing missing',
+  fair: 'Incomplete: album artist, year, track #, genre, cover art or MusicBrainz IDs',
+  poor: 'Missing title, artist or album',
 }
 
 export const QUALITY_ISSUES: { key: IssueKey; label: string; warn?: boolean; group?: string }[] = [
   { key: 'missing_title',        label: 'Missing title'    },
   { key: 'missing_artist',       label: 'Missing artist'   },
   { key: 'missing_album',        label: 'Missing album'    },
+  { key: 'missing_album_artist', label: 'Missing album artist' },
   { key: 'missing_year',         label: 'Missing year'     },
   { key: 'missing_genre',        label: 'Missing genre'    },
   { key: 'missing_track_number', label: 'Missing track #'  },

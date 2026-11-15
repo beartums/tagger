@@ -32,6 +32,7 @@ _ISSUE_CLAUSES: dict[str, str] = {
     "missing_year":         "(year IS NULL OR year = '')",
     "missing_genre":        "(genre IS NULL OR genre = '')",
     "missing_track_number": "(track_number IS NULL OR track_number = '')",
+    "missing_album_artist": "(album_artist IS NULL OR album_artist = '')",
     # No lyrics, and its lyrics group is looked up (core/lyricsgroups.py).
     "missing_lyrics": lyricsjob.MISSING,
     # Path differs from where its layout puts it (core/layout.py).
@@ -87,6 +88,11 @@ def _tracks(conn, rows) -> list[dict]:
     ids = [r["id"] for r in rows]
     assigned, looked = lyricsgroups.assigned(conn, ids), lyricsgroups.lookups(conn, ids)
     group_for = lyricsgroups.resolver()
+    # Folders with a cover image (the list's quality dot: cover art in the folder or the file).
+    dirs_shown = list({r["directory"] for r in rows})
+    with_cover = {r[0] for r in conn.execute(
+        f"SELECT directory FROM folder_covers WHERE directory IN ({','.join('?' * len(dirs_shown))})",
+        dirs_shown)} if dirs_shown else set()
     writable: dict[str, bool] = {}
     present: dict[str, set] = {}   # folder -> file names on disk (missing-file flag)
     out = []
@@ -105,6 +111,7 @@ def _tracks(conn, rows) -> list[dict]:
         where = layouts.expected(r, assigned.get(r["id"]))
         out.append({**dict(r), "staged": e, "read_only": not writable[d],
                     "missing": r["filename"] not in present[d],
+                    "folder_cover": d in with_cover,
                     # where its layout puts it, when that's elsewhere
                     "layout_path": where if where != r["path"] else None,
                     "lyrics_group": group_for(r["path"], assigned.get(r["id"]))["name"],
