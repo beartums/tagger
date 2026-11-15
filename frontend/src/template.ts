@@ -418,7 +418,7 @@ export const APP_HTML = `
         <span class="page-controls">
         <span id="page-nav" class="page-nav">
           <button type="button" id="page-prev" class="btn btn-ghost btn-sm" title="Previous page">‹</button>
-          rows <input id="page-top" class="page-top" type="number" min="1" title="The top row: type a row number to start the page there">–<span id="page-end"></span>
+          <span id="page-unit">rows</span> <input id="page-top" class="page-top" type="number" min="1" title="The top row: type a row number to start the page there">–<span id="page-end"></span>
           of <span id="page-total"></span>
           <button type="button" id="page-next" class="btn btn-ghost btn-sm" title="Next page">›</button>
           <span class="page-of">page <span id="page-num"></span> of <span id="page-count"></span></span>

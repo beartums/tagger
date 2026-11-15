@@ -555,7 +555,10 @@ let albumObserver: IntersectionObserver | null = null
 function renderAlbumGrid() {
   albumObserver?.disconnect()
   albumGridEl.innerHTML = ''
-  const albums = getVisibleAlbums()
+  const all = getVisibleAlbums()
+  albumPageFor('tiles' + JSON.stringify([state.sidebarMode, state.tagPath, state.query, state.selectedDirectory, state.selectedIssue]), all.length)
+  const first = albumPage.offset
+  const albums = all.slice(first, first + state.pageSize)
 
   if (!albums.length) {
     albumGridEl.innerHTML = '<div class="album-empty">No albums found.</div>'
@@ -569,7 +572,7 @@ function renderAlbumGrid() {
   let rendered = 0
   const renderMore = () => {
     const next = albums.slice(rendered, rendered + ALBUM_BATCH)
-    next.forEach((alb, k) => albumGridEl.insertBefore(makeAlbumCard(alb, rendered + k, albums), sentinel))
+    next.forEach((alb, k) => albumGridEl.insertBefore(makeAlbumCard(alb, first + rendered + k, all), sentinel))
     rendered += next.length
     if (rendered >= albums.length) { albumObserver?.disconnect(); sentinel.remove() }
   }
@@ -597,6 +600,22 @@ function renderAlbumView() { if (albumStyle === 'list') renderAlbumList(); else 
 
 const listKey = (r: AlbumRow) => JSON.stringify([r.directory, r.album])
 
+// Album paging (the pager under the list): a different set of albums starts at the first page.
+const albumPage = { offset: 0, total: 0, sig: '' }
+function albumPageFor(sig: string, total: number) {
+  if (sig !== albumPage.sig) { albumPage.sig = sig; albumPage.offset = 0 }
+  albumPage.total = total
+  if (albumPage.offset >= total) albumPage.offset = Math.max(0, Math.floor((total - 1) / state.pageSize) * state.pageSize)
+  renderPagination()
+}
+let redrawAlbumList: (() => void) | null = null
+/** Redraw the album view at the current page, without fetching again. */
+function redrawAlbums() {
+  if (albumStyle === 'list' && redrawAlbumList) redrawAlbumList()
+  else if (albumStyle === 'tiles') renderAlbumGrid()
+  albumListEl.scrollTop = 0; albumGridEl.scrollTop = 0
+}
+
 // Album list sort: a header click sorts by it, again reverses. Remembered per browser.
 type AlbumSortKey = 'quality' | 'album' | 'artist' | 'tracks' | 'discs' | 'year' | 'genre' | 'format' | 'folder'
 let albumSort: { key: AlbumSortKey; dir: 1 | -1 } = { key: 'artist', dir: 1 }
@@ -620,7 +639,9 @@ async function renderAlbumList() {
   albumListEl.innerHTML = '<div class="album-empty">Loading albums…</div>'
   let fetched: AlbumRow[]
   try { fetched = await api.library.albumList(viewParams()) } catch (e) { albumListEl.innerHTML = `<div class="album-empty">${esc(String(e))}</div>`; return }
+  albumPageFor('list' + JSON.stringify(viewParams()), fetched.length)
   if (!fetched.length) { albumListEl.innerHTML = '<div class="album-empty">No albums found.</div>'; return }
+  redrawAlbumList = () => drawAlbumList(fetched)
   drawAlbumList(fetched)
 }
 
@@ -647,9 +668,9 @@ function drawAlbumList(fetched: AlbumRow[]) {
   }
   const dot = (r: AlbumRow) => { const q = albumQuality(r.quality ?? {}, r.tracks); return `<span class="quality-dot quality-dot-${q.rating}" title="${esc(q.title)}"></span>` }
   albumListEl.innerHTML = `<table class="track-table album-table"><thead><tr>
-      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album listed" /></th><th class="al-cover"></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
+      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album on this page" /></th><th class="al-cover"></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
       ${th('year', 'Year')}${th('genre', 'Genre')}${th('format', 'Format')}${th('folder', 'Folder')}</tr></thead><tbody>
-    ${rows.map((r, i) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}" title="${esc(r.directory)}\nClick to open · the box (or Ctrl/⌘-click) selects, Shift-click a range">
+    ${rows.map((r, i) => ({ r, i })).slice(albumPage.offset, albumPage.offset + state.pageSize).map(({ r, i }) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}" title="${esc(r.directory)}\nClick to open · the box (or Ctrl/⌘-click) selects, Shift-click a range">
       <td class="al-q">${dot(r)}</td><td class="col-check">${r.ids.length ? `<input type="checkbox" class="album-check" ${albumPicks.has(listKey(r)) ? 'checked' : ''} aria-label="Select this album" />` : '<span class="ro-lock" title="Read-only">🔒</span>'}</td><td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
       <td>${esc(r.album || '(no album)')}</td><td>${artist(r)}</td><td class="al-num">${tracks(r)}</td>
       <td class="al-num">${r.discs > 1 ? r.discs : ''}</td><td>${v(r, 'year')}</td><td>${v(r, 'genre')}</td>
@@ -657,9 +678,10 @@ function drawAlbumList(fetched: AlbumRow[]) {
       <td class="al-dim">${esc(shortPath(r.directory))}</td></tr>`).join('')}
     </tbody></table>`
   albumListEl.querySelector('#album-select-all')!.addEventListener('click', (e) => {
-    const all = rows.every(r => !r.ids.length || albumPicks.has(listKey(r)))
+    const page = rows.slice(albumPage.offset, albumPage.offset + state.pageSize)   // this page's albums, like tracks
+    const all = page.every(r => !r.ids.length || albumPicks.has(listKey(r)))
     albumPicks.clear()
-    if (!all) for (const r of rows) if (r.ids.length) albumPicks.set(listKey(r), r.ids)
+    if (!all) for (const r of page) if (r.ids.length) albumPicks.set(listKey(r), r.ids)
     albumAnchor = null
     state.selectedIds = new Set([...albumPicks.values()].flat())
     ;(e.target as HTMLInputElement).checked = !all
@@ -1066,11 +1088,21 @@ function updateBulkBar() {
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
 
-const paged = () => state.total > state.pageSize || state.offset > 0
+// The pager pages tracks, or albums in the album view (list and tiles, paged here).
+const albumsPaged = () => state.viewMode === 'albums'
+const pageTotalOf = () => albumsPaged() ? albumPage.total : state.total
+const pageOffset = () => albumsPaged() ? albumPage.offset : state.offset
+const paged = () => pageTotalOf() > state.pageSize || pageOffset() > 0
+
+/** Go to the page starting at `offset` (clamped). */
+async function goToOffset(offset: number) {
+  offset = Math.max(0, Math.min(offset, Math.max(0, pageTotalOf() - 1)))
+  if (albumsPaged()) { albumPage.offset = offset; redrawAlbums(); renderPagination() }
+  else { state.offset = offset; await loadTracks() }
+}
 
 async function movePage(dir: -1 | 1) {
-  state.offset = Math.max(0, state.offset + dir * state.pageSize)
-  await loadTracks()
+  await goToOffset(pageOffset() + dir * state.pageSize)
 }
 
 const pageNav     = document.getElementById('page-nav')!
@@ -1083,38 +1115,42 @@ const pagePrev    = document.getElementById('page-prev') as HTMLButtonElement
 const pageNext    = document.getElementById('page-next') as HTMLButtonElement
 const pageSizeWrap = document.getElementById('page-size-wrap')!
 const pageSize    = document.getElementById('page-size') as HTMLSelectElement
+const pageUnit    = document.getElementById('page-unit')!
 pageSize.innerHTML = PAGE_SIZES.map(n => `<option value="${n}">${n}</option>`).join('')
 
 /** The pager under the list, when there's paging to do (where you are and the selection: the status bar). */
 function renderPagination() {
   const p = paged()
-  const sizable = state.total > PAGE_SIZES[0]
+  const total = pageTotalOf(), offset = pageOffset()
+  const sizable = total > PAGE_SIZES[0]
   pageNav.hidden = !p
   pageSizeWrap.hidden = !sizable
-  document.getElementById('pagination')!.hidden = state.viewMode === 'albums' || (!p && !sizable)
+  document.getElementById('pagination')!.hidden = !p && !sizable
   pageSize.value = String(state.pageSize)
+  pageUnit.textContent = albumsPaged() ? 'albums' : 'rows'
   if (!p) return
-  if (document.activeElement !== pageTop) pageTop.value = String(state.offset + 1)
-  pageTop.max = String(state.total)
-  pageEnd.textContent = (state.offset + state.tracks.length).toLocaleString()
-  pageTotal.textContent = state.total.toLocaleString()
-  pageNum.textContent = (Math.floor(state.offset / state.pageSize) + 1).toLocaleString()
-  pageCount.textContent = Math.ceil(state.total / state.pageSize).toLocaleString()
-  pagePrev.disabled = state.offset === 0
-  pageNext.disabled = state.offset + state.pageSize >= state.total
+  const shown = albumsPaged() ? Math.min(state.pageSize, total - offset) : state.tracks.length
+  if (document.activeElement !== pageTop) pageTop.value = String(offset + 1)
+  pageTop.max = String(total)
+  pageEnd.textContent = (offset + shown).toLocaleString()
+  pageTotal.textContent = total.toLocaleString()
+  pageNum.textContent = (Math.floor(offset / state.pageSize) + 1).toLocaleString()
+  pageCount.textContent = Math.ceil(total / state.pageSize).toLocaleString()
+  pagePrev.disabled = offset === 0
+  pageNext.disabled = offset + state.pageSize >= total
 }
 
 pagePrev.addEventListener('click', () => movePage(-1))
 pageNext.addEventListener('click', () => movePage(1))
 pageTop.addEventListener('change', () => {
   const row = parseInt(pageTop.value, 10)
-  if (!(row >= 1)) { pageTop.value = String(state.offset + 1); return }
-  state.offset = Math.min(row, Math.max(1, state.total)) - 1
-  loadTracks()
+  if (!(row >= 1)) { pageTop.value = String(pageOffset() + 1); return }
+  goToOffset(row - 1)
 })
 pageSize.addEventListener('change', () => {
   state.pageSize = Number(pageSize.value)
   savePageSize(state.pageSize)
+  if (albumsPaged()) { albumPage.offset = 0; redrawAlbums() }
   loadTracks()
 })
 

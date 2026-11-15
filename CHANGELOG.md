@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Fixed: paging in the album view.** The pager paged tracks, so Next said
+  you'd moved on while the same albums stayed. In the album view (list and
+  tiles) it now pages albums and counts them ("albums 51–60 of 60"); the
+  header box selects that page's albums.
 - **Quality checks are switched in the Quality panel** (Settings → Quality is
   gone). Every check is listed with a small switch; one that's off isn't run
   with the panel, shows its last count dimmed, and has ↻ to check it now.
@@ -19,8 +23,7 @@
 - **The Tagger logo on Settings** returns to the screen you were on.
 - **The status bar is back** at the bottom of the window: where you are, the
   view's track count, and the selection (with Clear). The bar under the list
-  is just the pager now, shown only when there's paging to do, and hidden in
-  the album view (it pages tracks).
+  is just the pager now, shown only when there's paging to do.
 - **Albums select like tracks**: a box on each album list row (and a
   select-all in the header) and in the corner of each tile; Shift-click a box
   for a range. Clicking the album itself still opens it.
