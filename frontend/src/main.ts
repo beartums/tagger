@@ -2618,8 +2618,34 @@ function handleMbReturn() {
     localStorage.removeItem(MB_ADD_KEY)
   } catch { /* storage blocked */ }
   if (!ids.length) { toast(`Added to MusicBrainz (${rel}). Select the album and Match it to fill its IDs.`, 'success', 8000); return }
-  toast('Added to MusicBrainz: match the album to it to fill its IDs', 'success')
-  openMbAlbum(ids, refreshAfterEdit, { release: rel })
+  mbAddedNext(ids, rel)
+}
+
+/**
+ * After Add to MusicBrainz: the release exists, so its disc ID can be attached
+ * (the release editor has no field for it), then the album matched to it.
+ */
+async function mbAddedNext(ids: number[], rel: string) {
+  let attach: string[] = []
+  try { attach = (await api.lookup.discInfo(ids)).discs.map(d => d.attach_url).filter((u): u is string => !!u) } catch { /* no disc info */ }
+  const relUrl = `https://musicbrainz.org/release/${encodeURIComponent(rel)}`
+  const overlay = document.createElement('div')
+  overlay.className = 'fix-confirm-overlay'
+  overlay.innerHTML = `<div class="fix-confirm-modal" role="dialog" aria-label="Added to MusicBrainz">
+      <div class="fix-confirm-header"><span class="fix-confirm-title">Added to MusicBrainz</span>
+        <button class="btn btn-ghost btn-icon fix-confirm-close" aria-label="Close">✕</button></div>
+      <div class="fix-confirm-body mb-next">
+        <p>The release is in: <a href="${esc(relUrl)}" target="_blank" rel="noopener">view it ↗</a>.</p>
+        ${attach.length ? `<p><b>1. Attach the disc ID.</b> MusicBrainz takes it only once the release exists. The link opens its Attach CD TOC page with this disc's ID filled in: search for the release you just added and pick it.</p>
+        <p>${attach.map((u, i) => `<a class="btn btn-sm" href="${esc(u)}" target="_blank" rel="noopener">Attach disc ID${attach.length > 1 ? ` (disc ${i + 1})` : ''} ↗</a>`).join(' ')}</p>
+        <p><b>2. Match the album</b> to the new release, to fill in its MusicBrainz IDs.</p>`
+        : `<p>This rip has no disc ID to attach (ripped before the ripper recorded it: Tags ▾ → Disc IDs from track lengths). Match the album to the new release to fill in its MusicBrainz IDs.</p>`}
+      </div>
+      <div class="fix-confirm-footer"><button class="btn btn-primary" id="mb-next-match">Match album</button></div></div>`
+  const close = () => overlay.remove()
+  overlay.addEventListener('click', e => { if (e.target === overlay || (e.target as HTMLElement).closest('.fix-confirm-close')) close() })
+  overlay.querySelector('#mb-next-match')!.addEventListener('click', () => { close(); openMbAlbum(ids, refreshAfterEdit, { release: rel }) })
+  document.body.appendChild(overlay)
 }
 
 document.getElementById('disc-ids-btn')!.addEventListener('click', async () => {

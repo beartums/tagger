@@ -1784,3 +1784,7 @@ button.scan-status[hidden] { display: none; }
 .editor-cd-box b { color: var(--text); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
 .editor-cd-box code { font-size: 11px; color: var(--text); word-break: break-all; }
 .editor-cd-box a { color: var(--accent); }
+.mb-next { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; max-width: 560px; font-size: 13px; line-height: 1.5; }
+.mb-next p { margin: 0; }
+.mb-next a { color: var(--accent); }
+.mb-next a.btn { color: var(--text); text-decoration: none; display: inline-block; }

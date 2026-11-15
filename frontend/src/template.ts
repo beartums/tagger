@@ -393,7 +393,7 @@ export const APP_HTML = `
                 <hr>
                 <button id="lyrics-btn" class="ib-mi" type="button" role="menuitem" title="Fetch lyrics (synced when available) from LRCLIB — reviewed, then staged">Lyrics…</button>
                 <hr>
-                <button id="mb-add-btn" class="ib-mi" type="button" role="menuitem" title="Open MusicBrainz's Add release page filled in from this album (titles, lengths, artist, year, barcode, the CD's disc ID): you check it and submit there">Add to MusicBrainz…</button>
+                <button id="mb-add-btn" class="ib-mi" type="button" role="menuitem" title="Open MusicBrainz's Add release page filled in from this album (titles, lengths, artist, year, barcode): you check it and submit there, then attach the disc ID">Add to MusicBrainz…</button>
                 <button id="disc-ids-btn" class="ib-mi" type="button" role="menuitem" title="Work out each disc's MusicBrainz disc ID from its tracks' exact lengths (rips made before the ripper tagged it), checked against MusicBrainz, then staged">Disc IDs from track lengths</button>
                 <button id="replaygain-btn" class="ib-mi" type="button" role="menuitem" title="Measure loudness and stage ReplayGain tags: each album on its own, with album gain when the whole album is selected" hidden>ReplayGain…</button>
               </div>
