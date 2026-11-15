@@ -180,6 +180,7 @@ export interface AppSettings {
   cover_target: 'folder' | 'tracks' | 'both'
   cover_embed_size: number
   search_fields: string[]
+  quality_off: string[]
   cover_folder_size: number
   browse_paths: Record<string, string[]>
   naming_replace_illegal: boolean
@@ -282,28 +283,11 @@ export interface MbRelease {
   track_count: number | null
 }
 
-export interface IssueCount {
-  missing_title: number
-  missing_artist: number
-  missing_album: number
-  missing_year: number
-  missing_genre: number
-  missing_track_number: number
-  duplicate_tracks: number
-  duplicate_albums: number
-  missing_files: number
-  not_in_layout: number
-  missing_lyrics: number
-  covers_none: number
-  covers_no_folder: number
-  covers_no_tracks: number
-  covers_both: number
-  covers_oversized: number
-  mb_no_album: number
-  mb_no_release_group: number
-  mb_track_ids: number
-  mb_mixed_album: number
-}
+export type IssueKey =
+  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album'
+/** One Quality check: its last count (null: never run), when, and whether it's turned off. */
+export interface IssueEntry { tracks: number | null; albums: number | null; at: number | null; off: boolean }
+export type IssueCount = Record<IssueKey, IssueEntry>
 
 export type CoverAction = 'copy_to_folder' | 'move_to_folder' | 'copy_to_tracks' | 'move_to_tracks' | 'delete_folder' | 'delete_tracks' | 'shrink'
 export interface CoverAlbum {
@@ -459,7 +443,9 @@ export const api = {
     search: (q: string, limit = 50, offset = 0) =>
       request<TrackList>('GET', `/api/library/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`),
     track: (id: number) => request<Track>('GET', `/api/library/track/${id}`),
-    issues: () => request<IssueCount>('GET', '/api/library/issues'),
+    /** compute=false: the stored results only (nothing is run). */
+    issues: (compute = true) => request<IssueCount>('GET', `/api/library/issues${compute ? '' : '?compute=false'}`),
+    checkIssue: (key: IssueKey) => request<IssueEntry>('POST', `/api/library/issues/${key}/check`),
     dead: () => request<TrackList>('GET', '/api/library/dead'),
     removeTracks: (ids: number[]) => request<{ removed: number }>('POST', '/api/library/remove', ids),
     deleteFiles: (ids: number[]) => request<{ deleted: number }>('POST', '/api/library/delete-files', ids),

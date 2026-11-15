@@ -1632,3 +1632,10 @@ button.scan-status[hidden] { display: none; }
 .mbb-cover-none { display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-dim); border: 1px dashed var(--border); cursor: default; }
 .mbb-actions { white-space: nowrap; }
 .mbb-actions .btn { display: block; width: 100%; margin-bottom: 4px; }
+
+/* Settings -> Quality: a check's on/off, its last result, Check now. */
+.quality-checks { display: flex; flex-direction: column; gap: 6px; }
+.quality-check-row { display: grid; grid-template-columns: minmax(0, 20em) 1fr auto; align-items: center; gap: 10px; }
+.quality-check-row .tog { justify-self: start; text-align: left; white-space: nowrap; }
+.quality-check-result { font-size: 12px; color: var(--text-muted); }
+.quality-off { opacity: .55; }

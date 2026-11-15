@@ -59,7 +59,23 @@ def test_musicbrainz_quality_groups(client, lib):
     _insert(d / "mixed" / "1.mp3", mb_album_id="A", mb_release_group_id="g", mb_track_id="r", mb_release_track_id="t")
     _insert(d / "mixed" / "2.mp3", mb_album_id="B", mb_release_group_id="g", mb_track_id="r", mb_release_track_id="t")
     i = client.get("/api/library/issues").json()
-    assert (i["mb_no_album"], i["mb_no_release_group"], i["mb_track_ids"], i["mb_mixed_album"]) == (1, 1, 1, 2)
+    assert [i[k]["tracks"] for k in ("mb_no_album", "mb_no_release_group", "mb_track_ids", "mb_mixed_album")] == [1, 1, 1, 2]
+    assert i["mb_mixed_album"]["albums"] == 1 and i["mb_no_album"]["at"]
+
+
+def test_quality_checks_turned_off_keep_their_last_result(client, lib):
+    _insert(lib / "Shared" / "a" / "1.mp3")
+    _insert(lib / "Shared" / "b" / "1.mp3")
+    assert client.get("/api/library/issues").json()["mb_no_album"]["tracks"] == 2
+    client.patch("/api/config", json={"quality_off": ["mb_no_album"]})
+    _insert(lib / "Shared" / "c" / "1.mp3")
+    i = client.get("/api/library/issues").json()
+    assert i["mb_no_album"] == {**i["mb_no_album"], "tracks": 2, "albums": 2, "off": True}   # not re-run
+    assert i["missing_title"]["off"] is False and i["missing_title"]["tracks"] == 3
+    r = client.post("/api/library/issues/mb_no_album/check").json()
+    assert (r["tracks"], r["albums"], r["off"]) == (3, 3, True)
+    assert client.get("/api/library/issues?compute=false").json()["mb_no_album"]["tracks"] == 3
+    assert client.post("/api/library/issues/nope/check").status_code == 404
 
 
 def test_match_then_stage_chosen_fields(client, lib, monkeypatch):

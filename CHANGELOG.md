@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Settings → Quality**: turn any Quality check off (struck through) so the
+  Quality panel stops running it -- Missing files, duplicates and Not in
+  layout are slow on a big library. **Check** runs one on demand and keeps its
+  count of tracks and albums with the date; the panel shows a check that's
+  off dimmed, with that last result. `GET /api/library/issues` now returns
+  `{tracks, albums, at, off}` per check.
 - **MusicBrainz Release Group and Release Track IDs**: Match album (single
   and bulk) and Auto-fix now write them with the other MusicBrainz IDs (one
   switch, as before). Lidarr matches on both.

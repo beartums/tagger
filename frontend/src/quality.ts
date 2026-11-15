@@ -1,4 +1,4 @@
-import { Track, IssueCount } from './api'
+import { Track, IssueKey } from './api'
 
 // ─── Track quality rating ───────────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@ export const QUALITY_TITLES = {
   poor: 'Missing critical tags (title or artist)',
 }
 
-export const QUALITY_ISSUES: { key: keyof IssueCount; label: string; warn?: boolean; group?: string }[] = [
+export const QUALITY_ISSUES: { key: IssueKey; label: string; warn?: boolean; group?: string }[] = [
   { key: 'missing_title',        label: 'Missing title'    },
   { key: 'missing_artist',       label: 'Missing artist'   },
   { key: 'missing_album',        label: 'Missing album'    },

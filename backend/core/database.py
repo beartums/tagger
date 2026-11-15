@@ -77,6 +77,9 @@ def _migrate(conn) -> None:
     # The cover image in each album folder (core/covers.py), found at scan time.
     conn.execute("CREATE TABLE IF NOT EXISTS folder_covers (directory TEXT PRIMARY KEY, name TEXT NOT NULL,"
                  " width INTEGER, height INTEGER, bytes INTEGER)")
+    # The last count of each Quality check (api/library.py): shown for checks turned off.
+    conn.execute("CREATE TABLE IF NOT EXISTS quality_results (key TEXT PRIMARY KEY, tracks INTEGER NOT NULL,"
+                 " albums INTEGER NOT NULL, checked_at REAL NOT NULL)")
     steps = {r[1] for r in conn.execute("PRAGMA table_info(staged_steps)")}
     if "after" not in steps:
         conn.execute("ALTER TABLE staged_steps ADD COLUMN after TEXT")

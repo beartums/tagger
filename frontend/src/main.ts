@@ -1,5 +1,5 @@
 import './style.css'
-import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, RescanResult, TagValue, setUnauthorizedHandler, onSessionExpired } from './api'
+import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, RescanResult, TagValue, IssueCount, IssueEntry, IssueKey, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
 import { esc, fmtDuration, debounce } from './util'
 import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
@@ -387,7 +387,9 @@ async function renderQualityPanel() {
   let group: string | undefined
 
   for (const issue of QUALITY_ISSUES) {
-    const count = state.qualityIssues[issue.key] ?? 0
+    // A check turned off (Settings -> Quality) shows its last count, dimmed.
+    const e = state.qualityIssues[issue.key]
+    const count = e?.tracks ?? 0
     if (count === 0) continue
     anyIssues = true
     if (issue.group && issue.group !== group) {
@@ -399,8 +401,10 @@ async function renderQualityPanel() {
     group = issue.group
     const li = document.createElement('li')
     const isActive = state.selectedIssue === issue.key
-    li.className = 'nav-item quality-issue-item' + (isActive ? ' active' : '')
+    li.className = 'nav-item quality-issue-item' + (isActive ? ' active' : '') + (e.off ? ' quality-off' : '')
     li.dataset.issue = issue.key
+    li.title = `${plural(count, 'track')} in ${plural(e.albums ?? 0, 'album')}`
+      + (e.off ? ` · off, last checked ${checkedAt(e.at)} (Settings → Quality)` : '')
     li.innerHTML = `
       <span class="quality-issue-dot${issue.warn ? ' quality-issue-dot-warn' : ''}"></span>
       <span class="nav-label">${issue.label}</span>
@@ -412,6 +416,10 @@ async function renderQualityPanel() {
   if (!anyIssues) {
     qualityListEl.innerHTML = '<li class="nav-item quality-all-good">✓ All tags look good</li>'
   }
+}
+
+function checkedAt(at: number | null): string {
+  return at ? new Date(at * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'never'
 }
 
 // ─── Album grid ───────────────────────────────────────────────────────────────
@@ -3547,6 +3555,7 @@ async function openSettings() {
       cb.checked = s.scan_tags.includes(cb.dataset.tag!)
     })
     for (const b of searchFieldBtns()) b.setAttribute('aria-pressed', String((s.search_fields ?? []).includes(b.dataset.searchField!)))
+    void renderQualitySettings(s.quality_off ?? [])
     renderLibraries()
     musicDirsDefaultEl.textContent = s.default_music_dir ?? ''
     localMusicDirs = [...(s.music_dirs ?? [])]
@@ -3715,6 +3724,47 @@ musicDirsListEl.addEventListener('click', (e) => {
   renderMusicDirsList()
 })
 
+// ─── Settings → Quality: each check on/off, and run on demand ──────────────────
+
+const qualityChecksEl = document.getElementById('quality-checks')!
+const qualityBtns = () => [...qualityChecksEl.querySelectorAll<HTMLButtonElement>('[data-quality-key]')]
+const qualityResult = (e: IssueEntry | undefined) => e?.tracks == null ? 'Not checked yet'
+  : `${plural(e.tracks, 'track')} · ${plural(e.albums ?? 0, 'album')} · ${checkedAt(e.at)}`
+
+async function renderQualitySettings(off: string[]) {
+  let stored: Partial<IssueCount> = {}
+  try { stored = await api.library.issues(false) } catch { /* the rows still render */ }
+  qualityChecksEl.innerHTML = QUALITY_ISSUES.map(q => `
+    <div class="quality-check-row">
+      <button type="button" class="tog" data-quality-key="${q.key}" aria-pressed="${!off.includes(q.key)}"
+        title="On: the Quality panel runs it. Click to turn it ${off.includes(q.key) ? 'on' : 'off'}">${esc(q.group ? `${q.group}: ${q.label}` : q.label)}</button>
+      <span class="quality-check-result" data-quality-result="${q.key}">${esc(qualityResult(stored[q.key]))}</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-quality-run="${q.key}">Check</button>
+    </div>`).join('')
+}
+
+qualityChecksEl.addEventListener('click', async (e) => {
+  const t = e.target as HTMLElement
+  const tog = t.closest<HTMLButtonElement>('[data-quality-key]')
+  if (tog) {
+    const on = tog.getAttribute('aria-pressed') !== 'true'
+    tog.setAttribute('aria-pressed', String(on))
+    tog.title = `On: the Quality panel runs it. Click to turn it ${on ? 'off' : 'on'}`
+    return
+  }
+  const run = t.closest<HTMLButtonElement>('[data-quality-run]')
+  if (!run) return
+  const key = run.dataset.qualityRun as IssueKey
+  const out = qualityChecksEl.querySelector<HTMLElement>(`[data-quality-result="${key}"]`)!
+  run.disabled = true; out.textContent = 'Checking…'
+  try {
+    out.textContent = qualityResult(await api.library.checkIssue(key))
+    state.qualityIssues = null
+    if (state.sidebarMode === 'quality') renderQualityPanel()
+  } catch (err) { out.textContent = `Failed: ${errText(err)}` }
+  finally { run.disabled = false }
+})
+
 const searchFieldBtns = () => [...document.querySelectorAll<HTMLButtonElement>('[data-search-field]')]
 document.getElementById('search-fields')!.addEventListener('click', e => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-search-field]')
@@ -3749,6 +3799,7 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     rename_template:   renameTemplateInput.value.trim(),
     scan_tags:         scanTags,
     search_fields:     searchFieldBtns().filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.searchField!),
+    ...(qualityBtns().length ? { quality_off: qualityBtns().filter(b => b.getAttribute('aria-pressed') !== 'true').map(b => b.dataset.qualityKey!) } : {}),
     music_dirs:        localMusicDirs,
     scan_exclude:      scanExcludeInput.value.split('\n').map(x => x.trim()).filter(Boolean),
     auto_scan_minutes: Math.max(0, parseInt(autoScanInput.value, 10) || 0),
@@ -3837,7 +3888,7 @@ function showLogin() {
 
 const statusWhere = document.getElementById('status-where')!
 const statusSel   = document.getElementById('status-sel')!
-const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`
+function plural(n: number, w: string) { return `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}` }   // hoisted: the Quality panel uses it at startup
 
 function updateStatusBar() {
   const where: string[] = []
