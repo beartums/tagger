@@ -370,6 +370,7 @@ export interface LibraryInfo {
 export interface TagValue {
   value: string
   track_count: number
+  album_count?: number   // its albums (folder + album), shown in the album view
   child_count?: number   // values of the tree's next tag among these tracks, when asked for
 }
 

@@ -20,7 +20,7 @@ _UA = "tagger/0.3.0 (https://github.com/beartums/tagger)"
 
 # LRCLIB's limits (lrclib.net/docs, "Rate Limiting"): ~90 requests/min for a
 # client named in its User-Agent, ~6,000/min app-wide with a registered app's
-# key (Settings → Sources). Requests are spaced out across every thread, and a
+# key (Settings → Metadata). Requests are spaced out across every thread, and a
 # 429 or 503 waits its Retry-After (plus jitter) and tries again.
 GAP, GAP_WITH_KEY = 0.75, 0.05     # seconds between requests
 RETRIES = 4
@@ -33,7 +33,7 @@ class RateLimited(Exception):
 
 
 def _auth() -> dict:
-    """The registered app's headers (Settings → Sources), if any."""
+    """The registered app's headers (Settings → Metadata), if any."""
     from api.config import _load
     s = _load()
     h = {"Lrclib-App-Id": s.lrclib_app_id.strip(), "Lrclib-Api-Key": s.lrclib_api_key.strip()}

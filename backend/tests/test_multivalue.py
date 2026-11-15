@@ -27,8 +27,10 @@ def _lib_tracks(lib):
 def test_tag_tree_lists_each_value_separately(client, lib):
     _lib_tracks(lib)
     genres = client.get("/api/library/tag-values", params={"field": "genre"}).json()
-    assert genres == [{"value": "", "track_count": 1}, {"value": "Celtic", "track_count": 1},
-                      {"value": "Folk", "track_count": 2}]
+    # Albums = folder + album: tracks 1 (album X) and 2 (none) are two albums in one folder.
+    assert genres == [{"value": "", "track_count": 1, "album_count": 1},
+                      {"value": "Celtic", "track_count": 1, "album_count": 1},
+                      {"value": "Folk", "track_count": 2, "album_count": 2}]
 
 
 def test_tag_and_artist_filters_match_one_of_the_values(client, lib):

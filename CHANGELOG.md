@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **The album view counts albums** in the side panel: Tags values and Quality
+  checks show albums instead of tracks (hover for both).
+- **Album pager always says where you are**: "albums 1–60 of 60 · page 1 of
+  1", even when everything fits on one page.
+- **Bigger covers in the album list**: drag the edge of the cover column;
+  covers and rows grow with it (double-click to reset). Remembered per
+  browser.
+- **Settings, reorganized**: sections down the left, grouped (Library ·
+  Sources · Output), each with a heading and a line on what it's for. Each
+  topic is a card with a real heading, what it's for, and a status pill
+  (Set up, Not set up, Tool missing; Connected or Failed after a Test). Field
+  names sit left of their inputs in normal case; one Test per card, in its
+  footer. The save bar names the sections with unsaved changes, and the rail
+  marks them with a dot.
+- **Settings → Sources is split** into **Integrations** (Lidarr, Navidrome,
+  Music Assistant, player rescans) and **Metadata** (AcoustID, Discogs,
+  LRCLIB). ReplayGain moved to Writing.
 - **Fixed: paging in the album view.** The pager paged tracks, so Next said
   you'd moved on while the same albums stayed. In the album view (list and
   tiles) it now pages albums and counts them ("albums 51–60 of 60"); the

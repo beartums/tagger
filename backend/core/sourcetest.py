@@ -1,5 +1,5 @@
 """
-"Test" for each key/token in Settings → Sources: one cheap request that the
+"Test" for each key/token in Settings → Integrations and Metadata: one cheap request that the
 service answers differently for a bad credential (checked 2026-11-07):
 AcoustID error code 4 "invalid API key"; Discogs and LRCLIB HTTP 401.
 """

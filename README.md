@@ -134,7 +134,7 @@ gives it away, even though its format and bitrate say lossless.
 | `TAGGER_LOG_LEVEL`  | `INFO`     | Log verbosity                            |
 
 The AcoustID key, a Discogs token and an LRCLIB app key can also be set in
-**Settings → Sources**, each with a **Test** button. Generate a secret key with
+**Settings → Metadata**, each with a **Test** button. Generate a secret key with
 `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 and keep it outside the config volume, so a copy of `settings.json` alone
 doesn't reveal the keys.
