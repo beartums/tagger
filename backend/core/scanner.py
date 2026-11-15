@@ -19,7 +19,7 @@ from typing import Callable
 from core.config import settings
 from core.database import get_conn
 from core import covers
-from core.tagger import read_tags, is_audio_file, TAG_FIELDS, MB_FIELDS, RG_FIELDS
+from core.tagger import read_tags, is_audio_file, TAG_FIELDS, MB_FIELDS, RG_FIELDS, DISC_FIELDS
 
 _BATCH_SIZE = 200
 
@@ -56,7 +56,8 @@ _UPSERT = """
                             lyrics, compilation, has_cover, cover_width, cover_height, cover_bytes,
                             mb_track_id, mb_artist_id, mb_album_id, mb_album_artist_id,
                             mb_release_group_id, mb_release_track_id,
-                            rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak, scanned_at
+                            rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak,
+                            mb_disc_id, cd_toc, barcode, isrc, rip_match, rip_quality, scanned_at
                         ) VALUES (
                             :path, :filename, :directory, :format, :size, :mtime, :duration,
                             :bitrate, :sample_rate, :channels,
@@ -65,7 +66,8 @@ _UPSERT = """
                             :lyrics, :compilation, :has_cover, :cover_width, :cover_height, :cover_bytes,
                             :mb_track_id, :mb_artist_id, :mb_album_id, :mb_album_artist_id,
                             :mb_release_group_id, :mb_release_track_id,
-                            :rg_track_gain, :rg_track_peak, :rg_album_gain, :rg_album_peak, :scanned_at
+                            :rg_track_gain, :rg_track_peak, :rg_album_gain, :rg_album_peak,
+                            :mb_disc_id, :cd_toc, :barcode, :isrc, :rip_match, :rip_quality, :scanned_at
                         )
                         ON CONFLICT(path) DO UPDATE SET
                             filename     = excluded.filename,
@@ -104,6 +106,12 @@ _UPSERT = """
                             rg_track_peak = excluded.rg_track_peak,
                             rg_album_gain = excluded.rg_album_gain,
                             rg_album_peak = excluded.rg_album_peak,
+                            mb_disc_id = excluded.mb_disc_id,
+                            cd_toc = excluded.cd_toc,
+                            barcode = excluded.barcode,
+                            isrc = excluded.isrc,
+                            rip_match = excluded.rip_match,
+                            rip_quality = excluded.rip_quality,
                             scanned_at   = excluded.scanned_at
 """
 
@@ -245,7 +253,7 @@ def scan_library(
                             "cover_height": tags.get("cover_height"),
                             "cover_bytes": tags.get("cover_bytes"),
                             **{f: tags.get(f) for f in MB_FIELDS},
-                            **{f: tags.get(f) or "" for f in RG_FIELDS},   # "" = read, none (NULL = never read)
+                            **{f: tags.get(f) or "" for f in (*RG_FIELDS, *DISC_FIELDS)},   # "" = read, none (NULL = never read)
                             "scanned_at": now,
                         })
                     upserted += 1

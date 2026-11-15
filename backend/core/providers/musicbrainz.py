@@ -210,6 +210,15 @@ def search_releases(album: str | None, artist: str | None, limit: int = 15) -> l
     return [_candidate(rel) for rel in resp.get("release-list", [])]
 
 
+def releases_by_discid(discid: str) -> list[dict]:
+    """The releases MusicBrainz has this disc ID on (exact; no TOC fuzzing)."""
+    try:
+        resp = _with_retry(musicbrainzngs.get_releases_by_discid, discid, includes=["artists"], cdstubs=False)
+    except Exception:
+        return []
+    return [_candidate(rel, 1.0) for rel in (resp.get("disc") or {}).get("release-list") or []]
+
+
 def releases_with_recording(title: str, artist: str | None, limit: int = 25) -> list[dict]:
     """Releases containing a recording with this title (+ artist): 'which album is this track on?'"""
     params = {"recording": title, "limit": limit}

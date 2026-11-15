@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **CD rips: what the ripper recorded.** tggr reads the disc ID, table of
+  contents, barcode, ISRCs, how the ripper named the disc (exact / near /
+  none) and cdparanoia's per-track trouble. One album selected shows them in a
+  "From the CD" box, with **Attach on MusicBrainz** (the disc ID) and
+  **Submit to MusicBrainz** (ISRCs, via MagicISRC) links. Two Quality checks:
+  *Named by a near match* and *Read trouble while ripping*.
+- **Add to MusicBrainz…** (Tags menu): opens MusicBrainz's Add release page
+  filled in from the album (titles, lengths, artist, year, barcode, recordings,
+  the CD's disc ID); you check it and submit there, and MusicBrainz sends you
+  back to Match album with the new release first.
+- **Disc IDs from track lengths** (Tags menu): older rips get their disc ID and
+  table of contents worked out from the tracks' exact lengths, checked against
+  MusicBrainz, and staged.
+- **Match album tries the disc ID first**: releases MusicBrainz has the rip's
+  disc ID on come first, marked *disc ID*.
 - **Tagger is now tggr.** The name in the app, README, logo, user agents and
   links (the repo becomes `beartums/tggr`, the image `ghcr.io/beartums/tggr`).
   Every `TAGGER_*` setting also works as `TGGR_*` (`TGGR_` wins when both are

@@ -40,6 +40,12 @@ export interface Track {
   mb_album_artist_id: string | null
   mb_release_group_id: string | null
   mb_release_track_id: string | null
+  mb_disc_id?: string | null        // what a CD rip recorded (tools/cd-ripper)
+  cd_toc?: string | null
+  barcode?: string | null
+  isrc?: string | null
+  rip_match?: string | null
+  rip_quality?: string | null
   folder_cover?: boolean          // the folder has a cover image
   scanned_at: number
   tagged_at: number | null
@@ -291,8 +297,18 @@ export interface MbRelease {
   track_count: number | null
 }
 
+/** One disc from "Disc IDs from track lengths". */
+export interface DiscIdResult { album: string; status: 'staged' | 'skipped' | 'has one'; why?: string; disc_id?: string; toc?: string
+  on_musicbrainz?: string[]; matches_album?: boolean }
+/** What a CD rip recorded, with the MusicBrainz links that use it. */
+export interface DiscInfo {
+  discs: { disc: string; disc_id: string | null; toc: string | null; attach_url: string | null }[]
+  barcode: string | null; isrcs: number; isrc_url: string | null; rip_match: string[]
+  trouble: { title: string; quality: string }[]; ripped: boolean; mb_album_id: string | null
+}
+
 export type IssueKey =
-  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'missing_album_artist' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album'
+  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'missing_album_artist' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album' | 'rip_near' | 'rip_trouble'
 /** One Quality check: its last count (null: never run), when, and whether it's turned off. */
 export interface IssueEntry { tracks: number | null; albums: number | null; at: number | null; off: boolean }
 export type IssueCount = Record<IssueKey, IssueEntry>
@@ -313,6 +329,7 @@ export interface TreeEntry {
 export interface MbCandidate {
   mb_album_id: string; album: string; artist: string | null; date: string | null; country: string | null
   formats: string[]; discs: number | null; tracks: number | null; type: string | null; score: number; tagged?: boolean
+  added?: boolean; by_disc_id?: boolean
 }
 
 export interface MbReleaseTrack {
@@ -622,9 +639,15 @@ export const api = {
 
   lookup: {
     albumSearch: (trackIds: number[], album?: string, artist?: string, by: 'album' | 'artist' | 'track' = 'album', track?: string,
-                  source: 'auto' | 'names' | 'tags' = 'auto') =>
+                  source: 'auto' | 'names' | 'tags' = 'auto', release?: string) =>
       request<{ album: string | null; artist: string | null; track?: string; by: string; local_tracks: number; candidates: MbCandidate[] }>(
-        'POST', '/api/lookup/album/search', { track_ids: trackIds, album, artist, by, track, source }),
+        'POST', '/api/lookup/album/search', { track_ids: trackIds, album, artist, by, track, source, release }),
+    discIds: (trackIds: number[]) =>
+      request<EditResult & { results: DiscIdResult[]; tracks?: number }>('POST', '/api/lookup/disc-ids', { track_ids: trackIds }),
+    mbSeed: (trackIds: number[], redirectUri: string) =>
+      request<{ action: string; album: string; fields: [string, string][] }>('POST', '/api/lookup/mb-seed', { track_ids: trackIds, redirect_uri: redirectUri }),
+    discInfo: (trackIds: number[]) =>
+      request<DiscInfo>('POST', '/api/lookup/disc-info', { track_ids: trackIds }),
     albumScore: (trackIds: number[], mbAlbumId: string) =>
       request<{ mb_album_id: string; quality: number; matched: number; local: number; release_tracks: number }>(
         'POST', '/api/lookup/album/score', { track_ids: trackIds, mb_album_id: mbAlbumId }),

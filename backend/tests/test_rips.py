@@ -1,0 +1,83 @@
+"""CD rips: disc IDs from track lengths, the MusicBrainz pre-fill, rip info and checks."""
+from core.discid import disc_id, parse_toc
+from core.database import db
+
+TOC = "1 3 30150 150 10150 20150"
+
+
+def _rip(lib_dir, n=3, **extra):
+    ids = []
+    with db() as conn:
+        for i in range(1, n + 1):
+            p = f"{lib_dir}/Artist/Album/0{i} Song {i}.flac"
+            cols = {"path": p, "filename": p.rsplit("/", 1)[1], "directory": p.rsplit("/", 1)[0], "format": "flac",
+                    "scanned_at": 1.0, "title": f"Song {i}", "artist": "Artist", "album_artist": "Artist",
+                    "album": "Album", "track_number": str(i), "sample_rate": 44100, "channels": 2,
+                    "duration": 10000 * 588 / 44100, "year": "1999", **extra}
+            ids.append(conn.execute(f"INSERT INTO tracks ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                                    list(cols.values())).lastrowid)
+    return ids
+
+
+def test_disc_ids_from_lengths_are_staged(client, monkeypatch):
+    import api.lookup as lk
+    monkeypatch.setattr(lk.mbp, "releases_by_discid", lambda d: [])
+    ids = _rip("/music/CD Rips")
+    res = client.post("/api/lookup/disc-ids", json={"track_ids": ids}).json()
+    assert res["staged"] is True
+    r = res["results"][0]
+    assert r["status"] == "staged" and r["toc"] == TOC and r["disc_id"] == disc_id(*parse_toc(TOC))
+    assert r["on_musicbrainz"] == [] and r["matches_album"] is False
+    staged = client.get("/api/staged").json()["tracks"]
+    assert {c["field"] for c in staged[0]["changes"]} == {"mb_disc_id", "cd_toc"}
+
+
+def test_disc_ids_need_the_whole_disc(client, monkeypatch):
+    import api.lookup as lk
+    monkeypatch.setattr(lk.mbp, "releases_by_discid", lambda d: [])
+    ids = _rip("/music/CD Rips")
+    r = client.post("/api/lookup/disc-ids", json={"track_ids": ids[:2]}).json()["results"][0]
+    assert r["status"] == "skipped" and "whole disc" in r["why"]
+
+
+def test_mb_seed_fills_the_add_release_form(client):
+    ids = _rip("/music/CD Rips", cd_toc=TOC, barcode="0123456789012", mb_track_id="11111111-1111-1111-1111-111111111111")
+    s = client.post("/api/lookup/mb-seed", json={"track_ids": ids, "redirect_uri": "https://tggr.example/"}).json()
+    f = dict(s["fields"])
+    assert s["action"] == "https://musicbrainz.org/release/add"
+    assert f["name"] == "Album" and f["artist_credit.names.0.name"] == "Artist"
+    assert f["events.0.date.year"] == "1999" and f["barcode"] == "0123456789012"
+    assert f["mediums.0.format"] == "CD" and f["mediums.0.toc"] == TOC
+    assert f["mediums.0.track.2.name"] == "Song 3" and f["mediums.0.track.2.length"] == str(round(10000 * 588 / 44.1))
+    assert f["mediums.0.track.0.recording"] == "11111111-1111-1111-1111-111111111111"
+    assert "mediums.0.track.0.artist_credit.names.0.name" not in f      # same as the album artist
+    assert f["redirect_uri"] == "https://tggr.example/"
+
+
+def test_disc_info_links_and_rip_checks(client):
+    did = disc_id(*parse_toc(TOC))
+    ids = _rip("/music/CD Rips", mb_disc_id=did, cd_toc=TOC, isrc="USABC9900001",
+               mb_album_id="22222222-2222-2222-2222-222222222222", rip_match="near", rip_quality="clean")
+    with db() as conn:
+        conn.execute("UPDATE tracks SET rip_quality = 'repaired 2' WHERE id = ?", (ids[1],))
+    info = client.post("/api/lookup/disc-info", json={"track_ids": ids}).json()
+    assert info["discs"][0]["attach_url"].startswith("https://musicbrainz.org/cdtoc/attach?id=")
+    assert "tracks=3" in info["discs"][0]["attach_url"]
+    assert info["isrcs"] == 3 and "isrc1=USABC9900001" in info["isrc_url"]
+    assert info["trouble"] == [{"title": "Song 2", "quality": "repaired 2"}] and info["rip_match"] == ["near"]
+    near = client.get("/api/library/tracks?issues=rip_near").json()["total"]
+    trouble = client.get("/api/library/tracks?issues=rip_trouble").json()["total"]
+    assert (near, trouble) == (3, 1)
+
+
+def test_disc_tags_roundtrip_as_the_ripper_writes_them(make_audio):
+    import mutagen
+    from core.tagger import read_disc_tags, read_tags, write_tags
+    path = make_audio(".flac")
+    f = mutagen.File(str(path))
+    f["MUSICBRAINZ_DISCID"] = "abc-"; f["MUSICBRAINZ_TOC"] = TOC; f["ISRC"] = "USABC9900001"
+    f["RIP_MATCH"] = "exact"; f["RIP_QUALITY"] = "clean"; f.save()       # abcde's uppercase names
+    assert read_disc_tags(str(path)) == {"mb_disc_id": "abc-", "cd_toc": TOC, "barcode": "", "isrc": "USABC9900001",
+                                         "rip_match": "exact", "rip_quality": "clean"}
+    write_tags(path, {"mb_disc_id": "xyz-"})
+    assert read_tags(path)["mb_disc_id"] == "xyz-"

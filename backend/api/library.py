@@ -54,6 +54,10 @@ _ISSUE_CLAUSES: dict[str, str] = {
     "mb_track_ids": f"NOT {_blank('mb_album_id')} AND ({_blank('mb_track_id')} OR {_blank('mb_release_track_id')})",
     "mb_mixed_album": "directory IN (SELECT directory FROM tracks WHERE COALESCE(mb_album_id, '') != ''"
                       " GROUP BY directory HAVING COUNT(DISTINCT mb_album_id) > 1)",
+    # What the CD ripper recorded (griflab tools/cd-ripper): named by a near
+    # match on the table of contents (check it), or cdparanoia had trouble.
+    "rip_near": "rip_match = 'near'",
+    "rip_trouble": "COALESCE(rip_quality, '') NOT IN ('', 'clean')",
 }
 
 

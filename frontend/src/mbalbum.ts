@@ -21,7 +21,8 @@ const coverWhere = (r: { covers: number; folder_covers: number }) =>
    r.covers ? `art in ${r.covers} track${r.covers !== 1 ? 's' : ''}` : ''].filter(Boolean).map(x => ` (${x})`).join('')
 const MB_IDS = ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_id', 'mb_release_group_id', 'mb_release_track_id']
 
-export function openMbAlbum(ids: number[], onDone: () => Promise<void>) {
+/** opts.release: put this release first (one just added to MusicBrainz). */
+export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { release?: string } = {}) {
   const overlay = document.createElement('div')
   overlay.className = 'fix-confirm-overlay'
   overlay.innerHTML = `
@@ -99,7 +100,7 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>) {
     try {
       const r = await api.lookup.albumSearch(ids, first ? undefined : albumEl.value, first ? undefined : artistEl.value,
                                               by, by === 'track' ? trackEl.value : undefined,
-                                              sourceEl.value as 'auto' | 'names' | 'tags')
+                                              sourceEl.value as 'auto' | 'names' | 'tags', opts.release)
       if (t !== searchToken) return
       albumEl.value = r.album ?? ''; artistEl.value = r.artist ?? ''; localCount = r.local_tracks
       contextEl.textContent = r.by === 'artist' ? `Releases by ${r.artist} — ranked by how well they fit your ${localCount} tracks`
@@ -146,7 +147,7 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>) {
       <div class="mb-cand-wrap${c.mb_album_id === openId ? ' mb-open' : ''}" data-id="${esc(c.mb_album_id)}">
         <button type="button" class="mb-cand${c.mb_album_id === openId ? ' mb-picked' : ''}" data-id="${esc(c.mb_album_id)}">
           <span class="mb-cand-title">${c.mb_album_id === openId ? '▾' : '▸'} ${esc(c.album)} <span class="ma-dim">· ${esc(c.artist ?? '')}</span>
-            ${c.tagged ? '<span class="mb-badge">tagged</span>' : ''}</span>
+            ${c.tagged ? '<span class="mb-badge">tagged</span>' : ''}${c.added ? '<span class="mb-badge">just added</span>' : ''}${c.by_disc_id ? '<span class="mb-badge" title="MusicBrainz has this disc ID on the release: an exact match">disc ID</span>' : ''}</span>
           <span class="ma-dim">${[c.date, c.country, (c.formats ?? []).join(', '), c.type, c.discs && c.discs > 1 ? `${c.discs} discs` : '']
             .filter(Boolean).map(x => esc(String(x))).join(' · ')}</span>
           <span class="mb-cand-tracks">${badge(c)}<span class="${c.tracks === localCount ? 'mb-fit' : ''}">${c.tracks ?? '?'} tracks</span></span>
