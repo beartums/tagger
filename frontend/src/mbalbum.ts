@@ -19,7 +19,7 @@ export const KEEP = ['genre', 'composer']
 const coverWhere = (r: { covers: number; folder_covers: number }) =>
   [r.folder_covers ? `cover.jpg in ${r.folder_covers} folder${r.folder_covers !== 1 ? 's' : ''}` : '',
    r.covers ? `art in ${r.covers} track${r.covers !== 1 ? 's' : ''}` : ''].filter(Boolean).map(x => ` (${x})`).join('')
-const MB_IDS = ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_id']
+const MB_IDS = ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_id', 'mb_release_group_id', 'mb_release_track_id']
 
 export function openMbAlbum(ids: number[], onDone: () => Promise<void>) {
   const overlay = document.createElement('div')

@@ -8,13 +8,13 @@ from tests.test_staging import _insert, lib  # noqa: F401  (fixture)
 REL_ID = "11111111-2222-3333-4444-555555555555"
 RELEASE = {
     "mb_album_id": REL_ID, "album": "Abbey Road", "album_artist": "The Beatles",
-    "mb_album_artist_id": "aa", "date": "2019-09-27", "year": "2019", "original_year": "1969",
+    "mb_album_artist_id": "aa", "rg_id": "rg", "date": "2019-09-27", "year": "2019", "original_year": "1969",
     "country": "GB", "discs": 1,
     "tracks": [
         {"key": "1-1", "disc": 1, "position": 1, "number": "1", "title": "Come Together", "artist": "The Beatles",
          "mb_artist_id": "aa", "mb_track_id": "r1", "duration": 259.9},
         {"key": "1-2", "disc": 1, "position": 2, "number": "2", "title": "Something", "artist": "The Beatles",
-         "mb_artist_id": "aa", "mb_track_id": "r2", "duration": 182.0},
+         "mb_artist_id": "aa", "mb_track_id": "r2", "mb_release_track_id": "t2", "duration": 182.0},
         {"key": "1-3", "disc": 1, "position": 3, "number": "3", "title": "Maxwell's Silver Hammer",
          "artist": "The Beatles", "mb_artist_id": "aa", "mb_track_id": "r3", "duration": 207.0},
     ],
@@ -43,6 +43,23 @@ def test_tags_prefer_the_original_year():
     t = albummatch.tags_for(RELEASE, RELEASE["tracks"][1])
     assert t["year"] == "1969" and t["track_number"] == "2" and t["mb_album_id"] == REL_ID
     assert albummatch.tags_for(RELEASE, RELEASE["tracks"][1], original_year=False)["year"] == "2019"
+
+
+def test_tags_carry_release_group_and_release_track_ids():
+    t = albummatch.tags_for(RELEASE, RELEASE["tracks"][1])
+    assert (t["mb_release_group_id"], t["mb_release_track_id"], t["mb_track_id"]) == ("rg", "t2", "r2")
+    assert albummatch.tags_for(RELEASE, None)["mb_release_group_id"] == "rg"   # unpaired: album-level only
+
+
+def test_musicbrainz_quality_groups(client, lib):
+    d = lib / "Shared"
+    _insert(d / "none" / "1.mp3")                                                     # no album ID
+    _insert(d / "old" / "1.mp3", mb_album_id="A", mb_track_id="r")                   # no RG, no release track
+    _insert(d / "full" / "1.mp3", mb_album_id="A", mb_release_group_id="g", mb_track_id="r", mb_release_track_id="t")
+    _insert(d / "mixed" / "1.mp3", mb_album_id="A", mb_release_group_id="g", mb_track_id="r", mb_release_track_id="t")
+    _insert(d / "mixed" / "2.mp3", mb_album_id="B", mb_release_group_id="g", mb_track_id="r", mb_release_track_id="t")
+    i = client.get("/api/library/issues").json()
+    assert (i["mb_no_album"], i["mb_no_release_group"], i["mb_track_ids"], i["mb_mixed_album"]) == (1, 1, 1, 2)
 
 
 def test_match_then_stage_chosen_fields(client, lib, monkeypatch):
@@ -204,8 +221,10 @@ def test_release_tags_give_album_artist_genre_and_composer(client, monkeypatch):
            "tracks": [{**RELEASE["tracks"][1], "composer": "George Harrison"}]}
     monkeypatch.setattr(mbp, "get_release", lambda _id: rel)
     r = client.get(f"/api/lookup/release-tags/{REL_ID}?mb_track_id=r2").json()
-    assert r == {"album": "Abbey Road", "album_artist": "The Beatles", "mb_album_artist_id": "aa", "year": "1969",
-                 "genre": "Rock", "composer": "George Harrison", "track_number": "2", "disc_number": "1"}
+    assert r == {"album": "Abbey Road", "album_artist": "The Beatles", "mb_album_artist_id": "aa",
+                 "mb_release_group_id": "rg", "year": "1969",
+                 "genre": "Rock", "composer": "George Harrison", "track_number": "2", "disc_number": "1",
+                 "mb_release_track_id": "t2"}
     assert client.get(f"/api/lookup/release-tags/{REL_ID}?mb_track_id=zz").json()["composer"] is None
 
 

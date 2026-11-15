@@ -107,8 +107,9 @@ async def release_tags(mb_album_id: str, mb_track_id: str = ""):
     album = albummatch.album_tags(rel)        # album, album artist, (original) year, genre, release ids
     if track:
         album |= {"track_number": str(track["position"]), "disc_number": str(track["disc"]),
-                  "composer": track["composer"]}
-    keys = ("album", "album_artist", "mb_album_artist_id", "year", "genre", "composer", "track_number", "disc_number")
+                  "composer": track["composer"], "mb_release_track_id": track.get("mb_release_track_id")}
+    keys = ("album", "album_artist", "mb_album_artist_id", "mb_release_group_id", "year", "genre", "composer",
+            "track_number", "disc_number", "mb_release_track_id")
     return {k: album.get(k) for k in keys}
 
 

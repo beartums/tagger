@@ -95,3 +95,19 @@ def test_multi_value_tags_keep_every_value(make_audio, ext):
     assert list(raw["artist"]) == ["Ann", "Bob"]
     assert list(raw["title"]) == ["A; B"]                    # single-value fields untouched
     assert read_tags(path)["genre"] == "Trad; Folk"
+
+
+_MB = {"mb_track_id": "11111111-0000-0000-0000-000000000001", "mb_artist_id": "11111111-0000-0000-0000-000000000002",
+       "mb_album_id": "11111111-0000-0000-0000-000000000003", "mb_album_artist_id": "11111111-0000-0000-0000-000000000004",
+       "mb_release_group_id": "11111111-0000-0000-0000-000000000005",
+       "mb_release_track_id": "11111111-0000-0000-0000-000000000006"}
+
+
+@pytest.mark.parametrize("ext", FORMATS)
+def test_musicbrainz_ids_roundtrip(make_audio, ext):
+    """Every MB ID written is read back (they were written but never read before)."""
+    path = make_audio(ext)
+    write_tags(path, dict(_MB))
+    assert {k: read_tags(path)[k] for k in _MB} == _MB
+    write_tags(path, {"mb_release_group_id": ""})
+    assert read_tags(path)["mb_release_group_id"] is None and read_tags(path)["mb_album_id"] == _MB["mb_album_id"]

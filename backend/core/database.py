@@ -60,6 +60,8 @@ def _migrate(conn) -> None:
         ("cover_width", "INTEGER"),    # ...its size in px and bytes
         ("cover_height", "INTEGER"),
         ("cover_bytes", "INTEGER"),
+        ("mb_release_group_id", "TEXT"),
+        ("mb_release_track_id", "TEXT"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {decl}")
@@ -142,6 +144,8 @@ def init_db() -> None:
                 mb_artist_id       TEXT,
                 mb_album_id        TEXT,
                 mb_album_artist_id TEXT,
+                mb_release_group_id TEXT,
+                mb_release_track_id TEXT,
                 scanned_at         REAL NOT NULL,
                 tagged_at          REAL
             );

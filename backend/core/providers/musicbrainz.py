@@ -334,6 +334,7 @@ def get_release(mb_album_id: str) -> dict | None:
                 "artist": t.get("artist-credit-phrase") or rec.get("artist-credit-phrase") or out["album_artist"],
                 "mb_artist_id": rcred[0]["artist"]["id"] if rcred and rcred[0].get("artist") else aa_id,
                 "mb_track_id": rec.get("id"),
+                "mb_release_track_id": t.get("id"),
                 "duration": int(length) / 1000 if length else None,
                 "composer": _composers(rec),
             })

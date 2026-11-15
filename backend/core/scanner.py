@@ -18,7 +18,7 @@ from typing import Callable
 from core.config import settings
 from core.database import get_conn
 from core import covers
-from core.tagger import read_tags, is_audio_file, TAG_FIELDS
+from core.tagger import read_tags, is_audio_file, TAG_FIELDS, MB_FIELDS
 
 _BATCH_SIZE = 200
 
@@ -42,7 +42,8 @@ def _excluded(path: str, patterns: list[str]) -> bool:
 # scan re-reads every file instead of skipping unchanged ones.
 #   1: multi-value tags keep every value ("; "-joined), not just the first.
 #   2: embedded cover art: has_cover, its size in px and bytes.
-READER_VERSION = 2
+#   3: MusicBrainz IDs (they were written, never read back).
+READER_VERSION = 3
 
 
 class ScanCancelled(Exception):
@@ -138,13 +139,17 @@ def scan_library(
                             bitrate, sample_rate, channels,
                             title, artist, album, album_artist, year, genre,
                             track_number, disc_number, comment, composer, bpm,
-                            lyrics, compilation, has_cover, cover_width, cover_height, cover_bytes, scanned_at
+                            lyrics, compilation, has_cover, cover_width, cover_height, cover_bytes,
+                            mb_track_id, mb_artist_id, mb_album_id, mb_album_artist_id,
+                            mb_release_group_id, mb_release_track_id, scanned_at
                         ) VALUES (
                             :path, :filename, :directory, :format, :size, :mtime, :duration,
                             :bitrate, :sample_rate, :channels,
                             :title, :artist, :album, :album_artist, :year, :genre,
                             :track_number, :disc_number, :comment, :composer, :bpm,
-                            :lyrics, :compilation, :has_cover, :cover_width, :cover_height, :cover_bytes, :scanned_at
+                            :lyrics, :compilation, :has_cover, :cover_width, :cover_height, :cover_bytes,
+                            :mb_track_id, :mb_artist_id, :mb_album_id, :mb_album_artist_id,
+                            :mb_release_group_id, :mb_release_track_id, :scanned_at
                         )
                         ON CONFLICT(path) DO UPDATE SET
                             filename     = excluded.filename,
@@ -173,6 +178,12 @@ def scan_library(
                             cover_width  = excluded.cover_width,
                             cover_height = excluded.cover_height,
                             cover_bytes  = excluded.cover_bytes,
+                            mb_track_id  = excluded.mb_track_id,
+                            mb_artist_id = excluded.mb_artist_id,
+                            mb_album_id  = excluded.mb_album_id,
+                            mb_album_artist_id  = excluded.mb_album_artist_id,
+                            mb_release_group_id = excluded.mb_release_group_id,
+                            mb_release_track_id = excluded.mb_release_track_id,
                             scanned_at   = excluded.scanned_at
                         """,
                         {
@@ -203,6 +214,7 @@ def scan_library(
                             "cover_width": tags.get("cover_width"),
                             "cover_height": tags.get("cover_height"),
                             "cover_bytes": tags.get("cover_bytes"),
+                            **{f: tags.get(f) for f in MB_FIELDS},
                             "scanned_at": now,
                         },
                     )

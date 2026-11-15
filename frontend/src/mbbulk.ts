@@ -21,7 +21,7 @@ const FIELDS: { key: string; label: string }[] = [
 ]
 const TAG_KEYS = FIELDS.map(f => f.key)
 const splitGenres = (g: string | null | undefined) => (g ?? '').split(';').map(x => x.trim()).filter(Boolean)
-const MB_IDS = ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_id']
+const MB_IDS = ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_id', 'mb_release_group_id', 'mb_release_track_id']
 
 interface Row {
   a: CoverAlbum
