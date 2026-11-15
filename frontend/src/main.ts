@@ -1,5 +1,5 @@
 import './style.css'
-import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, TagValue, setUnauthorizedHandler, onSessionExpired } from './api'
+import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, RescanResult, TagValue, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
 import { esc, fmtDuration, debounce } from './util'
 import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
@@ -3263,7 +3263,11 @@ document.getElementById('pane-settings')!.addEventListener('click', async (e) =>
     t.disabled = true
     out.hidden = false; out.className = 'source-test-result'; out.textContent = 'Testing…'
     try {
-      const r = await api.settings.testSource(src, typed, src === 'lrclib' ? lrclibAppIdInput.value.trim() : undefined)
+      const sect = t.closest('.settings-section')!
+      const urlIn = sect.querySelector<HTMLInputElement>('[data-integ-url]')
+      const userIn = sect.querySelector<HTMLInputElement>('[data-integ-user]')
+      const extra = urlIn ? { url: urlIn.value.trim(), ...(userIn ? { user: userIn.value.trim() } : {}) } : undefined
+      const r = await api.settings.testSource(src, typed, src === 'lrclib' ? lrclibAppIdInput.value.trim() : undefined, extra)
       out.className = `source-test-result ${r.ok ? 'status-ok' : 'status-warn'}`
       out.textContent = `${r.ok ? '✓' : '⚠'} ${r.message}`
     } catch (err) {
@@ -3285,6 +3289,74 @@ const coverTargetInput  = document.getElementById('setting-cover-target') as HTM
 const namingIllegalInput = document.getElementById('setting-naming-illegal') as HTMLSelectElement
 const namingColonInput   = document.getElementById('setting-naming-colon') as HTMLSelectElement
 const namingPreviewEl    = document.getElementById('naming-preview')!
+const integInputs = {
+  lidarr_url:     document.getElementById('setting-lidarr-url') as HTMLInputElement,
+  navidrome_url:  document.getElementById('setting-navidrome-url') as HTMLInputElement,
+  navidrome_user: document.getElementById('setting-navidrome-user') as HTMLInputElement,
+  ma_url:         document.getElementById('setting-ma-url') as HTMLInputElement,
+}
+const maProvidersInput = document.getElementById('setting-ma-providers') as HTMLInputElement
+const navidromeFoldersInput = document.getElementById('setting-navidrome-folders') as HTMLTextAreaElement
+const maFoldersInput   = document.getElementById('setting-ma-folders') as HTMLTextAreaElement
+// "Tagger folder = value" lines <-> {folder: value}; split on the first " = ".
+const mapToLines = (m: Record<string, string> | undefined) => Object.entries(m ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n')
+const linesToMap = (t: string) => Object.fromEntries(t.split('\n').map(l => {
+  const i = l.indexOf('=')
+  return i < 0 ? ['', ''] : [l.slice(0, i).trim(), l.slice(i + 1).trim()]
+}).filter(([k, v]) => k && v))
+const rescanModeInput  = document.getElementById('setting-rescan-mode') as HTMLSelectElement
+const rescanWaitInput  = document.getElementById('setting-rescan-wait') as HTMLInputElement
+// The wait box holds seconds (delay) or minutes (quiet); each mode keeps its own number.
+const rescanWaits = { delay: 30, quiet: 5 }
+function showRescanMode() {
+  const m = rescanModeInput.value as 'off' | 'delay' | 'quiet'
+  document.getElementById('rescan-wait-wrap')!.hidden = m === 'off'
+  if (m !== 'off') {
+    rescanWaitInput.value = String(rescanWaits[m])
+    document.getElementById('rescan-wait-unit')!.textContent = m === 'delay' ? 'seconds' : 'minutes'
+  }
+}
+rescanModeInput.addEventListener('change', showRescanMode)
+rescanWaitInput.addEventListener('input', () => {
+  const m = rescanModeInput.value
+  const n = parseInt(rescanWaitInput.value, 10)
+  if ((m === 'delay' || m === 'quiet') && n >= 1) rescanWaits[m] = Math.min(n, 1440)
+})
+function showRescanPending(p: AppSettings['rescan_pending']) {
+  document.getElementById('rescan-pending')!.textContent =
+    p ? `Rescan due ${new Date(p.due * 1000).toLocaleTimeString()}: ${p.folders} folder${p.folders === 1 ? '' : 's'} changed since ${new Date(p.since * 1000).toLocaleTimeString()}` : ''
+}
+
+function showRescans(r: Record<string, RescanResult> | undefined) {
+  document.querySelectorAll<HTMLElement>('[data-rescan-status]').forEach(el => {
+    const x = r?.[el.dataset.rescanStatus!]
+    el.textContent = x ? `Last rescan ${new Date(x.at * 1000).toLocaleString()}: ${x.ok ? '✓' : '⚠'} ${x.message}` : ''
+    el.classList.toggle('status-warn', !!x && !x.ok)
+  })
+}
+document.getElementById('rescan-now')!.addEventListener('click', async (e) => {
+  const b = e.currentTarget as HTMLButtonElement
+  b.disabled = true
+  try { showRescans(await api.settings.rescan()); showRescanPending(null) }
+  catch (err) { toast(`Rescan failed: ${errText(err)}`, 'error') }
+  finally { b.disabled = false }
+})
+document.getElementById('naming-from-lidarr')!.addEventListener('click', async (e) => {
+  const b = e.currentTarget as HTMLButtonElement
+  const formats = document.getElementById('lidarr-formats')!
+  b.disabled = true
+  try {
+    const n = await api.settings.lidarrNaming()
+    namingIllegalInput.value = n.replace_illegal ? 'replace' : 'remove'
+    namingColonInput.value = n.colon
+    updateNamingPreview(); updateRenamePreview()
+    formats.hidden = false
+    formats.textContent = `Copied — Save to keep. Lidarr's folders: ${n.artist_folder_format || '?'} · tracks: ${n.track_format || '?'}` +
+      (n.multi_disc_track_format ? ` · multi-disc: ${n.multi_disc_track_format}` : '')
+  } catch (err) {
+    formats.hidden = false; formats.textContent = `⚠ ${errText(err)}`
+  } finally { b.disabled = false }
+})
 function namingChoice() {
   return { replace_illegal: namingIllegalInput.value === 'replace', colon: namingColonInput.value }
 }
@@ -3411,6 +3483,16 @@ async function openSettings() {
     coverTargetInput.value    = s.cover_target ?? 'folder'
     namingIllegalInput.value  = (s.naming_replace_illegal ?? true) ? 'replace' : 'remove'
     namingColonInput.value    = s.naming_colon ?? 'smart'
+    for (const [k, el] of Object.entries(integInputs)) el.value = (s as unknown as Record<string, string>)[k] ?? ''
+    maProvidersInput.value    = (s.ma_providers ?? []).join(', ')
+    navidromeFoldersInput.value = mapToLines(s.navidrome_folders)
+    maFoldersInput.value      = mapToLines(s.ma_folders)
+    showRescans(s.rescans)
+    rescanWaits.delay = s.rescan_delay_seconds ?? 30
+    rescanWaits.quiet = s.rescan_quiet_minutes ?? 5
+    rescanModeInput.value = s.rescan_mode ?? 'quiet'
+    showRescanMode()
+    showRescanPending(s.rescan_pending)
     updateNamingPreview()
     coverSizeInput.value      = String(s.cover_embed_size ?? 500)
     coverFolderSizeInput.value = String(s.cover_folder_size ?? 1200)
@@ -3617,6 +3699,13 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     cover_target:      coverTargetInput.value as AppSettings['cover_target'],
     naming_replace_illegal: namingIllegalInput.value === 'replace',
     naming_colon:      namingColonInput.value as AppSettings['naming_colon'],
+    ...Object.fromEntries(Object.entries(integInputs).map(([k, el]) => [k, el.value.trim()])),
+    ma_providers:      maProvidersInput.value.split(/[\s,]+/).filter(Boolean),
+    navidrome_folders: linesToMap(navidromeFoldersInput.value),
+    ma_folders:        linesToMap(maFoldersInput.value),
+    rescan_mode:       rescanModeInput.value as AppSettings['rescan_mode'],
+    rescan_delay_seconds: rescanWaits.delay,
+    rescan_quiet_minutes: rescanWaits.quiet,
     cover_embed_size:  parseInt(coverSizeInput.value, 10),
     cover_folder_size: parseInt(coverFolderSizeInput.value, 10),
     library_roots:     libraryRootsInput.value.split('\n').map(x => x.trim()).filter(Boolean),

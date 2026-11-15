@@ -6,6 +6,24 @@
   pager (prev/next, editable top row, page N of M, rows per page) and the
   selection share one row below the track list, replacing the old Prev/Next.
   The track count stays in the toolbar.
+- **Integrations** (Settings → Sources), each optional, keys encrypted:
+  - **Lidarr**: Settings → Layouts → *Copy from Lidarr* sets *Characters in
+    names* from Lidarr's own naming choices and shows its folder and track
+    formats beside them.
+  - **Navidrome** and **Music Assistant** rescan after Tagger changes files
+    (tags, moves, covers, ReplayGain); a big write is one rescan. *Player
+    rescans* sets when: N minutes after the last change (each change restarts
+    the wait; default 5), N seconds after a change (later changes don't push it
+    back), or off. A rescan that's waiting shows when it's due.
+  - **Just the changed folders**: map Tagger folders to Navidrome libraries
+    (`/music = 1:`; Test lists the library ids) and Navidrome scans only the
+    folders that changed -- both ends of a move, the nearest folder that still
+    exists for one moved away. Unmapped changes or more than 50 folders: a
+    full scan. Music Assistant can only sync whole providers, so its map
+    (Tagger folder = provider instance id) syncs just the providers whose
+    folders changed. Both need an admin (Navidrome's `startScan`, MA's `music/sync`);
+    Test says so, and MA's Test lists its file providers to pick from. The
+    last result shows under each; *Rescan now* forces one.
 - **Names follow Lidarr's character rules**: a "/" inside a tag no longer
   makes an extra folder (AC/DC filed as `AC/DC/…`); each value is cleaned on
   its own, as Lidarr does. With the defaults (Lidarr's *Replace Illegal

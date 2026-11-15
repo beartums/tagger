@@ -125,6 +125,7 @@ def write_tags(path: str | Path, updates: dict) -> None:
     Only keys present in `updates` are changed; others are left untouched.
     Pass None or "" for a key to delete that tag.
     """
+    from core import integrations; integrations.changed(path)   # Navidrome/MA rescan, debounced
     f = mutagen.File(str(path), easy=True)
     if f is None:
         raise ValueError(f"Cannot open audio file: {path}")
@@ -380,6 +381,7 @@ def read_cover(path: str | Path) -> tuple[str, bytes] | None:
 
 def write_cover(path: str | Path, mime_type: str, image_data: bytes) -> None:
     """Write (or replace) the embedded cover art for an audio file."""
+    from core import integrations; integrations.changed(path)   # Navidrome/MA rescan, debounced
     p = str(path)
     ext = Path(path).suffix.lower()
 
@@ -434,6 +436,7 @@ def write_cover(path: str | Path, mime_type: str, image_data: bytes) -> None:
 
 def remove_cover(path: str | Path) -> None:
     """Remove all embedded cover art from an audio file."""
+    from core import integrations; integrations.changed(path)   # Navidrome/MA rescan, debounced
     p = str(path)
     ext = Path(path).suffix.lower()
     if ext == ".mp3":

@@ -69,6 +69,25 @@ class AppSettings(BaseModel):
     # "Replace Illegal Characters" and "Colon Replacement" (smart|delete|dash|space_dash|space_dash_space).
     naming_replace_illegal: bool = True
     naming_colon: str = "smart"
+    # Integrations (core/integrations.py), each optional. Keys/passwords/tokens are secrets.
+    lidarr_url: str = ""
+    lidarr_api_key: str = ""
+    navidrome_url: str = ""
+    navidrome_user: str = ""           # an admin: Subsonic startScan is admin-only
+    navidrome_password: str = ""
+    ma_url: str = ""
+    ma_token: str = ""                 # long-lived token of an admin (music/sync needs library.manage)
+    ma_providers: list[str] = []       # provider instance ids to sync; [] = all
+    # Rescan just what changed (core/integrations.py). Tagger folder ->
+    # Navidrome "libraryID:folder in it" ("1:" = library 1's root) / MA provider instance id.
+    # Empty, or a change outside them: Navidrome scans everything, MA syncs ma_providers.
+    navidrome_folders: dict[str, str] = {}
+    ma_folders: dict[str, str] = {}
+    # When Navidrome/MA rescan after Tagger changes files (core/integrations.py):
+    # off | delay (N s after the first change) | quiet (N min after the last change).
+    rescan_mode: str = "quiet"
+    rescan_delay_seconds: int = 30
+    rescan_quiet_minutes: int = 5
 
 
 def get_music_dirs() -> list[str]:
@@ -139,6 +158,7 @@ def _save(s: AppSettings) -> None:
 
 @router.get("")
 def get_settings():
+    from core import integrations
     s = _load()
     return {
         **s.model_dump(),
@@ -146,6 +166,8 @@ def get_settings():
         **{k: "" for k in secrets.FIELDS},
         "secrets_set": {k: bool(getattr(s, k)) for k in secrets.FIELDS},
         "secrets_encrypted": secrets.enabled(),
+        "rescans": integrations.last,
+        "rescan_pending": integrations.pending(),
         "default_music_dir": str(settings.music_dir),
         "env_library_roots": settings.library_roots,
         "effective_library_roots": [str(r) for r in get_library_roots()],
@@ -177,6 +199,8 @@ def list_libraries():
 class SourceTest(BaseModel):
     value: str = ""                    # typed, not saved yet; "" = the saved one
     app_id: str | None = None          # LRCLIB: as typed (None = the saved one)
+    url: str | None = None             # integrations: as typed (None = the saved one)
+    user: str | None = None            # Navidrome: as typed (None = the saved one)
 
 
 @router.post("/test/{source}")
@@ -196,7 +220,47 @@ def test_source(source: str, req: SourceTest):
         if not (key or app_id):
             return {"ok": False, "message": "No LRCLIB app ID or key to test"}
         return sourcetest.lrclib(key, app_id)
+    from core import integrations
+    def typed(v, saved):
+        return (v if v is not None else saved).strip()
+    if source == "lidarr":
+        url, key = typed(req.url, s.lidarr_url), req.value.strip() or s.lidarr_api_key
+        if not (url and key):
+            return {"ok": False, "message": "Lidarr needs a URL and an API key"}
+        return integrations.test_lidarr(url, key)
+    if source == "navidrome":
+        url, user = typed(req.url, s.navidrome_url), typed(req.user, s.navidrome_user)
+        password = req.value or s.navidrome_password
+        if not (url and user and password):
+            return {"ok": False, "message": "Navidrome needs a URL, a user and a password"}
+        return integrations.test_navidrome(url, user, password)
+    if source == "music_assistant":
+        url, token = typed(req.url, s.ma_url), req.value.strip() or s.ma_token
+        if not (url and token):
+            return {"ok": False, "message": "Music Assistant needs a URL and a token"}
+        return integrations.test_ma(url, token)
     raise HTTPException(404, "Unknown source")
+
+
+@router.get("/lidarr-naming")
+def lidarr_naming():
+    """Lidarr's file-naming choices, for Settings → Layouts → Copy from Lidarr."""
+    from core import integrations
+    s = _load()
+    if not (s.lidarr_url and s.lidarr_api_key):
+        raise HTTPException(400, "Set Lidarr's URL and API key in Settings → Sources first")
+    try:
+        return integrations.lidarr_naming(s.lidarr_url, s.lidarr_api_key)
+    except ValueError as exc:
+        raise HTTPException(502, str(exc))
+
+
+@router.post("/rescan")
+def rescan_players():
+    """Ask Navidrome / Music Assistant to rescan now (normally automatic after writes)."""
+    from core import integrations
+    integrations.cancel_pending()          # this one covers whatever was waiting
+    return integrations.rescan_now()
 
 
 class LibraryToggle(BaseModel):
@@ -250,8 +314,22 @@ def update_settings(update: AppSettings):
         sent["browse_paths"] = _check_browse_paths(update.browse_paths)
     if "layout_libraries" in sent:
         sent["layout_libraries"] = sorted({os.path.normpath(p) for p in sent["layout_libraries"]})
+    for k in ("navidrome_folders", "ma_folders"):
+        if k in sent:
+            sent[k] = {os.path.normpath(p.strip()): v.strip() for p, v in sent[k].items() if p.strip() and v.strip()}
+    for p, v in sent.get("navidrome_folders", {}).items():
+        lib = v.partition(":")[0]
+        if ":" not in v or not lib.isdigit() or int(lib) < 1:
+            raise HTTPException(400, f"Navidrome folder for {p}: libraryID:folder, e.g. 1:Shared")
+    if "rescan_mode" in sent and sent["rescan_mode"] not in ("off", "delay", "quiet"):
+        raise HTTPException(400, "rescan_mode: off, delay or quiet")
+    for k in ("rescan_delay_seconds", "rescan_quiet_minutes"):
+        if k in sent and not 1 <= sent[k] <= 1440:
+            raise HTTPException(400, f"{k}: 1 to 1440")
     merged = _load().model_copy(update=sent)
     _save(merged)
+    from core import integrations
+    integrations.settings_changed()
     return get_settings()
 
 
