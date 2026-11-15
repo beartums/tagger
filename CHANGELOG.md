@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Add to MusicBrainz links the artists.** Each artist arrives linked in the
+  release editor: from the tags when the files were matched before, else the
+  one MusicBrainz artist with exactly that name. Names shared by several
+  artists, or new to MusicBrainz, are left for you, and the message says which.
+- **Add to MusicBrainz: no "Unknown field" warning.** It sent a medium
+  position MusicBrainz doesn't take; now only documented fields go, and a test
+  holds it to that list.
 - **Undo one piece at a time, in any order.** In Review, ✕ on any line drops
   that one staged field (or move) and **Discard** on any action drops what it
   staged, oldest or newest. In History, open a change (▸) to undo one field or

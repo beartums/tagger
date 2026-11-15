@@ -654,7 +654,7 @@ export const api = {
     discIds: (trackIds: number[]) =>
       request<EditResult & { results: DiscIdResult[]; tracks?: number }>('POST', '/api/lookup/disc-ids', { track_ids: trackIds }),
     mbSeed: (trackIds: number[], redirectUri: string) =>
-      request<{ action: string; album: string; fields: [string, string][] }>('POST', '/api/lookup/mb-seed', { track_ids: trackIds, redirect_uri: redirectUri }),
+      request<{ action: string; album: string; fields: [string, string][]; artists: { linked: number; ambiguous: string[]; unknown: string[]; unchecked: string[] } }>('POST', '/api/lookup/mb-seed', { track_ids: trackIds, redirect_uri: redirectUri }),
     discInfo: (trackIds: number[]) =>
       request<DiscInfo>('POST', '/api/lookup/disc-info', { track_ids: trackIds }),
     albumScore: (trackIds: number[], mbAlbumId: string) =>

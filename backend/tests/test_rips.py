@@ -1,4 +1,5 @@
 """CD rips: disc IDs from track lengths, the MusicBrainz pre-fill, rip info and checks."""
+import re
 from core.discid import disc_id, parse_toc
 from core.database import db
 
@@ -40,18 +41,31 @@ def test_disc_ids_need_the_whole_disc(client, monkeypatch):
     assert r["status"] == "skipped" and "whole disc" in r["why"]
 
 
-def test_mb_seed_fills_the_add_release_form(client):
+def test_mb_seed_fills_the_add_release_form(client, monkeypatch):
+    import api.lookup as lk
+    monkeypatch.setattr(lk.mbp, "find_artist", lambda n: ("linked", "33333333-3333-3333-3333-333333333333"))
     ids = _rip("/music/CD Rips", cd_toc=TOC, barcode="0123456789012", mb_track_id="11111111-1111-1111-1111-111111111111")
     s = client.post("/api/lookup/mb-seed", json={"track_ids": ids, "redirect_uri": "https://tggr.example/"}).json()
     f = dict(s["fields"])
     assert s["action"] == "https://musicbrainz.org/release/add"
     assert f["name"] == "Album" and f["artist_credit.names.0.name"] == "Artist"
+    assert f["artist_credit.names.0.mbid"] == "33333333-3333-3333-3333-333333333333"      # linked for the editor
+    assert s["artists"] == {"linked": 1, "ambiguous": [], "unknown": [], "unchecked": []}
     assert f["events.0.date.year"] == "1999" and f["barcode"] == "0123456789012"
     assert f["mediums.0.format"] == "CD" and not any(k.endswith(".toc") for k in f)   # not a seeding field
     assert f["mediums.0.track.2.name"] == "Song 3" and f["mediums.0.track.2.length"] == str(round(10000 * 588 / 44.1))
     assert f["mediums.0.track.0.recording"] == "11111111-1111-1111-1111-111111111111"
     assert "mediums.0.track.0.artist_credit.names.0.name" not in f      # same as the album artist
     assert f["redirect_uri"] == "https://tggr.example/"
+    # Only fields MusicBrainz documents (wiki: Development/Seeding/Release_Editor);
+    # anything else shows as "Unknown field" on its page.
+    ac = r"artist_credit\.names\.\d+\.(mbid|name|artist\.name|join_phrase)"
+    documented = re.compile("|".join([
+        r"name|release_group|type|comment|annotation|barcode|language|script|status|packaging|edit_note|redirect_uri",
+        r"events\.\d+\.(date\.(year|month|day)|country)", r"labels\.\d+\.(mbid|catalog_number|name)", ac,
+        r"mediums\.\d+\.(format|name)", r"mediums\.\d+\.track\.\d+\.(name|number|recording|length)",
+        rf"mediums\.\d+\.track\.\d+\.{ac}", r"urls\.\d+\.(url|link_type)"]))
+    assert [k for k, _ in s["fields"] if not documented.fullmatch(k)] == []
 
 
 def test_disc_info_links_and_rip_checks(client):
@@ -81,3 +95,23 @@ def test_disc_tags_roundtrip_as_the_ripper_writes_them(make_audio):
                                          "rip_match": "exact", "rip_quality": "clean"}
     write_tags(path, {"mb_disc_id": "xyz-"})
     assert read_tags(path)["mb_disc_id"] == "xyz-"
+
+
+def test_artists_linked_from_tags_then_by_exact_name(client, monkeypatch):
+    import api.lookup as lk
+    asked = []
+    answers = {"Guest": ("linked", "44444444-4444-4444-4444-444444444444"), "John Smith": ("ambiguous", None),
+               "Nobody Yet": ("unknown", None)}
+    monkeypatch.setattr(lk.mbp, "find_artist", lambda n: (asked.append(n), answers[n])[1])
+    ids = _rip("/music/CD Rips", mb_album_artist_id="55555555-5555-5555-5555-555555555555")
+    with db() as conn:
+        conn.execute("UPDATE tracks SET artist = 'Artist; Guest' WHERE id = ?", (ids[0],))
+        conn.execute("UPDATE tracks SET artist = 'John Smith' WHERE id = ?", (ids[1],))
+        conn.execute("UPDATE tracks SET artist = 'Nobody Yet' WHERE id = ?", (ids[2],))
+    s = client.post("/api/lookup/mb-seed", json={"track_ids": ids}).json()
+    f = dict(s["fields"])
+    assert f["artist_credit.names.0.mbid"] == "55555555-5555-5555-5555-555555555555"     # from the tags: not asked
+    assert "Artist" not in asked
+    assert f["mediums.0.track.0.artist_credit.names.1.mbid"] == "44444444-4444-4444-4444-444444444444"
+    assert "mediums.0.track.1.artist_credit.names.0.mbid" not in f                          # ambiguous: yours to pick
+    assert s["artists"] == {"linked": 2, "ambiguous": ["John Smith"], "unknown": ["Nobody Yet"], "unchecked": []}

@@ -2594,6 +2594,7 @@ document.getElementById('mb-add-btn')!.addEventListener('click', async () => {
   const ids = [...state.selectedIds]
   if (!ids.length) return
   let seed
+  toast('Looking up the artists on MusicBrainz…', 'info')
   try { seed = await api.lookup.mbSeed(ids, location.origin + location.pathname) } catch (e) { toast(`Add to MusicBrainz: ${errText(e)}`, 'error'); return }
   try { localStorage.setItem(MB_ADD_KEY, JSON.stringify({ ids, at: Date.now() })) } catch { /* storage blocked */ }
   const form = document.createElement('form')
@@ -2602,7 +2603,15 @@ document.getElementById('mb-add-btn')!.addEventListener('click', async () => {
     const i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = v; form.appendChild(i)
   }
   document.body.appendChild(form); form.submit(); form.remove()
-  toast(`MusicBrainz is open with ${seed.album} filled in: check it and submit there. It sends you back here to match the album.`, 'info', 9000)
+  const a = seed.artists
+  const todo = [
+    a.ambiguous.length ? `pick ${a.ambiguous.join(', ')} (several on MusicBrainz)` : '',
+    a.unknown.length ? `add ${a.unknown.join(', ')} (not on MusicBrainz)` : '',
+    a.unchecked.length ? `link ${plural(a.unchecked.length, 'more artist')} (too many to look up)` : '',
+  ].filter(Boolean)
+  toast(`MusicBrainz is open with ${seed.album} filled in${a.linked ? `, ${plural(a.linked, 'artist')} already linked` : ''}.`
+    + (todo.length ? ` Still to do there: ${todo.join('; ')}.` : ' Check it and submit.')
+    + ' It sends you back here afterwards.', 'info', 12000)
 })
 
 function handleMbReturn() {
