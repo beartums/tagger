@@ -5,6 +5,8 @@
   </picture>
 </p>
 
+<p align="center"><em>"the tggr's a wonderful thing!"</em></p>
+
 Self-hosted web app for editing audio tags (FLAC, MP3, AAC/M4A, OGG) — run it
 on a NAS or server and tag your library from any browser.
 
