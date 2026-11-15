@@ -66,14 +66,14 @@ def test_missing_lyrics_skips_no_lyrics_group_and_library_default(client, lib):
     _insert(d / "3.mp3", title="Three", artist="X", lyrics="la la")
     xmas = lib / "Libraries" / "Music - Christmas"
     c = _insert(xmas / "4.mp3", title="Four", artist="Y")
-    assert client.get("/api/library/issues").json()["missing_lyrics"] == 3
+    assert client.get("/api/library/issues").json()["missing_lyrics"]["tracks"] == 3
     assert client.post("/api/lyrics/assign", json={"track_ids": [b], "group_id": "none"}).json()["assigned"] == 1
     client.patch("/api/config", json={"library_lyrics_groups": {str(xmas): "none"}})
     tracks = client.get("/api/library/tracks", params={"issue": "missing_lyrics"}).json()["tracks"]
     assert [t["id"] for t in tracks] == [a] and tracks[0]["lyrics_group"] == "Standard"
     assert {l["name"]: l["lyrics_group"] for l in client.get("/api/config/libraries").json()}["Music - Christmas"] == "none"
     client.post("/api/lyrics/assign", json={"track_ids": [b]})              # back to the default
-    assert client.get("/api/library/issues").json()["missing_lyrics"] == 2
+    assert client.get("/api/library/issues").json()["missing_lyrics"]["tracks"] == 2
     assert client.post("/api/lyrics/assign", json={"track_ids": [c], "group_id": "nope"}).status_code == 400
 
 

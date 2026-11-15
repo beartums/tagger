@@ -492,7 +492,7 @@ def test_not_in_layout_lists_misfiled_tracks_with_their_layout_path(client, lib)
     bad = _insert(lib / "Shared" / "The Pogues" / "Rum" / "Sally 2.mp3",
                   title="Sally 2", album="Rum", album_artist="The Pogues", year="1985", track_number="2")
     xmas = _insert(lib / "Libraries" / "Music - Christmas" / "anywhere.mp3", title="X")   # no layout: not checked
-    assert client.get("/api/library/issues").json()["not_in_layout"] == 1
+    assert client.get("/api/library/issues").json()["not_in_layout"]["tracks"] == 1
     tracks = client.get("/api/library/tracks", params={"issue": "not_in_layout"}).json()["tracks"]
     assert [t["id"] for t in tracks] == [bad]
     assert tracks[0]["layout_path"] == str(lib / "Shared" / "Pogues, The" / "Rum (1985)" / "02 Sally 2.mp3")
@@ -521,7 +521,7 @@ def test_refile_stages_the_move_to_the_layout(client, lib):
     assert src.exists()                                   # nothing moves until written
     client.post("/api/staged/apply", json={})
     assert dest.exists()
-    assert client.get("/api/library/issues").json()["not_in_layout"] == 0
+    assert client.get("/api/library/issues").json()["not_in_layout"]["tracks"] == 0
 
 
 @needs_ffmpeg
@@ -549,7 +549,7 @@ def test_checked_library_uses_the_standard_layout_unless_overridden(client, lib)
 
     # an override on an unchecked library isn't compared
     client.patch("/api/config", json={"library_templates": {str(lib / "Shared"): "{title}"}})
-    assert client.get("/api/library/issues").json()["not_in_layout"] == 1
+    assert client.get("/api/library/issues").json()["not_in_layout"]["tracks"] == 1
     assert shared
 
 

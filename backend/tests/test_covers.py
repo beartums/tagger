@@ -50,7 +50,7 @@ def test_scan_flags_and_quality_groups(client, lib):
     both = _album(lib, "Both", embedded=True, folder=True)
     scan_library(music_dirs=[str(lib / "Shared")])
     issues = client.get("/api/library/issues").json()
-    assert (issues["covers_none"], issues["covers_no_folder"], issues["covers_no_tracks"], issues["covers_both"]) == (2, 4, 4, 2)
+    assert (issues["covers_none"]["tracks"], issues["covers_no_folder"]["tracks"], issues["covers_no_tracks"]["tracks"], issues["covers_both"]["tracks"]) == (2, 4, 4, 2)
     listed = client.get("/api/library/tracks", params={"issue": "covers_none"}).json()
     assert {t["directory"] for t in listed["tracks"]} == {str(none)}
     assert {t["has_cover"] for t in client.get("/api/library/tracks", params={"issue": "covers_both"}).json()["tracks"]} == {1}
@@ -82,7 +82,7 @@ def test_move_copy_delete(client, lib):
     assert len(list((settings.config_dir / "trash").glob("cover_*"))) == 2     # the folder file + one track copy
 
     issues = client.get("/api/library/issues").json()
-    assert issues["covers_none"] == 2 and issues["covers_no_tracks"] == 4
+    assert issues["covers_none"]["tracks"] == 2 and issues["covers_no_tracks"]["tracks"] == 4
     assert client.post("/api/covers/albums", json={"track_ids": [], "action": "nope"}).status_code == 400
 
 
@@ -113,7 +113,7 @@ def test_upload_is_shrunk_and_flagged(client, lib):
     assert r.status_code == 200
     mime, data = read_cover(next(iter(sorted(d.glob("*.mp3")))))
     assert mime == "image/jpeg" and Image.open(BytesIO(data)).size == (500, 500)
-    assert client.get("/api/library/issues").json()["covers_no_tracks"] == 1
+    assert client.get("/api/library/issues").json()["covers_no_tracks"]["tracks"] == 1
 
 
 def test_sizes_tracked_oversized_and_shrink(client, lib):
@@ -129,7 +129,7 @@ def test_sizes_tracked_oversized_and_shrink(client, lib):
     assert (t["cover_width"], t["cover_height"], t["cover_bytes"]) == (1600, 1600, len(big))
     with db() as conn:
         assert conn.execute("SELECT width, bytes FROM folder_covers WHERE directory = ?", (str(d),)).fetchone()[:] == (1600, len(big))
-    assert client.get("/api/library/issues").json()["covers_oversized"] == 2
+    assert client.get("/api/library/issues").json()["covers_oversized"]["tracks"] == 2
     client.get("/api/library/tracks", params={"sort": "cover"}).raise_for_status()
 
     r = client.post("/api/covers/albums", json={"track_ids": _ids(d), "action": "shrink"}).json()["albums"][0]
@@ -137,7 +137,7 @@ def test_sizes_tracked_oversized_and_shrink(client, lib):
     assert Image.open(d / "cover.jpg").size == (1200, 1200)
     t = client.get("/api/library/tracks", params={"directory": str(d)}).json()["tracks"][0]
     assert (t["cover_width"], t["has_cover"]) == (500, 1)
-    assert client.get("/api/library/issues").json()["covers_oversized"] == 0
+    assert client.get("/api/library/issues").json()["covers_oversized"]["tracks"] == 0
     r = client.post("/api/covers/albums", json={"track_ids": _ids(d), "action": "shrink"}).json()["albums"][0]
     assert r["note"] == "nothing larger than the size settings"
 

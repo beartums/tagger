@@ -63,6 +63,9 @@ class AppSettings(BaseModel):
     cover_embed_size: int = 500
     # Tags the search box looks in (core/search.py).
     search_fields: list[str] = ["title", "artist", "album", "album_artist", "genre"]
+    # Quality checks left out of the Quality panel's counts (they're slow on a big
+    # library); each can still be run from Settings -> Quality. Keys: api/library.py.
+    quality_off: list[str] = []
     # Tags panel: each tag's values open to the next tag in its list, and so on.
     browse_paths: dict[str, list[str]] = {"artist": ["album"], "album_artist": ["album"]}
     # Characters in tag values -> names (core/naming.py), as Lidarr's Media Management:

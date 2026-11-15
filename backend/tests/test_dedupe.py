@@ -39,11 +39,11 @@ def test_issue_counts_and_view_follow_the_groups(client):
     a = _insert("Song", "Artist")
     b = _insert("Song", "artist")
     _insert("Other", "Artist")
-    assert client.get("/api/library/issues").json()["duplicate_tracks"] == 2
+    assert client.get("/api/library/issues").json()["duplicate_tracks"]["tracks"] == 2
     got = [t["id"] for t in client.get("/api/library/tracks", params={"issue": "duplicate_tracks"}).json()["tracks"]]
     assert sorted(got) == sorted([a, b])
     c = _insert("Song", "ARTIST")                                           # the cache notices new tracks
-    assert client.get("/api/library/issues").json()["duplicate_tracks"] == 3 and c
+    assert client.get("/api/library/issues").json()["duplicate_tracks"]["tracks"] == 3 and c
 
 
 def test_duplicate_albums_by_folder(client):
@@ -51,7 +51,7 @@ def test_duplicate_albums_by_folder(client):
         _insert("Come Together", "The Beatles", directory=d, album="Abbey Road" if "Rem" not in d else "Abbey Road (Remastered)",
                 album_artist="The Beatles")
     _insert("X", "Y", directory="/m/Y/Solo", album="Solo")
-    assert client.get("/api/library/issues").json()["duplicate_albums"] == 2
+    assert client.get("/api/library/issues").json()["duplicate_albums"]["tracks"] == 2
     rows = client.get("/api/library/album-list", params={"issue": "duplicate_albums"}).json()
     assert sorted(r["directory"] for r in rows) == ["/m/Beatles/Abbey Road", "/m/Beatles/Abbey Road (Remaster)"]
 

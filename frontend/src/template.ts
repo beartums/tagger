@@ -40,6 +40,7 @@ export const APP_HTML = `
         <button type="button" data-sect="sources">Sources</button>
         <button type="button" data-sect="writing">Writing</button>
         <button type="button" data-sect="search">Search</button>
+        <button type="button" data-sect="quality">Quality</button>
       </nav>
       <div class="settings-sect" data-sect="libraries">
       <div class="settings-section">
@@ -264,6 +265,13 @@ export const APP_HTML = `
           <button type="button" class="tog" data-search-field="lyrics" aria-pressed="false" title="Click to search this tag, or to stop">Lyrics</button>
           <button type="button" class="tog" data-search-field="filename" aria-pressed="false" title="Click to search this tag, or to stop">File name</button>
         </div>
+      </div>
+      </div>
+      <div class="settings-sect" data-sect="quality" hidden>
+      <div class="settings-section">
+        <div class="settings-section-title">Quality checks</div>
+        <p class="settings-hint">The Quality panel runs every check that's on each time it opens or the library changes. Turn slow ones off (struck through) and run them here when you want: <strong>Check</strong> counts the tracks and albums it finds and keeps the result, which the panel then shows dimmed. Missing files, duplicates and Not in layout are the slow ones on a big library.</p>
+        <div id="quality-checks" class="quality-checks"></div>
       </div>
       </div>
       <div class="settings-sect" data-sect="writing" hidden>

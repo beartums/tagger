@@ -251,19 +251,58 @@ def _track_filters(v: View) -> tuple[str, list, str]:
     return where, params, order
 
 
+ISSUE_KEYS = [*_ISSUE_CLAUSES, "missing_files"]
+
+
+def _check(conn, key: str) -> dict:
+    """Run one Quality check: tracks and albums (folders) it finds, stored with the time."""
+    import time
+    if key == "missing_files":
+        rows = conn.execute("SELECT path, directory FROM tracks").fetchall()
+        gone = [r for r in rows if not Path(r["path"]).exists()]
+        tracks, albums = len(gone), len({r["directory"] for r in gone})
+    else:
+        if key.startswith("duplicate_"):
+            duplicates.refresh(conn)
+        tracks, albums = conn.execute(
+            f"SELECT COUNT(*), COUNT(DISTINCT directory) FROM tracks WHERE {_issue_clause(key)}").fetchone()
+    at = time.time()
+    conn.execute("INSERT INTO quality_results (key, tracks, albums, checked_at) VALUES (?, ?, ?, ?)"
+                 " ON CONFLICT(key) DO UPDATE SET tracks = excluded.tracks, albums = excluded.albums,"
+                 " checked_at = excluded.checked_at", (key, tracks, albums, at))
+    return {"tracks": tracks, "albums": albums, "at": at}
+
+
+def _quality_off() -> set[str]:
+    from api.config import _load
+    return set(_load().quality_off)
+
+
 @router.get("/issues")
-def get_issues():
-    """Return per-issue track counts for the quality panel."""
+def get_issues(compute: bool = True):
+    """
+    Every Quality check: {key: {tracks, albums, at, off}}. Checks that are on are run now
+    (compute=false: none are); the rest give their last stored result (tracks None if never run).
+    """
+    off = _quality_off()
     with db() as conn:
-        duplicates.refresh(conn)
+        stored = {r["key"]: {"tracks": r["tracks"], "albums": r["albums"], "at": r["checked_at"]}
+                  for r in conn.execute("SELECT * FROM quality_results")}
         result = {}
-        for key in _ISSUE_CLAUSES:
-            result[key] = conn.execute(
-                f"SELECT COUNT(*) FROM tracks WHERE {_issue_clause(key)}"
-            ).fetchone()[0]
-        rows = conn.execute("SELECT path FROM tracks").fetchall()
-        result["missing_files"] = sum(1 for r in rows if not Path(r["path"]).exists())
+        for key in ISSUE_KEYS:
+            run = compute and key not in off
+            entry = _check(conn, key) if run else stored.get(key, {"tracks": None, "albums": None, "at": None})
+            result[key] = {**entry, "off": key in off}
     return result
+
+
+@router.post("/issues/{key}/check")
+def check_issue(key: str):
+    """Run one Quality check now (on or off) and store its counts."""
+    if key not in ISSUE_KEYS:
+        raise HTTPException(404, "Unknown quality check")
+    with db() as conn:
+        return {**_check(conn, key), "off": key in _quality_off()}
 
 
 @router.get("/dead")
