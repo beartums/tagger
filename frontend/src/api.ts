@@ -155,6 +155,9 @@ export interface AlbumRow {
 
 export interface RescanResult { at: number; ok: boolean; message: string }
 
+/** Characters in names: smart colons, per-character replacements, and the rest. */
+export interface Naming { smart_colon: boolean; chars: Record<string, string>; other: string }
+
 export interface LidarrNaming {
   replace_illegal: boolean
   colon: AppSettings['naming_colon']
@@ -187,7 +190,9 @@ export interface AppSettings {
   cover_folder_size: number
   browse_paths: Record<string, string[]>
   naming_replace_illegal: boolean
-  naming_colon: 'smart' | 'delete' | 'dash' | 'space_dash' | 'space_dash_space'
+  naming_colon: 'smart' | 'delete' | 'dash' | 'space_dash' | 'space_dash_space' | 'chars'
+  naming_chars: Record<string, string> | null    // null: from the two Lidarr settings above
+  naming_other: string
   lidarr_url: string
   lidarr_api_key: string
   navidrome_url: string
@@ -574,7 +579,7 @@ export const api = {
       request<{ active: boolean; removed?: number; job_id?: string | null }>('POST', '/api/config/libraries', { path, active }),
     update: (s: Partial<AppSettings>) => request<AppSettings>('PATCH', '/api/config', s),
     renamePreview: (template: string, tags?: Record<string, string>, ext?: string, trackId?: number,
-                    naming?: { replace_illegal: boolean; colon: string }) =>
+                    naming?: Naming) =>
       request<{ ok: boolean; preview?: string; path?: string; error?: string }>(
         'POST', '/api/config/rename-preview', { template, tags, ext, track_id: trackId, ...naming }),
   },
