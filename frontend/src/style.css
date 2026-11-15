@@ -817,6 +817,9 @@ body.resizing-pane, body.resizing-pane * { cursor: col-resize !important; user-s
 }
 .page-controls { display: inline-flex; align-items: center; gap: 16px; }
 .page-nav[hidden], .page-size-wrap[hidden] { display: none; }
+
+/* Sheet mode edits cells only: no row checkboxes. */
+body.grid-editing .track-table .col-check { display: none; }
 .page-nav { display: inline-flex; align-items: center; gap: 4px; }
 .page-nav button {
   padding: 0 8px; border: 1px solid var(--border); border-radius: 4px;

@@ -26,7 +26,7 @@ import { openFindReplace } from './findreplace'
 import { openAssignGroup, renderLyricsGroups, wireLyricsGroups, readLyricsGroups, libraryGroupSelect, renderGroupLayouts } from './lyricsgroups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
-import { initGridEdit, gridView, gridCell, gridBeforeRender, gridAfterRender, gridActive } from './gridedit'
+import { initGridEdit, gridView, gridCell, gridBeforeRender, gridAfterRender, gridActive, gridCommit } from './gridedit'
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
@@ -1045,7 +1045,32 @@ function renderEditorFile(t: Track | null) {
     ${t.layout_path && !t.staged?.new_path ? `<div class="editor-file-layout" data-diff-from="${esc(sourcePath(t.path))}" data-diff-to="${esc(sourcePath(t.layout_path))}">Layout puts it at ${esc(shortPath(t.layout_path))}</div>` : ''}`
 }
 
+// The tag editor's unsaved changes: typed fields and chip adds/removes.
+let editorFor = new Set<number>()   // the tracks the form was last filled for
+function editorDirty(): boolean {
+  if (tagEditor.hidden) return false
+  return !!tagForm.querySelector('[data-dirty="1"]') || [...valueChips.values()].some(c => c.dirty)
+}
+function clearEditorDirty() {
+  tagForm.querySelectorAll<HTMLElement>('[data-dirty="1"]').forEach(el => delete el.dataset.dirty)
+}
+window.addEventListener('beforeunload', (e) => { if (editorDirty()) { e.preventDefault(); e.returnValue = '' } })
+const sameSet = (a: Set<number>, b: Set<number>) => a.size === b.size && [...a].every(x => b.has(x))
+
+/**
+ * Every selection change ends here. With unsaved editor changes for other tracks,
+ * ask first; Cancel puts the selection back. Same tracks: keep the typed values.
+ */
 function renderEditor() {
+  let keep = false
+  if (editorDirty()) {
+    if (sameSet(state.selectedIds, editorFor)) keep = true
+    else if (!confirm('Discard your unsaved changes in the tag editor?')) {
+      state.selectedIds.clear(); editorFor.forEach(id => state.selectedIds.add(id))
+      renderTracks()
+      return
+    } else clearEditorDirty()
+  }
   if (state.selectedIds.size === 0) { tagEditor.hidden = true; editorResizer.hidden = true; lookupPanel.hidden = true; state.pendingCoverAlbumId = null; state.pendingLookupResult = null; playerEl.pause(); playerEl.hidden = true; editorRenamePreviewEl.hidden = true; return }
   tagEditor.hidden = false
   editorResizer.hidden = false
@@ -1059,7 +1084,7 @@ function renderEditor() {
   const n = state.selectedIds.size
   editorTitle.textContent = n === 1 && sel.length === 1 ? (sel[0].title || sel[0].filename) : `${n.toLocaleString()} tracks`
   renderEditorFile(n === 1 && sel.length === 1 ? sel[0] : null)
-  fillEditorForm()
+  if (!keep) fillEditorForm()
   updateCoverPreview()
   updatePlayer()
   updateEditorRenamePreview()
@@ -1201,6 +1226,7 @@ const compilationCheckbox = () => tagForm.elements.namedItem('compilation') as H
  */
 let formToken = 0
 async function fillEditorForm() {
+  editorFor = new Set(state.selectedIds)
   const sel = state.tracks.filter(t => state.selectedIds.has(t.id))
   if (sel.length === state.selectedIds.size) {
     setReadOnly(sel.filter(t => t.read_only).length, sel.length)
@@ -1888,6 +1914,7 @@ async function expandDirNode(node: DirNode) {
 }
 
 async function loadTracks() {
+  gridCommit()
   recordView()
   trackLoading.hidden = false
   trackTbody.innerHTML = ''
@@ -2921,11 +2948,20 @@ initGridEdit({
   rerender: renderTracks,
   staging: () => stageChanges,
   afterStage: res => res?.staged ? refreshAfterStage() : refreshAfterWrite(),
+  // Sheet mode edits in the table only: no selection, so no tag editor beside it.
+  beforeStart: () => {
+    state.selectedIds.clear(); albumPicks.clear()
+    renderEditor()                       // asks first if the editor has unsaved changes
+    if (state.selectedIds.size) return false
+    renderTracks()
+    return true
+  },
 })
 
 trackTbody.addEventListener('click', async (e) => {
   const search = (e.target as HTMLElement).closest<HTMLElement>('[data-lyrics-search]')
   if (search) { openLyricsSearch(Number(search.dataset.lyricsSearch), undefined, refreshAfterEdit); return }
+  if (gridActive()) return   // sheet mode: clicks edit cells, they don't select
   const tr = (e.target as HTMLElement).closest<HTMLTableRowElement>('tr')
   if (!tr) return
   const id = parseInt(tr.dataset.id!, 10)
@@ -3075,6 +3111,7 @@ filterFormatEl.addEventListener('change',  () => { state.filterFormat  = filterF
 document.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement
   if (target.matches('input, textarea, select') || target.isContentEditable) return
+  if (gridActive() && (e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) return
 
   if (e.key === 'Escape') {
     if (!tagEditor.hidden) {
