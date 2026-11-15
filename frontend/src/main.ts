@@ -2590,19 +2590,53 @@ document.getElementById('mb-album-btn')!.addEventListener('click', async () => {
 // new tab (the server builds the fields); MusicBrainz sends you back with
 // ?release_mbid=… once it's submitted (handleMbReturn).
 const MB_ADD_KEY = 'tggr.mbAddPending'
+// MusicBrainz opens in a tab tggr names, and its redirect back lands there.
+// That tab hands the new release to the tab that started it (this page,
+// found by TAB_ID over a BroadcastChannel) and closes, so you carry on in
+// the view you left. If that tab is gone, the returning tab carries on itself.
+const MB_WINDOW = 'tggr-musicbrainz'
+const TAB_ID = Math.random().toString(36).slice(2)
+const mbChannel = 'BroadcastChannel' in window ? new BroadcastChannel('tggr-musicbrainz') : null
+
+function mbPending(): { ids: number[]; at: number; tab?: string } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(MB_ADD_KEY) || 'null')
+    return v && Date.now() - v.at < 864e5 ? v : null
+  } catch { return null }
+}
+
+mbChannel?.addEventListener('message', (e: MessageEvent) => {
+  const d = e.data as { type?: string; release?: string }
+  if (d?.type !== 'added' || !d.release) return
+  const v = mbPending()
+  if (!v || v.tab !== TAB_ID) return                 // another tggr tab started it
+  try { localStorage.removeItem(MB_ADD_KEY) } catch { /* storage blocked */ }
+  mbChannel.postMessage({ type: 'taken', release: d.release })
+  window.focus()
+  mbAddedNext(v.ids, d.release)
+})
+
 document.getElementById('mb-add-btn')!.addEventListener('click', async () => {
   const ids = [...state.selectedIds]
   if (!ids.length) return
+  // Opened now, while the click still counts: a window opened after the
+  // artist lookups (up to ~20 s) would be blocked as a popup.
+  const win = window.open('', MB_WINDOW)
+  win?.document.write('<p style="font: 15px system-ui; padding: 2em">Looking up the artists on MusicBrainz…</p>')
   let seed
   toast('Looking up the artists on MusicBrainz…', 'info')
-  try { seed = await api.lookup.mbSeed(ids, location.origin + location.pathname) } catch (e) { toast(`Add to MusicBrainz: ${errText(e)}`, 'error'); return }
-  try { localStorage.setItem(MB_ADD_KEY, JSON.stringify({ ids, at: Date.now() })) } catch { /* storage blocked */ }
+  try { seed = await api.lookup.mbSeed(ids, location.origin + location.pathname) } catch (e) {
+    win?.close()
+    toast(`Add to MusicBrainz: ${errText(e)}`, 'error'); return
+  }
+  try { localStorage.setItem(MB_ADD_KEY, JSON.stringify({ ids, at: Date.now(), tab: TAB_ID })) } catch { /* storage blocked */ }
   const form = document.createElement('form')
-  form.method = 'POST'; form.action = seed.action; form.target = '_blank'; form.acceptCharset = 'UTF-8'
+  form.method = 'POST'; form.action = seed.action; form.target = win ? MB_WINDOW : '_blank'; form.acceptCharset = 'UTF-8'
   for (const [k, v] of seed.fields) {
     const i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = v; form.appendChild(i)
   }
   document.body.appendChild(form); form.submit(); form.remove()
+  win?.focus()
   const a = seed.artists
   const todo = [
     a.ambiguous.length ? `pick ${a.ambiguous.join(', ')} (several on MusicBrainz)` : '',
@@ -2611,23 +2645,35 @@ document.getElementById('mb-add-btn')!.addEventListener('click', async () => {
   ].filter(Boolean)
   toast(`MusicBrainz is open with ${seed.album} filled in${a.linked ? `, ${plural(a.linked, 'artist')} already linked` : ''}.`
     + (todo.length ? ` Still to do there: ${todo.join('; ')}.` : ' Check it and submit.')
-    + ' It sends you back here afterwards.', 'info', 12000)
+    + ' When you submit, this tab carries on.', 'info', 12000)
 })
 
+/** This page is MusicBrainz's redirect back (?release_mbid=…): hand it to the tab that started it. */
 function handleMbReturn() {
   const p = new URLSearchParams(location.search)
   const rel = p.get('release_mbid')
   if (!rel) return
   p.delete('release_mbid')
   history.replaceState(history.state, '', location.pathname + (p.toString() ? '?' + p : '') + location.hash)
-  let ids: number[] = []
-  try {
-    const v = JSON.parse(localStorage.getItem(MB_ADD_KEY) || 'null')
-    if (v && Date.now() - v.at < 864e5) ids = v.ids
-    localStorage.removeItem(MB_ADD_KEY)
-  } catch { /* storage blocked */ }
-  if (!ids.length) { toast(`Added to MusicBrainz (${rel}). Select the album and Match it to fill its IDs.`, 'success', 8000); return }
-  mbAddedNext(ids, rel)
+  const carryOn = () => {
+    const v = mbPending()
+    try { localStorage.removeItem(MB_ADD_KEY) } catch { /* storage blocked */ }
+    if (!v) { toast(`Added to MusicBrainz (${rel}). Select the album and Match it to fill its IDs.`, 'success', 8000); return }
+    mbAddedNext(v.ids, rel)
+  }
+  if (!mbChannel || !mbPending()?.tab) { carryOn(); return }
+  let taken = false
+  const onMsg = (e: MessageEvent) => {
+    if (e.data?.type !== 'taken' || e.data.release !== rel) return
+    taken = true
+    mbChannel.removeEventListener('message', onMsg)
+    window.close()
+    // Still open (the browser wouldn't let a page close this tab): say where to look.
+    setTimeout(() => toast('Added to MusicBrainz: carry on in the tggr tab you started from. This tab can be closed.', 'success', 15000), 300)
+  }
+  mbChannel.addEventListener('message', onMsg)
+  mbChannel.postMessage({ type: 'added', release: rel })
+  setTimeout(() => { if (!taken) { mbChannel.removeEventListener('message', onMsg); carryOn() } }, 1500)
 }
 
 /**
