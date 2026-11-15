@@ -49,16 +49,18 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
         <span class="fix-confirm-title">Match albums on MusicBrainz · ${albums.length} albums</span>
         <button class="btn btn-ghost btn-icon fix-confirm-close" aria-label="Close">✕</button>
       </div>
-      <div class="pr-options mbb-fields" id="mbb-fields">
-        ${FIELDS.map(f => `<label class="settings-toggle"><input type="checkbox" data-field="${f.key}" checked /><span>${f.label}</span></label>`).join('')}
-        <label class="settings-toggle"><input type="checkbox" id="mbb-orig" checked /><span>Original year</span></label>
-        <label class="settings-toggle" title="Off: replace the genre and composer tracks already have"><input type="checkbox" id="mbb-keep" checked /><span>Keep existing genre &amp; composer</span></label>
-        <label class="settings-toggle" title="Written now, not staged; ticked per album only where it has no cover yet"><input type="checkbox" data-field="cover" checked /><span>Cover art</span></label>
+      <div class="mbb-fields" id="mbb-fields">
+        <span class="mbb-fields-h">Write</span>
+        ${FIELDS.map(f => `<button type="button" class="tog" data-field="${f.key}" aria-pressed="true" title="Click to leave it out for every album">${f.label}</button>`).join('')}
+        <button type="button" class="tog" data-field="cover" aria-pressed="true" title="Written now, not staged; on per album only where it has no cover yet">Cover art</button>
+        <span class="mbb-fields-h">Options</span>
+        <button type="button" class="tog" id="mbb-orig" aria-pressed="true" title="The first release's year, not this edition's">Original year</button>
+        <button type="button" class="tog" id="mbb-keep" aria-pressed="true" title="Off: replace the genre and composer tracks already have">Keep existing genre &amp; composer</button>
       </div>
       <div class="bc-body"><table class="track-table bc-table mbb-table"><thead><tr>
-        <th class="bc-check"><input type="checkbox" id="mbb-all" title="All found matches" /></th><th>Now</th><th>MusicBrainz</th><th></th>
+        <th class="bc-check"><input type="checkbox" id="mbb-all" title="All found matches" /></th><th>Your album → its MusicBrainz match</th><th></th>
       </tr></thead><tbody></tbody></table></div>
-      <div class="settings-hint bc-where" id="mbb-hint">Click a tag (or one genre, or the cover) to leave it out for that album. Album-level tags only (composer goes to the tracks that pair with the release); titles and track numbers: Review… one album.</div>
+      <div class="settings-hint bc-where" id="mbb-hint">Only what would change is listed. Click a line (or one genre, or the new cover) to leave it out for that album. Titles and track numbers: <strong>Review…</strong>.</div>
       <div class="fix-confirm-footer">
         <span id="mbb-sum" class="ma-dim bc-sum"></span>
         <button class="btn btn-ghost" id="mbb-cancel">Cancel</button>
@@ -68,8 +70,9 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
   document.body.appendChild(overlay)
   const $ = <T extends HTMLElement>(sel: string) => overlay.querySelector<T>(sel)!
   const tbody = $('tbody'), goBtn = $<HTMLButtonElement>('#mbb-go'), sumEl = $('#mbb-sum'), allEl = $<HTMLInputElement>('#mbb-all')
-  const origEl = $<HTMLInputElement>('#mbb-orig')
-  const fieldOn = (f: string) => overlay.querySelector<HTMLInputElement>(`#mbb-fields input[data-field="${f}"]`)!.checked
+  const pressed = (el: Element) => el.getAttribute('aria-pressed') === 'true'
+  const origOn = () => pressed($('#mbb-orig')), keepOn = () => pressed($('#mbb-keep'))
+  const fieldOn = (f: string) => pressed(overlay.querySelector(`#mbb-fields [data-field="${f}"]`)!)
 
   const close = async () => {
     if (busy) return
@@ -98,57 +101,74 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
     const tr = tbody.querySelector<HTMLElement>(`tr[data-i="${i}"]`) ?? tbody.appendChild(document.createElement('tr'))
     tr.dataset.i = String(i)
     const cur = m?.current ?? { album: a.album, album_artist: a.artist, year: null, genre: null }
-    const now = [cur.album || '(no album)', cur.album_artist, cur.year, cur.genre].filter(Boolean)
     const hasCover = a.folder || a.embedded > 0
-    let theirs = ''
+    const nTracks = `${a.track_ids.length} track${a.track_ids.length !== 1 ? 's' : ''}`
+    const title = `<div class="mbb-title">${esc(cur.album || '(no album)')}${cur.album_artist ? ` <span class="mbb-by">· ${esc(cur.album_artist)}</span>` : ''}</div>
+      <div class="ma-dim bc-folder" title="${esc(a.directory)}">${esc(shortPath(a.directory))} · ${nTracks}</div>`
+    const myCover = `<img class="mbb-cover" src="/api/covers/${a.track_ids[0]}" alt="" title="Its cover now" onerror="this.outerHTML='<span class=&quot;mbb-cover mbb-cover-none&quot; title=&quot;No cover now&quot;>no art</span>'" />`
+    let covers = myCover, score = '', lines = '', same = ''
     if (m) {
       const rel = m.release
-      const year = (origEl.checked ? rel.original_year : null) || rel.year
-      // Each tag is a chip: click to leave it out for this album. A value that
-      // would change is highlighted (genre: only where the tracks have none, when kept).
-      const keeping = $<HTMLInputElement>('#mbb-keep').checked
-      const chip = (f: string, v: string | null | undefined, had: string | null | undefined, title: string, value?: string) => {
-        if (!v) return ''
-        const kept = keeping && f === 'genre' && !!had
-        const off = !fieldOn(f) || r.off.has(f) || (value !== undefined && r.offGenres.has(value))
-        const cls = off || kept ? 'mbb-off' : had !== undefined && v === had ? '' : 'mbb-new'
-        const why = !fieldOn(f) ? 'Off for every album (the switches above)' : kept ? 'Kept: the tracks already have a genre'
-          : `${title} — click to ${off ? 'include it' : 'leave it out'} for this album`
-        return `<button type="button" class="mbb-chip ${cls}" data-chip="${f}" ${value !== undefined ? `data-value="${esc(value)}"` : ''}
-          title="${esc(why)}" ${fieldOn(f) && !busy && !kept ? '' : 'disabled'}>${esc(v)}</button>`
-      }
-      const genres = splitGenres(rel.genre)
-      const curGenres = new Set(splitGenres(cur.genre).map(g => g.toLowerCase()))
-      const genreChips = genres.map(g => chip('genre', g, cur.genre ? (curGenres.has(g.toLowerCase()) ? g : cur.genre) : null, 'Genre', g)).join('')
+      const year = (origOn() ? rel.original_year : null) || rel.year
       const paired = m.items.filter(it => it.key)
-      const writers = new Set(paired.map(it => m.release_tracks.find(t => t.key === it.key)?.composer).filter(Boolean))
-      const matched = paired.length
-      const coverCell = r.cover
+      const writers = [...new Set(paired.map(it => m.release_tracks.find(t => t.key === it.key)?.composer).filter(Boolean))] as string[]
+      const cls = r.paired >= GOOD ? 'mb-good' : r.paired >= 0.5 ? 'mb-ok' : 'mb-bad'
+      score = `<span class="mb-score ${cls}" title="Your tracks whose title (or number and length) pairs with one of its tracks · overall fit ${Math.round(r.quality * 100)}%">${paired.length} of ${m.items.length} tracks match</span>`
+        + `<div class="ma-dim bc-folder">${[rel.date, rel.country, `${m.release_tracks.length} on the release`].filter(Boolean).map(x => esc(String(x))).join(' · ')}</div>`
+      // One line per field that would change: label · now → MusicBrainz. Click to leave it out.
+      const sameAs: string[] = []
+      const line = (f: string, label: string, now: string | null | undefined, next: string, nextHtml = esc(next)) => {
+        if (!next) return ''
+        if ((now ?? '') === next) { sameAs.push(label); return '' }
+        const off = !fieldOn(f) || r.off.has(f)
+        const why = !fieldOn(f) ? 'Off for every album (Write, above)' : `Click to ${off ? 'write it' : 'leave it out'} for this album`
+        return `<button type="button" class="mbb-line${off ? ' mbb-line-off' : ''}" data-chip="${f}" title="${esc(why)}" ${fieldOn(f) && !busy ? '' : 'disabled'}>
+          <span class="mbb-l">${label}</span><span class="mbb-now">${now ? esc(now) : '<i>none</i>'}</span><span class="mbb-arrow">→</span><span class="mbb-next">${nextHtml}</span></button>`
+      }
+      // Genres: one chip each (click one to leave it out); kept when the tracks have one and Keep is on.
+      const genres = splitGenres(rel.genre)
+      const kept = keepOn() && !!cur.genre
+      let genreLine = ''
+      if (genres.length && genres.join('; ').toLowerCase() !== (cur.genre ?? '').toLowerCase()) {
+        const chips = genres.map(g => {
+          const off = !fieldOn('genre') || r.off.has('genre') || r.offGenres.has(g) || kept
+          return `<button type="button" class="mbb-chip${off ? ' mbb-off' : ''}" data-chip="genre" data-value="${esc(g)}" ${fieldOn('genre') && !busy && !kept ? '' : 'disabled'}
+            title="${esc(kept ? 'Kept: the tracks already have a genre (Keep existing, above)' : `Click to ${off ? 'add' : 'leave out'} ${g}`)}">${esc(g)}</button>`
+        }).join('')
+        genreLine = `<div class="mbb-line mbb-line-static${kept || !fieldOn('genre') ? ' mbb-line-off' : ''}"><span class="mbb-l">Genre</span><span class="mbb-now">${cur.genre ? esc(cur.genre) : '<i>none</i>'}</span><span class="mbb-arrow">→</span><span class="mbb-next mbb-chips">${chips}${kept ? ' <span class="ma-dim">kept</span>' : ''}</span></div>`
+      } else if (genres.length) sameAs.push('Genre')
+      const had = [...new Set(m.items.map(it => it.composer).filter(Boolean))] as string[]
+      const curComp = had.length ? `${had.slice(0, 2).join(', ')}${had.length > 2 ? ` +${had.length - 2}` : ''}` : ''
+      const comp = writers.length ? `${writers.slice(0, 2).join(', ')}${writers.length > 2 ? ` +${writers.length - 2}` : ''}` : ''
+      lines = [
+        line('album', 'Album', cur.album, rel.album ?? ''),
+        line('album_artist', 'Album artist', cur.album_artist, rel.album_artist ?? ''),
+        line('year', 'Year', cur.year, year ? String(year) : ''),
+        genreLine,
+        line('composer', 'Composer', curComp || null, comp),
+        line('mb', 'MusicBrainz IDs', null, 'added to every track'),
+      ].join('')
+      same = sameAs.length ? `<div class="mbb-same">Already the same: ${sameAs.join(', ')}</div>` : ''
+      const newCover = r.cover
         ? `<button type="button" class="mbb-cover ${coverOn(r) ? '' : 'mbb-cover-off'}" data-chip="cover" ${fieldOn('cover') && !busy ? '' : 'disabled'}
              title="${esc(`${r.cover.label}${hasCover ? ' · this album already has a cover' : ''} — click to ${coverOn(r) ? 'leave it out' : 'write it'}`)}"><img src="${esc(r.cover.preview)}" alt="" /></button>`
         : `<span class="mbb-cover mbb-cover-none">${r.coverCheck === 'done' ? 'no art' : '…'}</span>`
-      theirs = `<div class="mbb-theirs">${coverCell}<div>
-        <div class="mbb-chips">${[chip('album', rel.album, cur.album, 'Album'), chip('album_artist', rel.album_artist, cur.album_artist, 'Album artist'),
-                        chip('year', year, cur.year, 'Year'), genreChips || '<span class="ma-dim">no genre</span>',
-                        chip('composer', writers.size ? `✎ ${[...writers].slice(0, 2).join(', ')}${writers.size > 2 ? ` +${writers.size - 2}` : ''}` : '', undefined, 'Composers of the paired tracks'),
-                        chip('mb', 'MB IDs', undefined, 'MusicBrainz IDs')]
-                       .filter(Boolean).join('')}</div>
-        <div class="ma-dim bc-folder">${[rel.date, rel.country, `${m.release_tracks.length} tracks`].filter(Boolean).map(x => esc(String(x))).join(' · ')}
-          · <span class="mb-score ${r.paired >= GOOD ? 'mb-good' : r.paired >= 0.5 ? 'mb-ok' : 'mb-bad'}" title="Your tracks whose title (or number and length) pairs with one of its tracks · overall fit ${Math.round(r.quality * 100)}%">${matched} of your ${m.items.length} tracks on it</span>
-          ${r.paired < GOOD ? ' — weak match, check it' : ''}</div></div></div>`
+      covers = `${myCover}<span class="mbb-arrow">→</span>${newCover}`
     }
     const status = {
-      waiting: '<span class="ma-dim">Waiting…</span>', searching: '<span class="ma-dim">Searching…</span>',
+      waiting: '<span class="ma-dim">Waiting…</span>', searching: '<span class="ma-dim">Searching MusicBrainz…</span>',
       none: '<span class="ma-dim">No release found — Review… to search by hand</span>',
       error: `<span class="review-error">${esc(r.note)}</span>`, found: '', staged: '',
     }[r.status]
+    tr.className = r.on && usable(r) ? '' : 'mbb-row-off'
     tr.innerHTML = `
-      <td class="bc-check"><input type="checkbox" ${r.on ? 'checked' : ''} ${usable(r) ? '' : 'disabled'} /></td>
-      <td class="bc-album"><div class="mbb-theirs"><img class="mbb-cover" src="/api/covers/${a.track_ids[0]}" alt="" onerror="this.style.visibility='hidden'" />
-        <div><div>${now.map(x => esc(String(x))).join(' · ')}</div>
-        <div class="ma-dim bc-folder" title="${esc(a.directory)}">${esc(shortPath(a.directory))} · ${a.track_ids.length} track${a.track_ids.length !== 1 ? 's' : ''}</div></div></div></td>
-      <td class="bc-album">${theirs}${status ? `<div>${status}</div>` : ''}${r.status === 'staged' ? `<div class="bc-done">✓ ${esc(r.note || 'Staged')}</div>` : ''}</td>
-      <td class="mbb-actions"><button type="button" class="btn btn-ghost btn-sm" data-review ${r.status === 'staged' || busy ? 'disabled' : ''}>Review…</button>
+      <td class="bc-check"><input type="checkbox" ${r.on ? 'checked' : ''} ${usable(r) ? '' : 'disabled'} aria-label="Stage this album" /></td>
+      <td class="bc-album">
+        <div class="mbb-head"><div class="mbb-covers">${covers}</div><div class="mbb-id">${title}</div><div class="mbb-score-wrap">${score}</div></div>
+        ${m ? `<div class="mbb-release">MusicBrainz: <strong>${esc(m.release.album ?? '')}</strong>${m.release.album_artist ? ` · ${esc(m.release.album_artist)}` : ''}${r.paired < GOOD ? ' <span class="mb-bad-note">— weak match, check it with Review…</span>' : ''}</div>` : ''}
+        ${lines ? `<div class="mbb-lines">${lines}</div>` : ''}${same}
+        ${status ? `<div>${status}</div>` : ''}${r.status === 'staged' ? `<div class="bc-done">✓ ${esc(r.note || 'Staged')}</div>` : ''}</td>
+      <td class="mbb-actions"><button type="button" class="btn btn-ghost btn-sm" data-review ${r.status === 'staged' || busy ? 'disabled' : ''} title="Match it track by track">Review…</button>
         ${usable(r) ? `<button type="button" class="btn btn-ghost btn-sm" data-pick-cover ${busy ? 'disabled' : ''} title="Another cover: search MusicBrainz, a URL or a file">Cover…</button>` : ''}</td>`
   }
   function summary() {
@@ -164,11 +184,17 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
   const renderAll = () => { rows.forEach((_, i) => renderRow(i)); summary() }
   renderAll()
 
-  $('#mbb-fields').addEventListener('change', renderAll)
+  $('#mbb-fields').addEventListener('click', e => {
+    const t = (e.target as HTMLElement).closest<HTMLButtonElement>('.tog')
+    if (!t || busy) return
+    t.setAttribute('aria-pressed', String(!pressed(t)))
+    renderAll()
+  })
   tbody.addEventListener('change', e => {
     const cb = e.target as HTMLInputElement
-    rows[Number(cb.closest<HTMLElement>('tr')!.dataset.i)].on = cb.checked
-    summary()
+    const i = Number(cb.closest<HTMLElement>('tr')!.dataset.i)
+    rows[i].on = cb.checked
+    renderRow(i); summary()
   })
   allEl.addEventListener('change', () => {
     rows.forEach(r => { if (usable(r)) r.on = allEl.checked })
@@ -267,8 +293,8 @@ export function openMbAlbums(albums: CoverAlbum[], onDone: () => Promise<void>) 
           for (const it of m.items) if (it.key) pairs[it.id] = it.key
           const genres = splitGenres(m.release.genre)
           const res = await api.lookup.albumApply({
-            mb_album_id: m.release.mb_album_id, pairs, fields, original_year: origEl.checked, cover: false,
-            keep: $<HTMLInputElement>('#mbb-keep').checked ? KEEP : [],
+            mb_album_id: m.release.mb_album_id, pairs, fields, original_year: origOn(), cover: false,
+            keep: keepOn() ? KEEP : [],
             unpaired: m.items.filter(it => !it.key).map(it => it.id),
             genre: r.offGenres.size ? genres.filter(g => !r.offGenres.has(g)).join('; ') : undefined,
           })

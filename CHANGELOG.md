@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Match albums is easier to read.** Each album is a header (cover now →
+  MusicBrainz cover, the album, how many tracks match) and a short table of
+  only what would change: field · now → MusicBrainz. Unchanged fields are
+  summed up in one line. Click a line (or one genre) to leave it out; the
+  Write and Options switches across the top are buttons, not checkboxes.
 - **The album view counts albums** in the side panel: Tags values and Quality
   checks show albums instead of tracks (hover for both).
 - **Album pager always says where you are**: "albums 1–60 of 60 · page 1 of
