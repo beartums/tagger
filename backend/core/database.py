@@ -8,7 +8,9 @@ from core.multivalue import has_value_sql
 
 def get_conn() -> sqlite3.Connection:
     """Return a raw connection. Caller is responsible for commit/close."""
-    conn = sqlite3.connect(str(settings.db_path), check_same_thread=False)
+    # timeout: how long a write waits for another connection's transaction (a scan
+    # batch, a staged edit) before "database is locked". The default 5 s was too short.
+    conn = sqlite3.connect(str(settings.db_path), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

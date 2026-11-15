@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import sqlite3
 import time
 from pathlib import Path
 from typing import Callable
@@ -44,6 +45,61 @@ def _excluded(path: str, patterns: list[str]) -> bool:
 #   2: embedded cover art: has_cover, its size in px and bytes.
 #   3: MusicBrainz IDs (they were written, never read back).
 READER_VERSION = 3
+
+
+_UPSERT = """
+                        INSERT INTO tracks (
+                            path, filename, directory, format, size, mtime, duration,
+                            bitrate, sample_rate, channels,
+                            title, artist, album, album_artist, year, genre,
+                            track_number, disc_number, comment, composer, bpm,
+                            lyrics, compilation, has_cover, cover_width, cover_height, cover_bytes,
+                            mb_track_id, mb_artist_id, mb_album_id, mb_album_artist_id,
+                            mb_release_group_id, mb_release_track_id, scanned_at
+                        ) VALUES (
+                            :path, :filename, :directory, :format, :size, :mtime, :duration,
+                            :bitrate, :sample_rate, :channels,
+                            :title, :artist, :album, :album_artist, :year, :genre,
+                            :track_number, :disc_number, :comment, :composer, :bpm,
+                            :lyrics, :compilation, :has_cover, :cover_width, :cover_height, :cover_bytes,
+                            :mb_track_id, :mb_artist_id, :mb_album_id, :mb_album_artist_id,
+                            :mb_release_group_id, :mb_release_track_id, :scanned_at
+                        )
+                        ON CONFLICT(path) DO UPDATE SET
+                            filename     = excluded.filename,
+                            directory    = excluded.directory,
+                            format       = excluded.format,
+                            size         = excluded.size,
+                            mtime        = excluded.mtime,
+                            duration     = excluded.duration,
+                            bitrate      = excluded.bitrate,
+                            sample_rate  = excluded.sample_rate,
+                            channels     = excluded.channels,
+                            title        = excluded.title,
+                            artist       = excluded.artist,
+                            album        = excluded.album,
+                            album_artist = excluded.album_artist,
+                            year         = excluded.year,
+                            genre        = excluded.genre,
+                            track_number = excluded.track_number,
+                            disc_number  = excluded.disc_number,
+                            comment      = excluded.comment,
+                            composer     = excluded.composer,
+                            bpm          = excluded.bpm,
+                            lyrics       = excluded.lyrics,
+                            compilation  = excluded.compilation,
+                            has_cover    = excluded.has_cover,
+                            cover_width  = excluded.cover_width,
+                            cover_height = excluded.cover_height,
+                            cover_bytes  = excluded.cover_bytes,
+                            mb_track_id  = excluded.mb_track_id,
+                            mb_artist_id = excluded.mb_artist_id,
+                            mb_album_id  = excluded.mb_album_id,
+                            mb_album_artist_id  = excluded.mb_album_artist_id,
+                            mb_release_group_id = excluded.mb_release_group_id,
+                            mb_release_track_id = excluded.mb_release_track_id,
+                            scanned_at   = excluded.scanned_at
+"""
 
 
 class ScanCancelled(Exception):
@@ -115,10 +171,29 @@ def scan_library(
         # (`existing` must stay intact: pruning vanished files below walks it.
         # Emptying it here made the 2026-11-02 re-read scan prune nothing.)
         reread = conn.execute("PRAGMA user_version").fetchone()[0] < READER_VERSION
+        pending: list[dict] = []
+        last_flush = time.monotonic()
+
+        def flush() -> None:
+            """Write the queued rows in one short transaction."""
+            nonlocal last_flush
+            if pending:
+                try:
+                    conn.executemany(_UPSERT, pending)
+                except sqlite3.Error:
+                    conn.rollback()
+                    for row in pending:              # one bad row mustn't drop the batch
+                        try:
+                            conn.execute(_UPSERT, row)
+                        except sqlite3.Error:
+                            pass
+                conn.commit()
+                pending.clear()
+            last_flush = time.monotonic()
 
         for i, fpath in enumerate(all_files):
             if stop():
-                conn.commit()           # keep what was read; skip pruning
+                flush()                 # keep what was read; skip pruning
                 raise ScanCancelled()
             try:
                 stat = os.stat(fpath)
@@ -132,61 +207,10 @@ def scan_library(
                             if tag not in scan_tags:
                                 tags.pop(tag, None)
                     p = Path(fpath)
-                    conn.execute(
-                        """
-                        INSERT INTO tracks (
-                            path, filename, directory, format, size, mtime, duration,
-                            bitrate, sample_rate, channels,
-                            title, artist, album, album_artist, year, genre,
-                            track_number, disc_number, comment, composer, bpm,
-                            lyrics, compilation, has_cover, cover_width, cover_height, cover_bytes,
-                            mb_track_id, mb_artist_id, mb_album_id, mb_album_artist_id,
-                            mb_release_group_id, mb_release_track_id, scanned_at
-                        ) VALUES (
-                            :path, :filename, :directory, :format, :size, :mtime, :duration,
-                            :bitrate, :sample_rate, :channels,
-                            :title, :artist, :album, :album_artist, :year, :genre,
-                            :track_number, :disc_number, :comment, :composer, :bpm,
-                            :lyrics, :compilation, :has_cover, :cover_width, :cover_height, :cover_bytes,
-                            :mb_track_id, :mb_artist_id, :mb_album_id, :mb_album_artist_id,
-                            :mb_release_group_id, :mb_release_track_id, :scanned_at
-                        )
-                        ON CONFLICT(path) DO UPDATE SET
-                            filename     = excluded.filename,
-                            directory    = excluded.directory,
-                            format       = excluded.format,
-                            size         = excluded.size,
-                            mtime        = excluded.mtime,
-                            duration     = excluded.duration,
-                            bitrate      = excluded.bitrate,
-                            sample_rate  = excluded.sample_rate,
-                            channels     = excluded.channels,
-                            title        = excluded.title,
-                            artist       = excluded.artist,
-                            album        = excluded.album,
-                            album_artist = excluded.album_artist,
-                            year         = excluded.year,
-                            genre        = excluded.genre,
-                            track_number = excluded.track_number,
-                            disc_number  = excluded.disc_number,
-                            comment      = excluded.comment,
-                            composer     = excluded.composer,
-                            bpm          = excluded.bpm,
-                            lyrics       = excluded.lyrics,
-                            compilation  = excluded.compilation,
-                            has_cover    = excluded.has_cover,
-                            cover_width  = excluded.cover_width,
-                            cover_height = excluded.cover_height,
-                            cover_bytes  = excluded.cover_bytes,
-                            mb_track_id  = excluded.mb_track_id,
-                            mb_artist_id = excluded.mb_artist_id,
-                            mb_album_id  = excluded.mb_album_id,
-                            mb_album_artist_id  = excluded.mb_album_artist_id,
-                            mb_release_group_id = excluded.mb_release_group_id,
-                            mb_release_track_id = excluded.mb_release_track_id,
-                            scanned_at   = excluded.scanned_at
-                        """,
-                        {
+                    # Queued, not written: a write here would hold the database lock while
+                    # the next files are read (seconds on a NAS), and edits staged meanwhile
+                    # failed with "database is locked". flush() writes the batch at once.
+                    pending.append({
                             "path": fpath,
                             "filename": p.name,
                             "directory": str(p.parent),
@@ -216,18 +240,19 @@ def scan_library(
                             "cover_bytes": tags.get("cover_bytes"),
                             **{f: tags.get(f) for f in MB_FIELDS},
                             "scanned_at": now,
-                        },
-                    )
+                        })
                     upserted += 1
 
             except Exception:
                 pass  # skip unreadable / permission-denied files
 
-            # Commit in batches and report progress
-            if (i + 1) % _BATCH_SIZE == 0:
-                conn.commit()
-                if progress_cb:
-                    progress_cb(i + 1, total)
+            # Write in batches (or every second, so a slow read doesn't sit on
+            # unsaved rows) and report progress.
+            if len(pending) >= _BATCH_SIZE or time.monotonic() - last_flush > 1.0:
+                flush()
+            if progress_cb and (i + 1) % _BATCH_SIZE == 0:
+                progress_cb(i + 1, total)
+        flush()
 
         for d, name in folder_art.items():
             covers.record_folder(conn, d, name)
