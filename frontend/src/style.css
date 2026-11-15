@@ -1639,3 +1639,10 @@ button.scan-status[hidden] { display: none; }
 .quality-check-row .tog { justify-self: start; text-align: left; white-space: nowrap; }
 .quality-check-result { font-size: 12px; color: var(--text-muted); }
 .quality-off { opacity: .55; }
+
+/* Album quality dots (worst track decides) and the album list's sortable headers. */
+.album-cover-wrap { position: relative; }
+.album-tile-dot { position: absolute; top: 6px; left: 6px; box-shadow: 0 0 0 2px var(--bg-panel); }
+.album-table .al-q { width: 22px; text-align: center; padding-left: 6px; padding-right: 0; }
+.album-table th.al-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.album-table th.al-sortable:hover { color: var(--text); }

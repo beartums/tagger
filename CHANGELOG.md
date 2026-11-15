@@ -12,6 +12,12 @@
   edit, and refilling it never cleared those. Now only what Save writes
   counts: a tag field whose value differs from what it was filled with, the
   Compilation box, or chip changes on a multi-track selection.
+- **Album quality dots**: the album list and album tiles get the same dot as
+  tracks, rated by the album's worst track; the tooltip says how many tracks
+  miss each thing ("no genre (3 of 10 tracks)"). Counted with the Quality
+  panel's own checks, and skipping the ones turned off in Settings → Quality.
+- **Sort the album list** by any column (click a header; again to reverse),
+  Quality included. Remembered per browser.
 - **The list's quality dot checks more**: red when a track has no title,
   artist or album; yellow for no album artist, year, track #, genre, cover art
   (in the file or the folder) or MusicBrainz album ID, or incomplete

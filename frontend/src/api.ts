@@ -134,6 +134,7 @@ export interface Album {
   album_artist: string | null
   track_count: number
   cover_track_id: number
+  quality: Record<string, number>      // per dot check: how many of its tracks fail it
 }
 
 export interface DuplicateTrack {
@@ -149,6 +150,7 @@ export interface AlbumRow {
   format: string | null; bitrate: number | null; cover_track_id: number; mixed: string[]
   values: Record<string, string[]>     // distinct values of each mixed field, most common first
   ids: number[]                        // its tracks (none when read-only)
+  quality: Record<string, number>      // per dot check: how many of its tracks fail it
 }
 
 export interface RescanResult { at: number; ok: boolean; message: string }

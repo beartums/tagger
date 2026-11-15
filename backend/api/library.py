@@ -260,6 +260,21 @@ def _track_filters(v: View) -> tuple[str, list, str]:
 
 ISSUE_KEYS = [*_ISSUE_CLAUSES, "missing_files"]
 
+# The per-track checks behind the quality dot (frontend quality.ts DOT_CHECKS, same keys).
+# Albums get, per check, how many of their tracks fail it -- the Quality panel's own SQL.
+DOT_KEYS = ("missing_title", "missing_artist", "missing_album", "missing_album_artist", "missing_year",
+            "missing_track_number", "missing_genre", "covers_none", "mb_no_album", "mb_no_release_group",
+            "mb_track_ids")
+
+
+def _dot_sums() -> str:
+    return ", ".join(f"SUM(CASE WHEN {_ISSUE_CLAUSES[k]} THEN 1 ELSE 0 END) AS q_{k}" for k in DOT_KEYS)
+
+
+def _dot_counts(r) -> dict[str, int]:
+    """{check: tracks failing it}, only the checks some track fails."""
+    return {k: r[f"q_{k}"] for k in DOT_KEYS if r[f"q_{k}"]}
+
 
 def _check(conn, key: str) -> dict:
     """Run one Quality check: tracks and albums (folders) it finds, stored with the time."""
@@ -703,6 +718,9 @@ def album_list(view: View = Depends()):
         rows = conn.execute(
             f"SELECT id, album, directory, track_number, disc_number, bitrate, "
             f"{', '.join(fields)} FROM tracks {where}", params).fetchall()
+        dots = {(q["directory"], q["a"]): _dot_counts(q) for q in conn.execute(
+            f"SELECT directory, COALESCE(album, '') AS a, {_dot_sums()} FROM tracks {where}"
+            f" GROUP BY directory, COALESCE(album, '')", params)}
     groups: dict[tuple, list] = {}
     for r in rows:
         groups.setdefault((r["directory"], r["album"] or ""), []).append(r)
@@ -710,6 +728,7 @@ def album_list(view: View = Depends()):
     for (directory, album), tracks in groups.items():
         row: dict = {"album": album, "directory": directory, "tracks": len(tracks),
                      "cover_track_id": min(t["id"] for t in tracks), "mixed": [], "values": {},
+                     "quality": dots.get((directory, album), {}),
                      # for multi-select; none when read-only (never bulk-selected)
                      "ids": [t["id"] for t in tracks] if os.access(directory, os.W_OK) else []}
         for f in fields:
@@ -754,11 +773,12 @@ def list_albums(artist: Optional[str] = None):
         rows = conn.execute(
             f"""
             SELECT album, COALESCE(artist, '') AS artist, album_artist,
-                   COUNT(*) AS track_count, MIN(id) AS cover_track_id
+                   COUNT(*) AS track_count, MIN(id) AS cover_track_id, {_dot_sums()}
             FROM tracks {where}
             GROUP BY COALESCE(artist, ''), album
             ORDER BY COALESCE(artist, '') COLLATE NOCASE, album COLLATE NOCASE
             """,
             params,
         ).fetchall()
-    return [_row(r) for r in rows]
+    return [{k: r[k] for k in ("album", "artist", "album_artist", "track_count", "cover_track_id")}
+            | {"quality": _dot_counts(r)} for r in rows]
