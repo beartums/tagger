@@ -19,6 +19,8 @@ interface Host {
   rerender: () => void
   staging: () => boolean
   afterStage: (res: EditResult | undefined) => Promise<void>
+  /** Before edit mode starts; false keeps it off (e.g. the tag editor has unsaved changes). */
+  beforeStart: () => boolean
 }
 
 let host: Host
@@ -82,16 +84,17 @@ function commit() {
   if (!cur) return
   const c = cur
   cur = null
+  // The row may have left the view (search, paging, Back) while the cell was open:
+  // the typed value is kept all the same.
   const t = track(c.id)
-  if (!t) return
-  const before = value(t, c.field)
+  const before = t ? value(t, c.field) : (edits.get(c.id)?.[c.field] ?? c.start)
   if (c.input.value !== before) {
     undoStack.push({ id: c.id, field: c.field, before, after: c.input.value })
     redoStack = []
     set(c.id, c.field, c.input.value)
   }
   c.td.classList.remove('grid-cell-active')
-  if (c.td.isConnected) paint(c.td, t, c.field)
+  if (t && c.td.isConnected) paint(c.td, t, c.field)
   updateButtons()
 }
 
@@ -262,6 +265,9 @@ async function stage() {
   updateButtons()
 }
 
+/** Close the open cell, keeping what was typed (before the view's tracks are replaced). */
+export function gridCommit() { commit() }
+
 /** Call before the table is rebuilt: keep the cell you're on. */
 export function gridBeforeRender() {
   if (cur) resume = { id: cur.id, field: cur.field }
@@ -280,6 +286,7 @@ export function initGridEdit(h: Host) {
   host = h
   btn().addEventListener('click', () => {
     if (!active) {
+      if (!host.beforeStart()) return
       active = true
       document.body.classList.add('grid-editing')
       host.rerender()

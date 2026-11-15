@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Sheet edit mode edits cells only**: no row checkboxes, no tag editor
+  beside it, and clicks (shift-click too) edit the cell instead of selecting.
+  Starting it asks first if the tag editor has unsaved changes.
+- **No silent loss of edits**: a value typed in an open table cell is kept
+  when the list changes under it (search, paging, Back). The tag editor asks
+  before any selection change (click, arrows, Esc, Clear, close) throws away
+  its unsaved changes, and keeps them when the same tracks are re-shown;
+  closing or reloading the tab asks too.
 - **One bar under the list**: the status bar is gone. Where you are, the
   pager (prev/next, editable top row, page N of M, rows per page) and the
   selection share one row below the track list, replacing the old Prev/Next.
