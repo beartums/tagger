@@ -976,7 +976,6 @@ function updateBulkBar() {
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
-const paginationEl = document.getElementById('pagination')!
 
 const paged = () => state.total > state.pageSize || state.offset > 0
 
@@ -985,25 +984,49 @@ async function movePage(dir: -1 | 1) {
   await loadTracks()
 }
 
+const pageNav     = document.getElementById('page-nav')!
+const pageTop     = document.getElementById('page-top') as HTMLInputElement
+const pageEnd     = document.getElementById('page-end')!
+const pageTotal   = document.getElementById('page-total')!
+const pageNum     = document.getElementById('page-num')!
+const pageCount   = document.getElementById('page-count')!
+const pagePrev    = document.getElementById('page-prev') as HTMLButtonElement
+const pageNext    = document.getElementById('page-next') as HTMLButtonElement
+const pageSizeWrap = document.getElementById('page-size-wrap')!
+const pageSize    = document.getElementById('page-size') as HTMLSelectElement
+pageSize.innerHTML = PAGE_SIZES.map(n => `<option value="${n}">${n}</option>`).join('')
+
+/** The bar under the list: where you are, the pager (when there's paging to do), the selection. */
 function renderPagination() {
-  if (!paged()) { paginationEl.hidden = true; return }
-  paginationEl.hidden = false
-  const start = state.offset + 1
-  const end   = Math.min(state.offset + state.pageSize, state.total)
-  paginationEl.innerHTML = `
-    <button class="btn btn-ghost btn-sm" id="page-prev" ${state.offset === 0 ? 'disabled' : ''}>← Prev</button>
-    <span class="page-info">${start.toLocaleString()}–${end.toLocaleString()} of ${state.total.toLocaleString()}</span>
-    <button class="btn btn-ghost btn-sm" id="page-next" ${end >= state.total ? 'disabled' : ''}>Next →</button>
-  `
-  document.getElementById('page-prev')!.addEventListener('click', async () => {
-    await movePage(-1)
-    paginationEl.scrollIntoView({ block: 'nearest' })
-  })
-  document.getElementById('page-next')!.addEventListener('click', async () => {
-    await movePage(1)
-    paginationEl.scrollIntoView({ block: 'nearest' })
-  })
+  const p = paged()
+  const sizable = state.total > PAGE_SIZES[0]
+  pageNav.hidden = !p
+  pageSizeWrap.hidden = !sizable
+  pageSize.value = String(state.pageSize)
+  if (!p) return
+  if (document.activeElement !== pageTop) pageTop.value = String(state.offset + 1)
+  pageTop.max = String(state.total)
+  pageEnd.textContent = (state.offset + state.tracks.length).toLocaleString()
+  pageTotal.textContent = state.total.toLocaleString()
+  pageNum.textContent = (Math.floor(state.offset / state.pageSize) + 1).toLocaleString()
+  pageCount.textContent = Math.ceil(state.total / state.pageSize).toLocaleString()
+  pagePrev.disabled = state.offset === 0
+  pageNext.disabled = state.offset + state.pageSize >= state.total
 }
+
+pagePrev.addEventListener('click', () => movePage(-1))
+pageNext.addEventListener('click', () => movePage(1))
+pageTop.addEventListener('change', () => {
+  const row = parseInt(pageTop.value, 10)
+  if (!(row >= 1)) { pageTop.value = String(state.offset + 1); return }
+  state.offset = Math.min(row, Math.max(1, state.total)) - 1
+  loadTracks()
+})
+pageSize.addEventListener('change', () => {
+  state.pageSize = Number(pageSize.value)
+  savePageSize(state.pageSize)
+  loadTracks()
+})
 
 // ─── Tag editor ───────────────────────────────────────────────────────────────
 
@@ -3661,18 +3684,6 @@ function showLogin() {
 // ─── Status bar ───────────────────────────────────────────────────────────────
 
 const statusWhere = document.getElementById('status-where')!
-const statusCount   = document.getElementById('status-count')!
-const statusPaging  = document.getElementById('status-paging')!
-const statusTop     = document.getElementById('status-top') as HTMLInputElement
-const statusEnd     = document.getElementById('status-end')!
-const statusTotal   = document.getElementById('status-total')!
-const statusPage    = document.getElementById('status-page')!
-const statusPages   = document.getElementById('status-pages')!
-const statusPrev    = document.getElementById('status-prev') as HTMLButtonElement
-const statusNext    = document.getElementById('status-next') as HTMLButtonElement
-const statusSizeWrap = document.getElementById('status-size-wrap')!
-const statusSize    = document.getElementById('status-size') as HTMLSelectElement
-statusSize.innerHTML = PAGE_SIZES.map(n => `<option value="${n}">${n}</option>`).join('')
 const statusSel   = document.getElementById('status-sel')!
 const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`
 
@@ -3691,21 +3702,6 @@ function updateStatusBar() {
   statusWhere.textContent = where.join(' › ')
   statusWhere.title = statusWhere.textContent
 
-  const p = paged()
-  statusCount.textContent = p ? '' : plural(state.total, 'track')
-  statusPaging.hidden = !p
-  statusSizeWrap.hidden = state.total <= PAGE_SIZES[0]
-  statusSize.value = String(state.pageSize)
-  if (p) {
-    if (document.activeElement !== statusTop) statusTop.value = String(state.offset + 1)
-    statusTop.max = String(state.total)
-    statusEnd.textContent = (state.offset + state.tracks.length).toLocaleString()
-    statusTotal.textContent = plural(state.total, 'track')
-    statusPage.textContent = (Math.floor(state.offset / state.pageSize) + 1).toLocaleString()
-    statusPages.textContent = Math.ceil(state.total / state.pageSize).toLocaleString()
-    statusPrev.disabled = state.offset === 0
-    statusNext.disabled = state.offset + state.pageSize >= state.total
-  }
 
   // Albums: the picked ones, else the folders of the selected tracks when they're all loaded.
   const n = state.selectedIds.size
@@ -3716,19 +3712,6 @@ function updateStatusBar() {
     : ''
 }
 
-statusPrev.addEventListener('click', () => movePage(-1))
-statusNext.addEventListener('click', () => movePage(1))
-statusTop.addEventListener('change', () => {
-  const row = parseInt(statusTop.value, 10)
-  if (!(row >= 1)) { statusTop.value = String(state.offset + 1); return }
-  state.offset = Math.min(row, Math.max(1, state.total)) - 1
-  loadTracks()
-})
-statusSize.addEventListener('change', () => {
-  state.pageSize = Number(statusSize.value)
-  savePageSize(state.pageSize)
-  loadTracks()
-})
 
 statusSel.addEventListener('click', (e) => {
   if (!(e.target as HTMLElement).closest('#status-clear')) return

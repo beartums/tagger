@@ -336,7 +336,20 @@ export const APP_HTML = `
       </div>
       <div id="album-grid" class="album-grid" style="display:none"></div>
       <div id="album-list" class="album-list" style="display:none"></div>
-      <div id="pagination" class="pagination" hidden></div>
+      <div id="pagination" class="pagination">
+        <span id="status-where" class="status-where"></span>
+        <span class="page-controls">
+        <span id="page-nav" class="page-nav">
+          <button type="button" id="page-prev" class="btn btn-ghost btn-sm" title="Previous page">‹</button>
+          rows <input id="page-top" class="page-top" type="number" min="1" title="The top row: type a row number to start the page there">–<span id="page-end"></span>
+          of <span id="page-total"></span>
+          <button type="button" id="page-next" class="btn btn-ghost btn-sm" title="Next page">›</button>
+          <span class="page-of">page <span id="page-num"></span> of <span id="page-count"></span></span>
+        </span>
+        <span id="page-size-wrap" class="page-size-wrap"><select id="page-size" class="page-size" title="Rows per page"></select> per page</span>
+        </span>
+        <span id="status-sel" class="status-sel"></span>
+      </div>
     </main>
 
     <div class="pane-resizer" id="editor-resizer" data-resize="editor" role="separator" aria-orientation="vertical"
@@ -401,19 +414,4 @@ export const APP_HTML = `
     </aside>
   </div>
 
-  <footer id="statusbar" class="statusbar">
-    <span id="status-where" class="status-where"></span>
-    <span id="status-view" class="status-view">
-      <span id="status-count"></span>
-      <span id="status-paging" hidden>
-        <button type="button" id="status-prev" class="btn btn-link" title="Previous page">‹</button>
-        rows <input id="status-top" class="status-top" type="number" min="1" title="The top row: type a row number to start the page there">–<span id="status-end"></span>
-        of <span id="status-total"></span>
-        <button type="button" id="status-next" class="btn btn-link" title="Next page">›</button>
-        · page <span id="status-page"></span> of <span id="status-pages"></span>
-      </span>
-      <span id="status-size-wrap" hidden>· <select id="status-size" class="status-size" title="Rows per page"></select> per page</span>
-    </span>
-    <span id="status-sel" class="status-sel"></span>
-  </footer>
 `

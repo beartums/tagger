@@ -807,19 +807,26 @@ body.resizing-pane, body.resizing-pane * { cursor: col-resize !important; user-s
 .fix-empty-note   { font-size: 12px; color: var(--text-muted); font-style: italic; margin: 0; }
 
 /* ─── Pagination ─────────────────────────────────────────────────────────────── */
+/* Prev/next, an editable top row, page N of M, and rows per page, under the list. */
+/* The bar under the list: where you are (left), the pager (centre), the selection (right). */
 .pagination {
-  display: flex; align-items: center; justify-content: center; gap: 12px;
-  padding: 10px 16px; border-top: 1px solid var(--border);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px;
+  min-height: 28px; padding: 2px 12px; border-top: 1px solid var(--border);
   background: var(--bg-panel); flex-shrink: 0;
+  font-size: 12px; color: var(--text-muted); white-space: nowrap;
 }
-.pagination[hidden] { display: none; }
-.pagination button {
-  padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px;
-  background: var(--bg-row); color: var(--text); cursor: pointer; font-size: 13px;
+.page-controls { display: inline-flex; align-items: center; gap: 16px; }
+.page-nav[hidden], .page-size-wrap[hidden] { display: none; }
+.page-nav { display: inline-flex; align-items: center; gap: 4px; }
+.page-nav button {
+  padding: 0 8px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-row); color: var(--text); cursor: pointer; font-size: 13px; line-height: 20px;
 }
-.pagination button:hover:not(:disabled) { background: var(--bg-hover); }
-.pagination button:disabled { opacity: 0.4; cursor: default; }
-.page-info { font-size: 13px; color: var(--text-muted); }
+.page-nav button:hover:not(:disabled) { background: var(--bg-hover); }
+.page-nav button:disabled { opacity: 0.4; cursor: default; }
+.page-of { margin-left: 8px; }
+.page-top { width: 7ch; font-size: 12px; padding: 0 2px; }
+.page-size { font-size: 12px; padding: 0 2px; }
 
 /* ─── Settings sidebar ───────────────────────────────────────────────────────── */
 
@@ -1564,18 +1571,8 @@ button.scan-status[hidden] { display: none; }
 .cc-preview { min-height: 200px; display: flex; align-items: center; justify-content: center; background: var(--surface2); border-radius: 6px; }
 .cc-preview img { max-width: 100%; max-height: 300px; }
 
-/* ─── Status bar: where you are, the view's size, the selection ─────────────── */
-.statusbar {
-  display: flex; align-items: center; gap: 16px; height: 26px; padding: 0 12px; flex-shrink: 0;
-  background: var(--surface); border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted);
-  white-space: nowrap;
-}
-.status-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.status-view .btn-link { font-size: 13px; padding: 0 4px; }
-.status-view .btn-link:disabled { opacity: .35; cursor: default; }
-.status-top { width: 7ch; font-size: 12px; padding: 0 2px; }
-.status-size { font-size: 12px; padding: 0 2px; }
-.status-sel { color: var(--accent); }
+.status-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status-sel { justify-self: end; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
 .status-sel:empty { display: none; }
 .status-sel .btn-link { font-size: 12px; margin-left: 6px; }
 

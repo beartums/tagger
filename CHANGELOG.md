@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **One bar under the list**: the status bar is gone. Where you are, the
+  pager (prev/next, editable top row, page N of M, rows per page) and the
+  selection share one row below the track list, replacing the old Prev/Next.
+  The track count stays in the toolbar.
 - **Browse paths in the Tags panel**: each tag opens down through the tags
   you choose, in your order (Genre › Album Artist › Album, Year › Genre, …).
   ✎ beside a tag opens its path: drag tags in or along it, × to remove (or
