@@ -127,7 +127,9 @@ function lineHtml(l: StagedLine, failures: Map<string, string>): string {
   const key = l.kind === 'folder' ? `dir:${l.src}` : `id:${l.id}`
   const err = failures.get(key)
   const shared = l.kind === 'folder' && l.new && /\/Shared(\/|$)/.test(l.src) && !/\/Shared(\/|$)/.test(l.new)
+  const x = l.kind === 'folder' ? `data-dir="${esc(l.src)}"` : `data-track="${l.id}" data-field="${l.kind === 'path' ? 'path' : esc(l.field)}"`
   return `<li class="rv-line${err ? ' rv-failed' : ''}">
+      <button type="button" class="rv-x" ${x} title="Don't write this one: drop it from what's staged (the file is untouched)" aria-label="Discard this change">✕</button>
       <span class="rv-what">${what}</span>
       <span class="rv-from">${from}</span><span class="rv-arrow">→</span><span class="rv-to">${to}</span>
       ${err ? `<span class="rv-note rv-err">⚠ ${esc(err)}</span>` : ''}
@@ -183,7 +185,8 @@ export async function openReview(onChanged: () => Promise<void>) {
           <span class="rv-caret">${isOpen ? '▾' : '▸'}</span>
           <span class="rv-summary">${esc(g.summary)}</span>
           <span class="rv-meta">${n.toLocaleString()} change${n !== 1 ? 's' : ''}${when ? ' · ' + esc(when) : ''}</span>
-          ${g.undo ? '<button class="btn btn-ghost btn-sm rv-undo" title="Undo this staged action (files are untouched)">↶ Undo</button>' : ''}
+          ${g.undo ? '<button class="btn btn-ghost btn-sm rv-undo" title="Undo the newest staged action: what it replaced comes back (files are untouched)">↶ Undo</button>' : ''}
+          ${g.key.startsWith('s') && g.details ? `<button class="btn btn-ghost btn-sm rv-discard" data-step="${g.key.slice(1)}" title="Drop what this action staged, whichever action it is; changes staged by other actions stay">Discard</button>` : ''}
         </div>
         ${isOpen ? `<ul class="rv-lines">${
           !g.details ? '<li class="rv-line rv-nodetail">Details weren\'t recorded for this action (staged before this version).</li>'
@@ -196,7 +199,7 @@ export async function openReview(onChanged: () => Promise<void>) {
 
     list.querySelectorAll<HTMLElement>('.rv-head').forEach(h => {
       h.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('.rv-undo')) return
+        if ((e.target as HTMLElement).closest('.rv-undo, .rv-discard')) return
         const k = h.dataset.key!
         open.has(k) ? open.delete(k) : open.add(k)
         render()
@@ -212,6 +215,26 @@ export async function openReview(onChanged: () => Promise<void>) {
         await render()
       } catch (err) {
         toast(`Undo failed: ${errText(err)}`, 'error')
+        b.disabled = false
+      }
+    })
+
+    // One action, or one change, dropped in any order.
+    list.addEventListener('click', async (e) => {
+      const t = e.target as HTMLElement
+      const act = t.closest<HTMLButtonElement>('.rv-discard')
+      const one = t.closest<HTMLButtonElement>('.rv-x')
+      if (!act && !one) return
+      const b = (act ?? one)!
+      b.disabled = true
+      try {
+        if (act) await api.staged.discardStep(Number(act.dataset.step))
+        else if (one!.dataset.dir) await api.staged.discard([], [one!.dataset.dir])
+        else await api.staged.discardPart(Number(one!.dataset.track), one!.dataset.field!)
+        await onChanged()
+        await render()
+      } catch (err) {
+        toast(`Discard failed: ${errText(err)}`, 'error')
         b.disabled = false
       }
     })
@@ -295,7 +318,7 @@ export async function openHistory(onChanged: () => Promise<void>) {
       m.body.innerHTML = '<p class="review-empty">No changes yet.</p>'
       return
     }
-    m.body.innerHTML = `<p class="review-hint">Undo works newest-first for each track. Cover art and ReplayGain aren't recorded.</p>`
+    m.body.innerHTML = `<p class="review-hint">Undo a whole change (newest first for each track), or open one to undo single fields and moves in any order. Cover art isn't recorded.</p>`
     const list = document.createElement('ul')
     list.className = 'history-list'
     for (const h of entries) {
@@ -303,6 +326,7 @@ export async function openHistory(onChanged: () => Promise<void>) {
       li.className = 'history-item' + (h.undone ? ' history-undone' : '')
       const when = new Date(h.ts * 1000).toLocaleString()
       li.innerHTML = `
+        <button type="button" class="history-open" data-id="${h.id}" aria-expanded="false" title="Show what it changed, to undo one piece">▸</button>
         <div class="history-main">
           <span class="history-summary">${esc(h.summary)}</span>
           <span class="history-meta">${esc(when)}${h.count ? ` · ${h.count} track${h.count !== 1 ? 's' : ''}` : ''}</span>
@@ -312,6 +336,45 @@ export async function openHistory(onChanged: () => Promise<void>) {
       list.appendChild(li)
     }
     m.body.appendChild(list)
+    list.querySelectorAll<HTMLButtonElement>('.history-open').forEach(b => {
+      b.addEventListener('click', async () => {
+        const li = b.closest('li')!
+        const open = li.querySelector('.history-parts')
+        if (open) { open.remove(); b.textContent = '▸'; b.setAttribute('aria-expanded', 'false'); return }
+        b.textContent = '▾'; b.setAttribute('aria-expanded', 'true')
+        await showParts(li, Number(b.dataset.id))
+      })
+    })
+    const showParts = async (li: HTMLElement, id: number) => {
+      li.querySelector('.history-parts')?.remove()
+      const ul = document.createElement('ul')
+      ul.className = 'history-parts'
+      li.appendChild(ul)
+      let r
+      try { r = await api.library.historyParts(id) } catch (e) { ul.innerHTML = `<li>${esc(errText(e))}</li>`; return }
+      if (!r.parts) { ul.innerHTML = '<li class="ma-dim">Written before single-field undo: undo it whole.</li>'; return }
+      const label = (f: string) => f === 'path' ? 'location' : (FIELD_LABELS[f] ?? f)
+      const val = (f: string, v: string | null) => f === 'path' && v ? esc(shortPath(v)) : fmtVal(v)
+      ul.innerHTML = r.parts.map(p => `<li class="history-part${p.undone ? ' history-undone' : ''}">
+          <span class="rv-what"><span class="rv-subject">${esc(p.name)}</span> · ${esc(label(p.field))}</span>
+          <span class="rv-from">${val(p.field, p.old)}</span><span class="rv-arrow">→</span><span class="rv-to">${val(p.field, p.new)}</span>
+          ${p.undone ? '<span class="history-badge">Undone</span>'
+            : p.blocked ? `<span class="history-blocked" title="${esc(p.blocked)}">can't yet</span>`
+            : `<button class="btn btn-ghost btn-sm history-undo-part" data-track="${p.track_id}" data-field="${esc(p.field)}">Undo</button>`}
+        </li>`).join('')
+      ul.querySelectorAll<HTMLButtonElement>('.history-undo-part').forEach(pb => pb.addEventListener('click', async () => {
+        pb.disabled = true
+        try {
+          const u = await api.library.undoPart(id, Number(pb.dataset.track), pb.dataset.field!)
+          await onChanged()
+          if (u.change_undone) await render()
+          else await showParts(li, id)
+        } catch (e) {
+          toast(`Undo failed: ${errText(e)}`, 'error')
+          pb.disabled = false
+        }
+      }))
+    }
     list.querySelectorAll<HTMLButtonElement>('.history-undo').forEach(b => {
       b.addEventListener('click', async () => {
         b.disabled = true

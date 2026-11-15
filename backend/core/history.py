@@ -46,17 +46,21 @@ def snapshot(row) -> dict:
 
 
 def log_change(conn, kind: str, summary: str, snapshots: list[dict],
-               dirs: list[dict] | None = None, files: list[dict] | None = None) -> int | None:
+               dirs: list[dict] | None = None, files: list[dict] | None = None,
+               changes: dict[int, dict] | None = None) -> int | None:
     """
     Record an undoable change within the caller's transaction. Returns its id.
     `dirs` are whole-folder moves ({src, dst}) made by the change; undo moves
     each folder back in one piece before restoring the tracks. `files` are
     other files it moved ({src, dst}: cover art out of emptied folders),
-    moved back after the tracks.
+    moved back after the tracks. `changes` is what it set on each track
+    ({track id: {field: new value, "path": new path if moved}}): with it, any
+    one field or move can be undone on its own (undo_part).
     """
     if not snapshots and not dirs:
         return None
-    data = {"tracks": snapshots, **({"dirs": dirs} if dirs else {}), **({"files": files} if files else {})}
+    data = {"tracks": snapshots, **({"dirs": dirs} if dirs else {}), **({"files": files} if files else {}),
+            **({"changes": {str(k): v for k, v in changes.items()}} if changes else {})}
     cur = conn.execute(
         "INSERT INTO change_log (ts, kind, summary, data, undone) VALUES (?, ?, ?, ?, 0)",
         (time.time(), kind, summary, json.dumps(data)),
@@ -90,7 +94,7 @@ def undo_change(conn, change_id: int) -> dict:
     errors: list[dict] = []
     if row["kind"] == "tag_edit":
         _undo_dir_moves(conn, payload.get("dirs", []), errors)
-        restored = _undo_tag_edits(conn, tracks, errors)
+        restored = _undo_tag_edits(conn, tracks, errors, payload.get("changes"), _undone(payload))
         _undo_file_moves(payload.get("files", []), errors)
     elif row["kind"] == "remove":
         restored = _undo_removes(conn, tracks)
@@ -102,6 +106,93 @@ def undo_change(conn, change_id: int) -> dict:
     if not errors:
         conn.execute("UPDATE change_log SET undone = 1 WHERE id = ?", (change_id,))
     return {"restored": restored, "kind": row["kind"], "errors": errors}
+
+
+# ─── Undoing one piece of a change ───────────────────────────────────────────
+
+def _undone(payload: dict) -> set[tuple[int, str]]:
+    return {(int(t), f) for t, f in payload.get("undone_parts", [])}
+
+
+def parts(conn, change_id: int) -> dict:
+    """
+    One line per field (or move) a change set on a track: old, new, undone,
+    and, when it can't be undone on its own, why. Changes logged before
+    per-field undo have no pieces.
+    """
+    row = conn.execute("SELECT * FROM change_log WHERE id = ?", (change_id,)).fetchone()
+    if not row:
+        raise ValueError("Change not found")
+    payload = json.loads(row["data"])
+    changes = payload.get("changes")
+    if row["kind"] != "tag_edit" or not changes:
+        return {"id": change_id, "summary": row["summary"], "parts": None}
+    snaps = {t["id"]: t for t in payload["tracks"]}
+    undone = _undone(payload)
+    out = []
+    for tid_s, fields in changes.items():
+        tid, snap = int(tid_s), snaps.get(int(tid_s), {})
+        for f, new in fields.items():
+            done = row["undone"] or (tid, f) in undone
+            out.append({"track_id": tid, "name": snap.get("title") or snap.get("filename") or str(tid),
+                        "field": f, "old": snap.get(f), "new": new, "undone": bool(done),
+                        "blocked": None if done else _blocker(conn, change_id, tid, f)})
+    return {"id": change_id, "summary": row["summary"], "parts": out}
+
+
+def _blocker(conn, change_id: int, tid: int, field: str) -> str | None:
+    """Why this piece can't be undone now: a later change set the same field, or the track is gone."""
+    if not conn.execute("SELECT 1 FROM tracks WHERE id = ?", (tid,)).fetchone():
+        return "the track is no longer in the library"
+    for c in conn.execute("SELECT id, kind, summary, data FROM change_log WHERE id > ? AND undone = 0 ORDER BY id",
+                          (change_id,)).fetchall():
+        p = json.loads(c["data"])
+        later = p.get("changes")
+        if later is None:     # logged before per-field undo: any change to the track counts
+            if tid in {t["id"] for t in p.get("tracks", [])}:
+                return f"changed again by a later change: {c['summary']}"
+        elif field in later.get(str(tid), {}) and (tid, field) not in _undone(p):
+            return f"changed again later: {c['summary']}"
+    return None
+
+
+def undo_part(conn, change_id: int, tid: int, field: str) -> dict:
+    """Undo one field (or the move, field "path") a change set on one track, in any order."""
+    row = conn.execute("SELECT * FROM change_log WHERE id = ?", (change_id,)).fetchone()
+    if not row:
+        raise ValueError("Change not found")
+    payload = json.loads(row["data"])
+    changes = payload.get("changes") or {}
+    if row["undone"] or (tid, field) in _undone(payload):
+        raise ValueError("Already undone")
+    if field not in changes.get(str(tid), {}):
+        raise ValueError("That change didn't set this")
+    why = _blocker(conn, change_id, tid, field)
+    if why:
+        raise ValueError(why[0].upper() + why[1:])
+    snap = next(t for t in payload["tracks"] if t["id"] == tid)
+    cur = conn.execute("SELECT * FROM tracks WHERE id = ?", (tid,)).fetchone()
+    if field == "path":
+        if cur["path"] != changes[str(tid)]["path"]:
+            raise ValueError("The file has moved since; undo that first")
+        dest = Path(snap["path"])
+        if dest.exists():
+            raise ValueError(f"Something else is at {dest} now")
+        move_file(cur["path"], str(dest))
+        conn.execute("UPDATE tracks SET path = ?, filename = ?, directory = ? WHERE id = ?",
+                     (str(dest), dest.name, str(dest.parent), tid))
+        from api.config import get_library_roots
+        prune_empty_dirs(Path(cur["path"]).parent, root_for(Path(cur["path"]).parent, get_library_roots()) or settings.music_dir)
+    else:
+        if not Path(cur["path"]).exists():
+            raise ValueError(f"File missing: {cur['path']}")
+        write_tags(cur["path"], {field: snap.get(field)})
+        conn.execute(f"UPDATE tracks SET {field} = ?, tagged_at = ? WHERE id = ?", (snap.get(field), time.time(), tid))
+    done = [*payload.get("undone_parts", []), [tid, field]]
+    payload["undone_parts"] = done
+    whole = sum(len(v) for v in changes.values()) == len(done) and not payload.get("dirs")
+    conn.execute("UPDATE change_log SET data = ?, undone = ? WHERE id = ?", (json.dumps(payload), int(whole), change_id))
+    return {"undone": [tid, field], "change_undone": whole}
 
 
 def _check_newest(conn, change_id: int, ids: set[int]) -> None:
@@ -165,7 +256,14 @@ def _undo_file_moves(files: list[dict], errors: list[dict]) -> None:
             prune_empty_dirs(dst.parent, root_for(dst, roots) or settings.music_dir)
 
 
-def _undo_tag_edits(conn, snapshots: list[dict], errors: list[dict]) -> int:
+def _undo_tag_edits(conn, snapshots: list[dict], errors: list[dict],
+                    changes: dict | None = None, undone: set | None = None) -> int:
+    """
+    Put each track back as its snapshot has it. With `changes` (logged since
+    per-field undo), only the fields this change set and that aren't undone
+    already: rewriting the rest from an old snapshot would also undo other
+    changes' undone pieces.
+    """
     from api.config import get_library_roots
 
     restored = 0
@@ -196,6 +294,9 @@ def _undo_tag_edits(conn, snapshots: list[dict], errors: list[dict]) -> int:
         # ReplayGain / disc tags NULL = never read from the file (rows scanned before it was
         # read): leave the file's values alone. "" = read, and there were none.
         fields = [k for k in _WRITABLE if k not in READ_LATE_FIELDS or snap.get(k) is not None]
+        if changes is not None:
+            mine = changes.get(str(snap["id"]), {})
+            fields = [k for k in fields if k in mine and (snap["id"], k) not in (undone or set())]
         try:
             write_tags(old_path, {k: snap.get(k) for k in fields})
         except Exception as exc:

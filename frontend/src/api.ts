@@ -221,6 +221,9 @@ export interface AppSettings {
   effective_library_roots?: string[]
 }
 
+/** One field (or "path": the move) a written change set on one track. */
+export interface HistoryPart { track_id: number; name: string; field: string; old: string | null; new: string | null; undone: boolean; blocked: string | null }
+
 export interface ChangeLogEntry {
   id: number
   ts: number
@@ -512,6 +515,9 @@ export const api = {
     },
     history: (limit = 50) => request<ChangeLogEntry[]>('GET', `/api/library/history?limit=${limit}`),
     undo: (id: number) => request<{ restored: number; kind: string; errors: WriteError[] }>('POST', `/api/library/history/${id}/undo`),
+    historyParts: (id: number) => request<{ id: number; summary: string; parts: HistoryPart[] | null }>('GET', `/api/library/history/${id}`),
+    undoPart: (id: number, trackId: number, field: string) =>
+      request<{ undone: [number, string]; change_undone: boolean }>('POST', `/api/library/history/${id}/undo-part`, { track_id: trackId, field }),
     duplicates: () => request<{ total: number; groups: DuplicateGroup[] }>('GET', '/api/library/duplicates'),
     fingerprints: () => request<{ tracks: number; fingerprinted: number; available: boolean }>('GET', '/api/library/fingerprints'),
     fingerprintAll: () => request<{ job_id: string | null; tracks: number }>('POST', '/api/library/fingerprints'),
@@ -572,6 +578,9 @@ export const api = {
     count: () => request<StagedCount>('GET', '/api/staged/count'),
     actions: () => request<{ count: number; steps: StagedAction[]; other: StagedLine[] }>('GET', '/api/staged/actions'),
     undo: () => request<{ summary: string; restored: number }>('POST', '/api/staged/undo'),
+    discardPart: (trackId: number, field: string) =>
+      request<{ discarded: number }>('POST', '/api/staged/discard-part', { track_id: trackId, field }),
+    discardStep: (id: number) => request<{ discarded: number }>('POST', `/api/staged/steps/${id}/discard`),
     apply: (trackIds?: number[]) =>
       request<{ applied: number; folders?: number; errors: WriteError[]; missing?: number; change_id: number | null }>(
         'POST', '/api/staged/apply', { track_ids: trackIds ?? null }),
