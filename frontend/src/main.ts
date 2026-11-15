@@ -1435,7 +1435,7 @@ const FIX_FIELDS: { key: string; label: string; ids?: string[] }[] = [
   { key: 'disc_number',  label: 'Disc #'       },
   { key: 'genre',        label: 'Genre'        },
   { key: 'composer',     label: 'Composer'     },
-  { key: 'mb',           label: 'MusicBrainz IDs', ids: ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_id'] },
+  { key: 'mb',           label: 'MusicBrainz IDs', ids: ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_id', 'mb_release_group_id', 'mb_release_track_id'] },
 ]
 const sameValues = (a: string, b: string) => {
   const set = (s: string) => s.split(';').map(x => x.trim().toLowerCase()).filter(Boolean).sort().join(';')

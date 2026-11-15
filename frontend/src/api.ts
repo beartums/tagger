@@ -38,6 +38,8 @@ export interface Track {
   mb_artist_id: string | null
   mb_album_id: string | null
   mb_album_artist_id: string | null
+  mb_release_group_id: string | null
+  mb_release_track_id: string | null
   scanned_at: number
   tagged_at: number | null
   // Edits held for review (null when none). The UI overlays these on the
@@ -251,6 +253,8 @@ export interface TagUpdate {
   mb_artist_id?: string | null
   mb_album_id?: string | null
   mb_album_artist_id?: string | null
+  mb_release_group_id?: string | null
+  mb_release_track_id?: string | null
 }
 
 export interface LookupResult {
@@ -295,6 +299,10 @@ export interface IssueCount {
   covers_no_tracks: number
   covers_both: number
   covers_oversized: number
+  mb_no_album: number
+  mb_no_release_group: number
+  mb_track_ids: number
+  mb_mixed_album: number
 }
 
 export type CoverAction = 'copy_to_folder' | 'move_to_folder' | 'copy_to_tracks' | 'move_to_tracks' | 'delete_folder' | 'delete_tracks' | 'shrink'
@@ -617,7 +625,8 @@ export const api = {
       request<LookupResult[]>('POST', `/api/lookup/search/${trackId}`),
     releaseTags: (mbAlbumId: string, mbTrackId: string | null) =>
       request<{ album: string | null; album_artist: string | null; mb_album_artist_id: string | null; year: string | null
-                genre: string | null; composer: string | null; track_number: string | null; disc_number: string | null }>(
+                genre: string | null; composer: string | null; track_number: string | null; disc_number: string | null
+                mb_release_group_id: string | null; mb_release_track_id: string | null }>(
         'GET', `/api/lookup/release-tags/${encodeURIComponent(mbAlbumId)}?mb_track_id=${encodeURIComponent(mbTrackId ?? '')}`),
     infer: (trackId: number) =>
       request<LookupResult | null>('POST', `/api/lookup/infer/${trackId}`),

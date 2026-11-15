@@ -40,6 +40,10 @@ export const QUALITY_ISSUES: { key: keyof IssueCount; label: string; warn?: bool
   { key: 'covers_no_tracks',     label: 'No track covers',        group: 'Cover art' },
   { key: 'covers_both',          label: 'Folder and track covers', group: 'Cover art' },
   { key: 'covers_oversized',     label: 'Larger than the size settings', group: 'Cover art' },
+  { key: 'mb_no_album',          label: 'No album ID',            group: 'MusicBrainz' },
+  { key: 'mb_no_release_group',  label: 'No release group ID',    group: 'MusicBrainz' },
+  { key: 'mb_track_ids',         label: 'Track IDs incomplete',   group: 'MusicBrainz' },
+  { key: 'mb_mixed_album',       label: 'Several releases in one folder', group: 'MusicBrainz', warn: true },
 ]
 
 // ─── Case normalization ─────────────────────────────────────────────────────────

@@ -55,13 +55,19 @@ _MB_TXXX = {
     "mb_artist_id":       "MusicBrainz Artist Id",
     "mb_album_id":        "MusicBrainz Album Id",
     "mb_album_artist_id": "MusicBrainz Album Artist Id",
+    "mb_release_group_id": "MusicBrainz Release Group Id",
+    "mb_release_track_id": "MusicBrainz Release Track Id",
 }
 _MB_VORBIS = {
     "mb_track_id":        "musicbrainz_trackid",
     "mb_artist_id":       "musicbrainz_artistid",
     "mb_album_id":        "musicbrainz_albumid",
     "mb_album_artist_id": "musicbrainz_albumartistid",
+    "mb_release_group_id": "musicbrainz_releasegroupid",
+    "mb_release_track_id": "musicbrainz_releasetrackid",
 }
+# Picard's names. "Track Id" is the RECORDING; "Release Track Id" the track on this release.
+MB_FIELDS: list[str] = list(_MB_TXXX)
 
 
 def _joined(val: Any) -> str | None:
@@ -103,6 +109,7 @@ def read_tags(path: str | Path, extended: bool = True) -> dict:
         result["lyrics"] = result["compilation"] = None
         art = read_cover(path)
         result.update(cover_info(art[1] if art else None))
+    result.update(_read_mb_ids(str(path)))
     info = f.info
     result["duration"] = getattr(info, "length", None)
     result["format"] = _detect_format(str(path))
@@ -206,6 +213,38 @@ def _write_mb_ids(path: str, mb_updates: dict) -> None:
             elif key in f.tags:
                 del f.tags[key]
         f.save()
+
+
+def _read_mb_ids(path: str) -> dict:
+    """The MusicBrainz IDs (MB_FIELDS) from their format-specific tags. Never raises."""
+    out: dict = dict.fromkeys(MB_FIELDS)
+    ext = Path(path).suffix.lower()
+    try:
+        if ext == ".mp3":
+            from mutagen.id3 import ID3
+            tags = ID3(path)
+            for field, desc in _MB_TXXX.items():
+                frames = tags.getall(f"TXXX:{desc}")
+                if frames and frames[0].text:
+                    out[field] = str(frames[0].text[0]) or None
+        elif ext in (".flac", ".ogg", ".oga", ".opus"):
+            f = mutagen.File(path)
+            if f is not None and f.tags is not None:
+                for field, key in _MB_VORBIS.items():
+                    vals = f.tags.get(key)
+                    if vals:
+                        out[field] = str(vals[0]) or None
+        elif ext in (".m4a", ".aac"):
+            from mutagen.mp4 import MP4
+            f = MP4(path)
+            for field, desc in _MB_TXXX.items():
+                vals = (f.tags or {}).get(f"----:com.apple.iTunes:{desc}")
+                if vals:
+                    v = vals[0]   # MP4FreeForm is bytes
+                    out[field] = (bytes(v).decode("utf-8", "replace") if isinstance(v, bytes) else str(v)) or None
+    except Exception:
+        pass
+    return out
 
 
 def _read_extended(path: str) -> dict:

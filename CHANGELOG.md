@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **MusicBrainz Release Group and Release Track IDs**: Match album (single
+  and bulk) and Auto-fix now write them with the other MusicBrainz IDs (one
+  switch, as before). Lidarr matches on both.
+- **MusicBrainz IDs are read from the files**: they were written but never
+  read back, so the library didn't know which files had them. The next scan
+  re-reads every file once.
+- **Quality → MusicBrainz**: *No album ID* (never matched), *No release group
+  ID* and *Track IDs incomplete* (matched before this release, or by a tool
+  that skips them), *Several releases in one folder* (album IDs differ within
+  a folder -- Lidarr splits those).
 - **Sheet edit mode edits cells only**: no row checkboxes, no tag editor
   beside it, and clicks (shift-click too) edit the cell instead of selecting.
   Starting it asks first if the tag editor has unsaved changes.

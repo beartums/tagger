@@ -55,6 +55,8 @@ class TagUpdate(BaseModel):
     mb_artist_id: Optional[str] = None
     mb_album_id: Optional[str] = None
     mb_album_artist_id: Optional[str] = None
+    mb_release_group_id: Optional[str] = None
+    mb_release_track_id: Optional[str] = None
 
 
 class BulkTagUpdate(BaseModel):

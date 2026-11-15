@@ -10,6 +10,7 @@ const FIELD_LABELS: Record<string, string> = {
   comment: 'Comment', composer: 'Composer', bpm: 'BPM', lyrics: 'Lyrics',
   compilation: 'Compilation', mb_track_id: 'MB Track ID', mb_artist_id: 'MB Artist ID',
   mb_album_id: 'MB Album ID', mb_album_artist_id: 'MB Album Artist ID',
+  mb_release_group_id: 'MB Release Group ID', mb_release_track_id: 'MB Release Track ID',
 }
 
 /** Show staged values in place of the on-file ones (kept in t._orig). */

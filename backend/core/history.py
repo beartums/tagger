@@ -24,10 +24,10 @@ from pathlib import Path
 
 from core.config import settings
 from core.fileops import MoveError, move_file, prune_empty_dirs, root_for
-from core.tagger import TAG_FIELDS, write_tags
+from core.tagger import MB_FIELDS, TAG_FIELDS, write_tags
 
 # Columns restored when undoing a tag edit (writable to file + DB).
-_MB_FIELDS = ["mb_track_id", "mb_artist_id", "mb_album_id", "mb_album_artist_id"]
+_MB_FIELDS = MB_FIELDS
 _WRITABLE = TAG_FIELDS + _MB_FIELDS
 # Fields a staged edit may change (core/staging.py).
 STAGEABLE = _WRITABLE

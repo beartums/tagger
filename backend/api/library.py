@@ -19,6 +19,10 @@ from core.history import STAGEABLE, log_change, snapshot, list_changes, undo_cha
 
 router = APIRouter()
 
+def _blank(col: str) -> str:
+    return f"({col} IS NULL OR {col} = '')"
+
+
 _NO_FOLDER = "directory NOT IN (SELECT directory FROM folder_covers)"
 
 _ISSUE_CLAUSES: dict[str, str] = {
@@ -42,6 +46,13 @@ _ISSUE_CLAUSES: dict[str, str] = {
     "covers_no_tracks": "COALESCE(has_cover, 0) = 0",
     "covers_both":   f"has_cover = 1 AND NOT {_NO_FOLDER}",
     "covers_oversized": "",          # from the size settings: _issue_clause()
+    # MusicBrainz IDs (what Lidarr matches on). No album ID: never matched. The rest:
+    # matched, but missing what Lidarr also uses, or one folder holding several releases.
+    "mb_no_album": _blank("mb_album_id"),
+    "mb_no_release_group": f"NOT {_blank('mb_album_id')} AND {_blank('mb_release_group_id')}",
+    "mb_track_ids": f"NOT {_blank('mb_album_id')} AND ({_blank('mb_track_id')} OR {_blank('mb_release_track_id')})",
+    "mb_mixed_album": "directory IN (SELECT directory FROM tracks WHERE COALESCE(mb_album_id, '') != ''"
+                      " GROUP BY directory HAVING COUNT(DISTINCT mb_album_id) > 1)",
 }
 
 
@@ -103,10 +114,6 @@ def _tracks(conn, rows) -> list[dict]:
 
 # Tags the sidebar can browse by (Tags panel: tag -> values).
 BROWSE_FIELDS = ("artist", "album_artist", "album", "genre", "year", "composer")
-
-def _blank(col: str) -> str:
-    return f"({col} IS NULL OR {col} = '')"
-
 
 def _path_filters(path: Optional[str]) -> tuple[list[str], list]:
     """A node of the Tags tree: JSON [[field, value], ...], each step narrowing the last."""
