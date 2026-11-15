@@ -1633,12 +1633,19 @@ button.scan-status[hidden] { display: none; }
 .mbb-actions { white-space: nowrap; }
 .mbb-actions .btn { display: block; width: 100%; margin-bottom: 4px; }
 
-/* Settings -> Quality: a check's on/off, its last result, Check now. */
-.quality-checks { display: flex; flex-direction: column; gap: 6px; }
-.quality-check-row { display: grid; grid-template-columns: minmax(0, 20em) 1fr auto; align-items: center; gap: 10px; }
-.quality-check-row .tog { justify-self: start; text-align: left; white-space: nowrap; }
+/* Quality panel: a check switched off is dimmed; ↻ runs it. */
 .quality-check-result { font-size: 12px; color: var(--text-muted); }
-.quality-off { opacity: .55; }
+.quality-off .nav-label, .quality-off .nav-count, .quality-off .quality-issue-dot { opacity: .5; }
+.quality-zero .nav-count { opacity: .5; }
+/* A check's switch: a small pill, filled when on. */
+.q-switch { flex: none; width: 22px; height: 12px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); cursor: pointer; position: relative; }
+.q-switch::after { content: ''; position: absolute; top: 1px; left: 1px; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); transition: left .12s; }
+.q-switch[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.q-switch[aria-pressed="true"]::after { left: 11px; background: var(--accent); }
+.q-run { flex: none; border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 2px; font-size: 13px; }
+.q-run:hover { color: var(--accent); }
+.q-running { animation: q-spin 1s linear infinite; }
+@keyframes q-spin { to { transform: rotate(360deg); } }
 
 /* Album quality dots (worst track decides) and the album list's sortable headers. */
 .album-cover-wrap { position: relative; }
@@ -1646,3 +1653,16 @@ button.scan-status[hidden] { display: none; }
 .album-table .al-q { width: 22px; text-align: center; padding-left: 6px; padding-right: 0; }
 .album-table th.al-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 .album-table th.al-sortable:hover { color: var(--text); }
+
+/* Settings → Layouts: check toggles, override pickers, characters in names */
+.tog-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.layout-add { margin-top: 6px; max-width: 22em; }
+.layouts-table td:last-child { width: 1%; }
+.naming-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.naming-chars { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 8px; }
+.naming-char { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.naming-char .tog { min-width: 2.2em; padding: 2px 6px; font-family: var(--mono, monospace); text-align: center; }
+.naming-char input { width: 3.2em; padding: 2px 4px; font-family: var(--mono, monospace); }
+.naming-char input:disabled { opacity: .55; }
+.naming-char-smart { opacity: .45; }
+.naming-char-all input { width: 3.2em; }

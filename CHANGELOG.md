@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Quality checks are switched in the Quality panel** (Settings → Quality is
+  gone). Every check is listed with a small switch; one that's off isn't run
+  with the panel, shows its last count dimmed, and has ↻ to check it now.
+- **Layouts: one default, overrides only where you want them.** Library and
+  group layouts list only the ones you add (Add a library/group layout…, ✕ to
+  remove). Which libraries are checked against their layout is a row of
+  switches under the default.
+- **Characters in names, per character.** Smart colons is a switch; each of
+  / \ : ? * < > | " can have its own replacement, the rest get "all others".
+  Start from Lidarr's, Remove all, Underscores, Look-alikes (／ ： ？ …) or your
+  Lidarr's settings. Several to a line; examples in the text. Moved below all
+  the layouts. (Saved before? Your Lidarr-style choice carries over.)
+- **Settings: Cancel** shows once you change something; leaving Settings with
+  unsaved changes asks first.
+- **The Tagger logo on Settings** returns to the screen you were on.
 - **Fixed: staging during a scan failed with "database is locked".** The scan
   held the database's write lock while it read the next 200 files (seconds on
   a NAS), longer than other writes waited (5 s). It now reads with no lock

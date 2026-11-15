@@ -15,8 +15,11 @@ function queryRow(q: LyricsQuery): string {
     <button type="button" class="btn btn-ghost btn-sm" data-q-remove title="Remove this query">✕</button></div>`
 }
 
-function groupCard(g: LyricsGroup): string {
-  return `<div class="lyrics-group" data-id="${esc(g.id)}">
+let newKeys = 0
+const keyOf = (g: LyricsGroup) => g.id || `new-${++newKeys}`
+
+function groupCard(g: LyricsGroup, key = keyOf(g)): string {
+  return `<div class="lyrics-group" data-id="${esc(g.id)}" data-key="${esc(key)}">
     <div class="lyrics-group-head">
       <input type="text" class="lyrics-group-name" value="${esc(g.name)}" placeholder="Group name" ${BUILT_IN.has(g.id) ? 'readonly title="Built in"' : ''} />
       <label class="settings-toggle"><input type="checkbox" data-skip ${g.skip ? 'checked' : ''} ${g.id === 'none' ? 'disabled' : ''} /><span>Skip</span></label>
@@ -29,34 +32,52 @@ function groupCard(g: LyricsGroup): string {
 }
 
 export function renderLyricsGroups(el: HTMLElement, groups: LyricsGroup[]) {
-  el.innerHTML = groups.map(groupCard).join('')
+  el.innerHTML = groups.map(g => groupCard(g)).join('')
 }
 
-function layoutRow(g: LyricsGroup, i: number): string {
-  return `<tr data-group-layout="${i}"><td class="group-layout-name">${esc(g.name) || '<span class="ma-dim">(new group)</span>'}</td>
-    <td><input type="text" spellcheck="false" data-layout-input value="${esc(g.layout ?? '')}" placeholder="library's layout" /></td></tr>`
+const nameHtml = (name: string) => esc(name) || '<span class="ma-dim">(new group)</span>'
+
+function layoutRow(key: string, name: string, layout: string): string {
+  return `<tr data-group-layout="${esc(key)}"><td class="group-layout-name">${nameHtml(name)}</td>
+    <td><input type="text" spellcheck="false" data-layout-input value="${esc(layout)}" placeholder="library's layout" /></td>
+    <td><button type="button" class="btn btn-ghost btn-sm btn-icon" data-layout-remove title="Remove: the library's layout applies">✕</button></td></tr>`
 }
 
-/** Settings → Layouts: one row per group card, in the same order. */
+/** Settings → Layouts: a row only for groups that have their own layout. */
 export function renderGroupLayouts(layoutsEl: HTMLElement, groups: LyricsGroup[]) {
-  layoutsEl.innerHTML = groups.map(layoutRow).join('')
+  layoutsEl.innerHTML = groups.filter(g => g.layout).map(g => layoutRow(g.id, g.name, g.layout ?? '')).join('')
+}
+
+/** Groups (as edited) without a layout row: what "Add a group layout" offers. */
+export function groupLayoutChoices(el: HTMLElement, layoutsEl: HTMLElement): { key: string; name: string }[] {
+  const has = new Set([...layoutsEl.querySelectorAll<HTMLElement>('[data-group-layout]')].map(r => r.dataset.groupLayout!))
+  return [...el.querySelectorAll<HTMLElement>('.lyrics-group')]
+    .map(c => ({ key: c.dataset.key!, name: c.querySelector<HTMLInputElement>('.lyrics-group-name')!.value.trim() || '(new group)' }))
+    .filter(g => !has.has(g.key))
+}
+
+export function addGroupLayout(el: HTMLElement, layoutsEl: HTMLElement, key: string) {
+  const card = el.querySelector<HTMLElement>(`.lyrics-group[data-key="${CSS.escape(key)}"]`)
+  if (!card) return
+  layoutsEl.insertAdjacentHTML('beforeend', layoutRow(key, card.querySelector<HTMLInputElement>('.lyrics-group-name')!.value.trim(), ''))
+  layoutsEl.querySelector<HTMLInputElement>('tr:last-child [data-layout-input]')!.focus()
 }
 
 export function wireLyricsGroups(el: HTMLElement, addBtn: HTMLElement, layoutsEl: HTMLElement) {
-  // Layout rows follow the cards by position: added, renamed and deleted with them.
-  const rows = () => [...layoutsEl.querySelectorAll<HTMLElement>('[data-group-layout]')]
-  const cards = () => [...el.querySelectorAll<HTMLElement>('.lyrics-group')]
+  // Layout rows follow their group's card by key: renamed and deleted with it.
+  const row = (card: Element) => layoutsEl.querySelector<HTMLElement>(`[data-group-layout="${CSS.escape((card as HTMLElement).dataset.key!)}"]`)
   addBtn.addEventListener('click', () => {
     el.insertAdjacentHTML('beforeend', groupCard({ id: '', name: '', skip: false,
       queries: [{ title: '{title_base}', artist: '{artist_first}', album: '' }] }))
-    layoutsEl.insertAdjacentHTML('beforeend', layoutRow({ id: '', name: '', skip: false, queries: [] }, rows().length))
     el.querySelector<HTMLInputElement>('.lyrics-group:last-child .lyrics-group-name')!.focus()
   })
   el.addEventListener('input', (e) => {
     const name = (e.target as HTMLElement).closest<HTMLInputElement>('.lyrics-group-name')
-    if (!name) return
-    const row = rows()[cards().indexOf(name.closest('.lyrics-group')!)]
-    if (row) row.querySelector('.group-layout-name')!.innerHTML = esc(name.value.trim()) || '<span class="ma-dim">(new group)</span>'
+    const r = name && row(name.closest('.lyrics-group')!)
+    if (r) r.querySelector('.group-layout-name')!.innerHTML = nameHtml(name!.value.trim())
+  })
+  layoutsEl.addEventListener('click', (e) => {
+    (e.target as HTMLElement).closest('[data-layout-remove]')?.closest('tr')?.remove()
   })
   el.addEventListener('click', (e) => {
     const t = e.target as HTMLElement
@@ -64,7 +85,7 @@ export function wireLyricsGroups(el: HTMLElement, addBtn: HTMLElement, layoutsEl
     if (!card) return
     if (t.closest('[data-q-add]')) t.closest('[data-q-add]')!.insertAdjacentHTML('beforebegin', queryRow({ title: '{title}', artist: '', album: '' }))
     else if (t.closest('[data-q-remove]')) t.closest('.lyrics-query')!.remove()
-    else if (t.closest('[data-group-remove]')) { rows()[cards().indexOf(card)]?.remove(); card.remove() }
+    else if (t.closest('[data-group-remove]')) { row(card)?.remove(); card.remove() }
   })
   el.addEventListener('change', (e) => {
     const cb = e.target as HTMLInputElement
@@ -76,8 +97,8 @@ export function wireLyricsGroups(el: HTMLElement, addBtn: HTMLElement, layoutsEl
 export function readLyricsGroups(el: HTMLElement, layoutsEl: HTMLElement): LyricsGroup[] | null {
   const cards = [...el.querySelectorAll<HTMLElement>('.lyrics-group')]
   if (!cards.length) return null
-  const layouts = [...layoutsEl.querySelectorAll<HTMLInputElement>('[data-group-layout] [data-layout-input]')].map(i => i.value.trim())
-  return cards.map((c, i) => ({
+  const layout = (key: string) => layoutsEl.querySelector<HTMLInputElement>(`[data-group-layout="${CSS.escape(key)}"] [data-layout-input]`)?.value.trim() ?? ''
+  return cards.map(c => ({
     id: c.dataset.id ?? '',
     name: c.querySelector<HTMLInputElement>('.lyrics-group-name')!.value.trim(),
     skip: c.querySelector<HTMLInputElement>('[data-skip]')!.checked,
@@ -85,7 +106,7 @@ export function readLyricsGroups(el: HTMLElement, layoutsEl: HTMLElement): Lyric
       const v = (k: string) => r.querySelector<HTMLInputElement>(`[data-q="${k}"]`)!.value.trim()
       return { title: v('title'), artist: v('artist'), album: v('album') }
     }).filter(q => q.title),
-    layout: layouts[i] ?? '',
+    layout: layout(c.dataset.key!),
   }))
 }
 

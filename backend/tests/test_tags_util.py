@@ -58,13 +58,30 @@ def test_lidarr_illegal_and_smart_colon():
     ("space_dash", "Re - Mix 10 -30"), ("space_dash_space", "Re -  Mix 10 - 30"),
 ])
 def test_colon_options(colon, want):
-    out = render_template("{title}", {"title": "Re: Mix 10:30"}, "", NamingRules(colon=colon))
+    out = render_template("{title}", {"title": "Re: Mix 10:30"}, "", NamingRules.lidarr(colon=colon))
     assert out == want
 
 
 def test_replace_illegal_off_deletes():
-    rules = NamingRules(replace_illegal=False)
+    rules = NamingRules.lidarr(replace_illegal=False)
     assert render_template("{title}", {"title": "AC/DC: Live?*"}, "", rules) == "ACDC Live"
+
+
+def test_per_character_choices_and_others():
+    rules = NamingRules.make(False, {"/": "&", ":": " -"}, other="_")
+    assert render_template("{title}", {"title": "AC/DC: Live?*"}, "", rules) == "AC&DC - Live__"
+    # A replacement can't smuggle in a folder or another illegal character.
+    rules = NamingRules.make(True, {"/": "/x?"})
+    assert render_template("{title}", {"title": "A/B: c"}, "", rules) == "AxB - c"
+
+
+def test_settings_before_per_character_choices():
+    class S:
+        naming_replace_illegal = True; naming_colon = "dash"; naming_chars = None; naming_other = ""
+    assert NamingRules.from_settings(S()) == NamingRules.lidarr(True, "dash")
+    S.naming_chars = {"?": ""}; S.naming_colon = "smart"
+    r = NamingRules.from_settings(S())
+    assert r.smart_colon and r.sub("?") == "" and r.sub("/") == ""
 
 
 def test_names_trimmed_and_control_chars():

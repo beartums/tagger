@@ -64,7 +64,7 @@ class AppSettings(BaseModel):
     # Tags the search box looks in (core/search.py).
     search_fields: list[str] = ["title", "artist", "album", "album_artist", "genre"]
     # Quality checks left out of the Quality panel's counts (they're slow on a big
-    # library); each can still be run from Settings -> Quality. Keys: api/library.py.
+    # library); each is switched in the Quality panel, with ↻ to run it. Keys: api/library.py.
     quality_off: list[str] = []
     # Tags panel: each tag's values open to the next tag in its list, and so on.
     browse_paths: dict[str, list[str]] = {"artist": ["album"], "album_artist": ["album"]}
@@ -72,6 +72,11 @@ class AppSettings(BaseModel):
     # "Replace Illegal Characters" and "Colon Replacement" (smart|delete|dash|space_dash|space_dash_space).
     naming_replace_illegal: bool = True
     naming_colon: str = "smart"
+    # Per-character choices (Settings → Layouts): {char: replacement}; the rest get naming_other.
+    # None = not chosen yet: the two Lidarr settings above apply. With these set,
+    # naming_colon is "smart" (smart colons) or "chars" (":" like the others).
+    naming_chars: dict[str, str] | None = None
+    naming_other: str = ""
     # Integrations (core/integrations.py), each optional. Keys/passwords/tokens are secrets.
     lidarr_url: str = ""
     lidarr_api_key: str = ""
@@ -402,8 +407,9 @@ class RenamePreviewRequest(BaseModel):
     # With a track: the full destination under that track's library root.
     track_id: int | None = None
     # Unsaved naming choices from the form; None = the saved ones.
-    replace_illegal: bool | None = None
-    colon: str | None = None
+    smart_colon: bool | None = None
+    chars: dict[str, str] | None = None
+    other: str | None = None
 
 
 @router.post("/rename-preview")
@@ -412,12 +418,13 @@ def rename_preview(req: RenamePreviewRequest):
     Render a rename template for live UI feedback — against a sample track by
     default, or a specific track's tags/extension when provided (editor preview).
     """
-    from core.naming import COLONS, NamingRules, current_rules, render_template
+    from core.naming import NamingRules, current_rules, render_template
 
     saved = current_rules()
-    rules = NamingRules(
-        replace_illegal=saved.replace_illegal if req.replace_illegal is None else req.replace_illegal,
-        colon=req.colon if req.colon in COLONS else saved.colon,
+    rules = NamingRules.make(
+        saved.smart_colon if req.smart_colon is None else req.smart_colon,
+        dict(saved.chars) if req.chars is None else req.chars,
+        saved.other if req.other is None else req.other,
     )
 
     if req.track_id is not None:

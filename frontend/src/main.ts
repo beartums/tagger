@@ -1,5 +1,5 @@
 import './style.css'
-import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, RescanResult, TagValue, IssueCount, IssueEntry, IssueKey, setUnauthorizedHandler, onSessionExpired } from './api'
+import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, Naming, RescanResult, TagValue, IssueCount, IssueEntry, IssueKey, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
 import { esc, fmtDuration, debounce } from './util'
 import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
@@ -23,7 +23,7 @@ import { openLyrics } from './lyricsdialog'
 import { openDuplicates } from './duplicates'
 import { openLyricsSearch } from './lyricssearch'
 import { openFindReplace } from './findreplace'
-import { openAssignGroup, renderLyricsGroups, wireLyricsGroups, readLyricsGroups, libraryGroupSelect, renderGroupLayouts } from './lyricsgroups'
+import { openAssignGroup, renderLyricsGroups, groupLayoutChoices, addGroupLayout, wireLyricsGroups, readLyricsGroups, libraryGroupSelect, renderGroupLayouts } from './lyricsgroups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
 import { initGridEdit, gridView, gridCell, gridBeforeRender, gridAfterRender, gridActive, gridCommit } from './gridedit'
@@ -383,15 +383,14 @@ async function renderQualityPanel() {
   }
 
   qualityListEl.innerHTML = ''
-  let anyIssues = false
   let group: string | undefined
-
+  const issues = state.qualityIssues
   for (const issue of QUALITY_ISSUES) {
-    // A check turned off (Settings -> Quality) shows its last count, dimmed.
-    const e = state.qualityIssues[issue.key]
-    const count = e?.tracks ?? 0
-    if (count === 0) continue
-    anyIssues = true
+    // Every check is listed, with its switch. One that's off isn't run with the
+    // panel: its last count shows dimmed, and ↻ runs it now.
+    const e = issues[issue.key]
+    const off = !!e?.off
+    const count = e?.tracks
     if (issue.group && issue.group !== group) {
       const h = document.createElement('li')
       h.className = 'quality-group'
@@ -400,22 +399,36 @@ async function renderQualityPanel() {
     }
     group = issue.group
     const li = document.createElement('li')
-    const isActive = state.selectedIssue === issue.key
-    li.className = 'nav-item quality-issue-item' + (isActive ? ' active' : '') + (e.off ? ' quality-off' : '')
+    li.className = 'nav-item quality-issue-item' + (state.selectedIssue === issue.key ? ' active' : '')
+      + (off ? ' quality-off' : '') + (!count ? ' quality-zero' : '')
     li.dataset.issue = issue.key
-    li.title = `${plural(count, 'track')} in ${plural(e.albums ?? 0, 'album')}`
-      + (e.off ? ` · off, last checked ${checkedAt(e.at)} (Settings → Quality)` : '')
+    li.title = count == null ? 'Not checked yet — ↻ checks it now'
+      : `${plural(count, 'track')} in ${plural(e.albums ?? 0, 'album')}` + (off ? ` · last checked ${checkedAt(e.at)}` : '')
     li.innerHTML = `
+      <button type="button" class="q-switch" data-q-switch aria-pressed="${!off}" title="${off ? 'Off: not run with the panel (it\'s slow on a big library). Click to turn it on' : 'On: run each time the panel opens or the library changes. Click to turn it off'}" aria-label="${esc(issue.label)} on"></button>
       <span class="quality-issue-dot${issue.warn ? ' quality-issue-dot-warn' : ''}"></span>
       <span class="nav-label">${issue.label}</span>
-      <span class="nav-count">${count}</span>
+      ${off ? '<button type="button" class="q-run" data-q-run title="Check it now and keep the count">↻</button>' : ''}
+      <span class="nav-count">${count == null ? '–' : count}</span>
     `
     qualityListEl.appendChild(li)
   }
+}
 
-  if (!anyIssues) {
-    qualityListEl.innerHTML = '<li class="nav-item quality-all-good">✓ All tags look good</li>'
-  }
+/** Turn a check on or off for the panel (and the list's quality dots); saved at once. */
+async function setQualityCheck(key: IssueKey, on: boolean) {
+  const issues = state.qualityIssues
+  if (!issues) return
+  const off = QUALITY_ISSUES.filter(q => q.key === key ? !on : issues[q.key]?.off).map(q => q.key)
+  try {
+    const saved = await api.settings.update({ quality_off: off })
+    setQualityOff(saved.quality_off)
+    renderTracks()
+    if (on) state.qualityIssues = null   // count it now
+    else if (issues[key]) issues[key].off = true
+    else issues[key] = { tracks: null, albums: null, at: null, off: true }
+    await renderQualityPanel()
+  } catch (err) { toast(`Failed: ${errText(err)}`, 'error') }
 }
 
 function checkedAt(at: number | null): string {
@@ -752,7 +765,7 @@ function navigateTrack(dir: 1 | -1) {
 // ─── Track table ──────────────────────────────────────────────────────────────
 
 function renderColHeaders() {
-  const qualityTh = state.visibleCols.has('quality') ? '<th class="col-quality" title="Quality — red: no title, artist or album · yellow: no album artist, year, track #, genre, cover art or MusicBrainz IDs · green: nothing missing. Checks turned off in Settings → Quality are skipped. Hover a dot for details."></th>' : ''
+  const qualityTh = state.visibleCols.has('quality') ? '<th class="col-quality" title="Quality — red: no title, artist or album · yellow: no album artist, year, track #, genre, cover art or MusicBrainz IDs · green: nothing missing. Checks switched off in the Quality panel are skipped. Hover a dot for details."></th>' : ''
   trackTheadRow.innerHTML = `${qualityTh}<th class="col-check"><input type="checkbox" id="select-all" /></th>`
   for (const col of orderedCols()) {
     if (col.key === 'quality') continue
@@ -3236,6 +3249,18 @@ qualityListEl.addEventListener('click', async (e) => {
   const li = (e.target as HTMLElement).closest<HTMLElement>('.quality-issue-item')
   if (!li?.dataset.issue) return
   const issue = li.dataset.issue
+  const sw = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-q-switch]')
+  if (sw) { sw.disabled = true; await setQualityCheck(issue as IssueKey, sw.getAttribute('aria-pressed') !== 'true'); return }
+  const run = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-q-run]')
+  if (run) {
+    run.disabled = true; run.classList.add('q-running')
+    try {
+      const got = await api.library.checkIssue(issue as IssueKey)
+      if (state.qualityIssues) state.qualityIssues[issue as IssueKey] = got
+      await renderQualityPanel()
+    } catch (err) { toast(`Check failed: ${errText(err)}`, 'error'); run.disabled = false; run.classList.remove('q-running') }
+    return
+  }
   state.selectedIssue = state.selectedIssue === issue ? null : issue
   showIssueToolbar()
   // The same album in several folders: the album list shows them side by side.
@@ -3385,8 +3410,6 @@ const autoScanInput     = document.getElementById('setting-auto-scan') as HTMLIn
 const renameOnSaveInput = document.getElementById('setting-rename-on-save') as HTMLInputElement
 const stageChangesInput = document.getElementById('setting-stage-changes') as HTMLInputElement
 const coverTargetInput  = document.getElementById('setting-cover-target') as HTMLSelectElement
-const namingIllegalInput = document.getElementById('setting-naming-illegal') as HTMLSelectElement
-const namingColonInput   = document.getElementById('setting-naming-colon') as HTMLSelectElement
 const namingPreviewEl    = document.getElementById('naming-preview')!
 const integInputs = {
   lidarr_url:     document.getElementById('setting-lidarr-url') as HTMLInputElement,
@@ -3440,15 +3463,90 @@ document.getElementById('rescan-now')!.addEventListener('click', async (e) => {
   catch (err) { toast(`Rescan failed: ${errText(err)}`, 'error') }
   finally { b.disabled = false }
 })
-document.getElementById('naming-from-lidarr')!.addEventListener('click', async (e) => {
-  const b = e.currentTarget as HTMLButtonElement
+// ─── Characters in names: smart colons, a replacement per character, all others ──
+
+const NAMING_CHARS = ['/', '\\', ':', '?', '*', '<', '>', '|', '"']
+const namingCharsEl = document.getElementById('naming-chars')!
+const smartColonBtn = document.getElementById('naming-smart-colon') as HTMLButtonElement
+const LIDARR_CHARS: Record<string, string> = { '\\': '+', '/': '+', '?': '!', '*': '-' }
+const NAMING_PRESETS: Record<string, Naming> = {
+  lidarr:     { smart_colon: true, chars: LIDARR_CHARS, other: '' },
+  remove:     { smart_colon: false, chars: {}, other: '' },
+  underscore: { smart_colon: false, chars: {}, other: '_' },
+  lookalike:  { smart_colon: false, other: '', chars: { '/': '／', '\\': '＼', ':': '：', '?': '？', '*': '＊', '<': '＜', '>': '＞', '|': '｜', '"': '＂' } },
+}
+const COLON_SUBS: Record<string, string> = { delete: '', dash: '-', space_dash: ' -', space_dash_space: ' - ' }
+
+/** Lidarr's two settings (Replace Illegal Characters, Colon Replacement) as choices. */
+function namingFromLidarr(replace: boolean, colon: string): Naming {
+  if (!replace) return NAMING_PRESETS.remove
+  return { smart_colon: colon === 'smart', other: '',
+    chars: colon === 'smart' ? { ...LIDARR_CHARS } : { ...LIDARR_CHARS, ':': COLON_SUBS[colon] ?? '' } }
+}
+
+function renderNaming(n: Naming) {
+  smartColonBtn.setAttribute('aria-pressed', String(n.smart_colon))
+  namingCharsEl.innerHTML = NAMING_CHARS.map(c => {
+    const own = c in n.chars
+    return `<span class="naming-char"><button type="button" class="tog" data-naming-char="${esc(c)}" aria-pressed="${own}">${esc(c)}</button><input type="text" maxlength="4" spellcheck="false" data-naming-sub="${esc(c)}" value="${esc(own ? n.chars[c] : n.other)}" ${own ? '' : 'disabled'} aria-label="Replace ${esc(c)} with" /></span>`
+  }).join('') + `<span class="naming-char naming-char-all">all others <input type="text" maxlength="4" spellcheck="false" id="naming-other" value="${esc(n.other)}" aria-label="Replace all others with" /></span>`
+  markNaming()
+}
+
+/** Titles, and the colon's cell dimmed while smart colons handle it. */
+function markNaming() {
+  const smart = smartColonBtn.getAttribute('aria-pressed') === 'true'
+  smartColonBtn.title = smart ? 'On — click to replace colons like the other characters' : 'Off — click for smart colons'
+  namingCharsEl.querySelectorAll<HTMLButtonElement>('[data-naming-char]').forEach(b => {
+    const own = b.getAttribute('aria-pressed') === 'true'
+    const colon = b.dataset.namingChar === ':' && smart
+    b.closest('.naming-char')!.classList.toggle('naming-char-smart', colon)
+    b.title = colon ? 'Smart colons replace it' : own ? 'Its own replacement — click to use all others' : 'Uses all others — click to give it its own'
+  })
+}
+
+function namingChoice(): Naming {
+  const chars: Record<string, string> = {}
+  namingCharsEl.querySelectorAll<HTMLButtonElement>('[data-naming-char][aria-pressed="true"]').forEach(b => {
+    chars[b.dataset.namingChar!] = namingCharsEl.querySelector<HTMLInputElement>(`[data-naming-sub="${CSS.escape(b.dataset.namingChar!)}"]`)!.value
+  })
+  return { smart_colon: smartColonBtn.getAttribute('aria-pressed') === 'true', chars,
+    other: (document.getElementById('naming-other') as HTMLInputElement | null)?.value ?? '' }
+}
+
+const namingChanged = () => { markNaming(); updateNamingPreview(); updateRenamePreview() }
+smartColonBtn.addEventListener('click', () => {
+  smartColonBtn.setAttribute('aria-pressed', String(smartColonBtn.getAttribute('aria-pressed') !== 'true'))
+  namingChanged()
+})
+namingCharsEl.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-naming-char]')
+  if (!b) return
+  const own = b.getAttribute('aria-pressed') !== 'true'
+  b.setAttribute('aria-pressed', String(own))
+  const i = namingCharsEl.querySelector<HTMLInputElement>(`[data-naming-sub="${CSS.escape(b.dataset.namingChar!)}"]`)!
+  i.disabled = !own
+  if (own) i.select()
+  else i.value = namingChoice().other
+  namingChanged()
+})
+namingCharsEl.addEventListener('input', (e) => {
+  if ((e.target as HTMLElement).id === 'naming-other') {
+    const v = (e.target as HTMLInputElement).value
+    namingCharsEl.querySelectorAll<HTMLInputElement>('[data-naming-sub]:disabled').forEach(i => { i.value = v })
+  }
+  namingChanged()
+})
+document.querySelector('.naming-presets')!.addEventListener('click', async (e) => {
+  const p = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-naming-preset]')
+  if (p) { renderNaming(NAMING_PRESETS[p.dataset.namingPreset!]); namingChanged(); return }
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('#naming-from-lidarr')
+  if (!b) return
   const formats = document.getElementById('lidarr-formats')!
   b.disabled = true
   try {
     const n = await api.settings.lidarrNaming()
-    namingIllegalInput.value = n.replace_illegal ? 'replace' : 'remove'
-    namingColonInput.value = n.colon
-    updateNamingPreview(); updateRenamePreview()
+    renderNaming(namingFromLidarr(n.replace_illegal, n.colon)); namingChanged()
     formats.hidden = false
     formats.textContent = `Copied — Save to keep. Lidarr's folders: ${n.artist_folder_format || '?'} · tracks: ${n.track_format || '?'}` +
       (n.multi_disc_track_format ? ` · multi-disc: ${n.multi_disc_track_format}` : '')
@@ -3456,9 +3554,6 @@ document.getElementById('naming-from-lidarr')!.addEventListener('click', async (
     formats.hidden = false; formats.textContent = `⚠ ${errText(err)}`
   } finally { b.disabled = false }
 })
-function namingChoice() {
-  return { replace_illegal: namingIllegalInput.value === 'replace', colon: namingColonInput.value }
-}
 
 // The sample track has nothing to clean, so show the rules on a value that does.
 const NAMING_SAMPLE = { album_artist: 'AC/DC', album: 'Live: At Donington?', title: 'Who Made Who', track_number: '1' }
@@ -3503,8 +3598,56 @@ function getScanTagCheckboxes(): NodeListOf<HTMLInputElement> {
 const librariesListEl = document.getElementById('libraries-list') as HTMLElement
 const libraryLayoutsEl = document.getElementById('library-layouts-list') as HTMLElement
 const groupLayoutsEl = document.getElementById('group-layouts-list') as HTMLElement
+const layoutCheckEl = document.getElementById('layout-check-libs')!
+const libraryLayoutAdd = document.getElementById('library-layout-add') as HTMLSelectElement
+const groupLayoutAdd = document.getElementById('group-layout-add') as HTMLSelectElement
 const lyricsGroupsListEl = document.getElementById('lyrics-groups-list') as HTMLElement
 wireLyricsGroups(lyricsGroupsListEl, document.getElementById('lyrics-group-add')!, groupLayoutsEl)
+
+// Layouts: the default, then a row only for each library or group that overrides it.
+let layoutLibs: { path: string; name: string }[] = []
+let layoutsLoaded = false
+
+function libraryLayoutRow(path: string, name: string, template: string): string {
+  return `<tr data-layout-path="${esc(path)}"><td title="${esc(path)}">${esc(name)}</td>
+    <td><input type="text" spellcheck="false" data-layout-input value="${esc(template)}" /></td>
+    <td><button type="button" class="btn btn-ghost btn-sm btn-icon" data-layout-remove title="Remove: the default layout applies">✕</button></td></tr>`
+}
+
+/** The two "Add…" pickers offer only what has no layout row yet. */
+function fillLayoutAdds() {
+  const has = new Set([...libraryLayoutsEl.querySelectorAll<HTMLElement>('[data-layout-path]')].map(r => r.dataset.layoutPath!))
+  const libs = layoutLibs.filter(l => !has.has(l.path))
+  libraryLayoutAdd.innerHTML = `<option value="">${libs.length ? 'Add a library layout…' : 'Every library has its own layout'}</option>`
+    + libs.map(l => `<option value="${esc(l.path)}">${esc(l.name)}</option>`).join('')
+  const groups = groupLayoutChoices(lyricsGroupsListEl, groupLayoutsEl)
+  groupLayoutAdd.innerHTML = `<option value="">${groups.length ? 'Add a group layout…' : 'No group without a layout (add groups under Groups)'}</option>`
+    + groups.map(g => `<option value="${esc(g.key)}">${esc(g.name)}</option>`).join('')
+}
+for (const sel of [libraryLayoutAdd, groupLayoutAdd]) {
+  sel.addEventListener('focus', fillLayoutAdds)
+  sel.addEventListener('mousedown', fillLayoutAdds)
+}
+libraryLayoutAdd.addEventListener('change', () => {
+  const l = layoutLibs.find(x => x.path === libraryLayoutAdd.value)
+  if (l) {
+    libraryLayoutsEl.insertAdjacentHTML('beforeend', libraryLayoutRow(l.path, l.name, renameTemplateInput.value.trim()))
+    libraryLayoutsEl.querySelector<HTMLInputElement>('tr:last-child [data-layout-input]')!.focus()
+  }
+  fillLayoutAdds()
+})
+groupLayoutAdd.addEventListener('change', () => {
+  if (groupLayoutAdd.value) addGroupLayout(lyricsGroupsListEl, groupLayoutsEl, groupLayoutAdd.value)
+  fillLayoutAdds()
+})
+libraryLayoutsEl.addEventListener('click', (e) => {
+  const r = (e.target as HTMLElement).closest('[data-layout-remove]')?.closest('tr')
+  if (r) { r.remove(); fillLayoutAdds() }
+})
+layoutCheckEl.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-layout-check]')
+  if (b) b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'))
+})
 
 // Settings sections: one shown at a time; the last one is remembered.
 const settingsSubnav = document.querySelector<HTMLElement>('.settings-subnav')!
@@ -3534,14 +3677,14 @@ async function renderLibraries(all = true) {
       </tr>`).join('')
       : '<tr><td colspan="4" class="settings-hint">No library roots — every music directory is scanned.</td></tr>'
     if (!all) return
-    libraryLayoutsEl.innerHTML = libs.map(l => `
-      <tr data-layout-path="${esc(l.path)}">
-        <td><input type="checkbox" data-layout-check ${l.layout ? 'checked' : ''} aria-label="Check ${esc(l.name)} against its layout" /></td>
-        <td title="${esc(l.path)}">${esc(l.name)}</td>
-        <td><input type="text" spellcheck="false" data-layout-input value="${esc(l.template)}" placeholder="${esc(std)}" /></td>
-      </tr>`).join('')
+    layoutLibs = libs.map(l => ({ path: l.path, name: l.name }))
+    layoutCheckEl.innerHTML = libs.map(l => `<button type="button" class="tog" data-layout-check="${esc(l.path)}" aria-pressed="${!!l.layout}" title="${esc(l.path)}">${esc(l.name)}</button>`).join('')
+      || '<span class="settings-hint">No libraries yet.</span>'
+    libraryLayoutsEl.innerHTML = libs.filter(l => l.template && l.template !== std).map(l => libraryLayoutRow(l.path, l.name, l.template)).join('')
     renderGroupLayouts(groupLayoutsEl, groups)
     renderLyricsGroups(lyricsGroupsListEl, groups)
+    layoutsLoaded = true
+    fillLayoutAdds()
   } catch (e) {
     librariesListEl.innerHTML = `<tr><td colspan="4" class="settings-hint">Failed to load libraries: ${esc(String(e))}</td></tr>`
   }
@@ -3569,6 +3712,7 @@ librariesListEl.addEventListener('change', async (e) => {
 })
 
 async function openSettings() {
+  let libsDone: Promise<void> = Promise.resolve()
   try {
     const [s, status, rgStatus] = await Promise.all([
       api.settings.get(), api.lookup.status(), api.tags.replaygainStatus(),
@@ -3580,8 +3724,8 @@ async function openSettings() {
     renameOnSaveInput.checked = s.rename_on_save
     stageChangesInput.checked = s.stage_changes ?? true
     coverTargetInput.value    = s.cover_target ?? 'folder'
-    namingIllegalInput.value  = (s.naming_replace_illegal ?? true) ? 'replace' : 'remove'
-    namingColonInput.value    = s.naming_colon ?? 'smart'
+    renderNaming(s.naming_chars ? { smart_colon: s.naming_colon === 'smart', chars: s.naming_chars, other: s.naming_other ?? '' }
+      : namingFromLidarr(s.naming_replace_illegal ?? true, s.naming_colon ?? 'smart'))
     for (const [k, el] of Object.entries(integInputs)) el.value = (s as unknown as Record<string, string>)[k] ?? ''
     maProvidersInput.value    = (s.ma_providers ?? []).join(', ')
     navidromeFoldersInput.value = mapToLines(s.navidrome_folders)
@@ -3609,8 +3753,7 @@ async function openSettings() {
       cb.checked = s.scan_tags.includes(cb.dataset.tag!)
     })
     for (const b of searchFieldBtns()) b.setAttribute('aria-pressed', String((s.search_fields ?? []).includes(b.dataset.searchField!)))
-    void renderQualitySettings(s.quality_off ?? [])
-    renderLibraries()
+    libsDone = renderLibraries()
     musicDirsDefaultEl.textContent = s.default_music_dir ?? ''
     localMusicDirs = [...(s.music_dirs ?? [])]
     renderMusicDirsList()
@@ -3625,6 +3768,10 @@ async function openSettings() {
   refreshTrashStatus()
   settingsModal.classList.add('open')
   showSettingsTab('settings')
+  settingsCancelBtn.hidden = true
+  settingsBaseline = null
+  await libsDone
+  settingsBaseline = JSON.stringify(collectSettings())
 }
 
 const trashStatusEl = document.getElementById('trash-status')!
@@ -3690,6 +3837,7 @@ function renderAcoustidStatus(status: { fpcalc_installed?: boolean; acoustid_con
 
 function closeSettings() {
   settingsModal.classList.remove('open')
+  settingsBaseline = null
   if (bgTimer) { clearInterval(bgTimer); bgTimer = null }
 }
 
@@ -3732,9 +3880,9 @@ api.jobs.list().then(jobs => {
 }).catch(() => { /* not signed in yet */ })
 
 document.getElementById('settings-btn')!.addEventListener('click', () => {
-  settingsModal.classList.contains('open') ? closeSettings() : openSettings()
+  settingsModal.classList.contains('open') ? leaveSettings() : openSettings()
 })
-document.getElementById('settings-modal-close')!.addEventListener('click', closeSettings)
+document.getElementById('settings-modal-close')!.addEventListener('click', () => leaveSettings())
 
 const logoutBtn = document.getElementById('settings-logout') as HTMLButtonElement
 logoutBtn.addEventListener('click', async () => {
@@ -3747,13 +3895,9 @@ logoutBtn.addEventListener('click', async () => {
   }
 })
 
-namingIllegalInput.addEventListener('change', () => { updateNamingPreview(); updateRenamePreview() })
-namingColonInput.addEventListener('change', () => { updateNamingPreview(); updateRenamePreview() })
 
 renameTemplateInput.addEventListener('input', () => {
   updateRenamePreview()
-  // libraries following the standard layout show it as you type
-  libraryLayoutsEl.querySelectorAll<HTMLInputElement>('[data-layout-input]').forEach(i => { i.placeholder = renameTemplateInput.value.trim() })
 })
 
 document.getElementById('music-dir-add-btn')!.addEventListener('click', () => {
@@ -3778,47 +3922,6 @@ musicDirsListEl.addEventListener('click', (e) => {
   renderMusicDirsList()
 })
 
-// ─── Settings → Quality: each check on/off, and run on demand ──────────────────
-
-const qualityChecksEl = document.getElementById('quality-checks')!
-const qualityBtns = () => [...qualityChecksEl.querySelectorAll<HTMLButtonElement>('[data-quality-key]')]
-const qualityResult = (e: IssueEntry | undefined) => e?.tracks == null ? 'Not checked yet'
-  : `${plural(e.tracks, 'track')} · ${plural(e.albums ?? 0, 'album')} · ${checkedAt(e.at)}`
-
-async function renderQualitySettings(off: string[]) {
-  let stored: Partial<IssueCount> = {}
-  try { stored = await api.library.issues(false) } catch { /* the rows still render */ }
-  qualityChecksEl.innerHTML = QUALITY_ISSUES.map(q => `
-    <div class="quality-check-row">
-      <button type="button" class="tog" data-quality-key="${q.key}" aria-pressed="${!off.includes(q.key)}"
-        title="On: the Quality panel runs it. Click to turn it ${off.includes(q.key) ? 'on' : 'off'}">${esc(q.group ? `${q.group}: ${q.label}` : q.label)}</button>
-      <span class="quality-check-result" data-quality-result="${q.key}">${esc(qualityResult(stored[q.key]))}</span>
-      <button type="button" class="btn btn-ghost btn-sm" data-quality-run="${q.key}">Check</button>
-    </div>`).join('')
-}
-
-qualityChecksEl.addEventListener('click', async (e) => {
-  const t = e.target as HTMLElement
-  const tog = t.closest<HTMLButtonElement>('[data-quality-key]')
-  if (tog) {
-    const on = tog.getAttribute('aria-pressed') !== 'true'
-    tog.setAttribute('aria-pressed', String(on))
-    tog.title = `On: the Quality panel runs it. Click to turn it ${on ? 'off' : 'on'}`
-    return
-  }
-  const run = t.closest<HTMLButtonElement>('[data-quality-run]')
-  if (!run) return
-  const key = run.dataset.qualityRun as IssueKey
-  const out = qualityChecksEl.querySelector<HTMLElement>(`[data-quality-result="${key}"]`)!
-  run.disabled = true; out.textContent = 'Checking…'
-  try {
-    out.textContent = qualityResult(await api.library.checkIssue(key))
-    state.qualityIssues = null
-    if (state.sidebarMode === 'quality') renderQualityPanel()
-  } catch (err) { out.textContent = `Failed: ${errText(err)}` }
-  finally { run.disabled = false }
-})
-
 const searchFieldBtns = () => [...document.querySelectorAll<HTMLButtonElement>('[data-search-field]')]
 document.getElementById('search-fields')!.addEventListener('click', e => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-search-field]')
@@ -3829,7 +3932,8 @@ document.getElementById('search-fields')!.addEventListener('click', e => {
   b.setAttribute('aria-pressed', String(on))
 })
 
-document.getElementById('settings-save')!.addEventListener('click', async () => {
+/** The settings form as an update: what Save sends, and what Cancel compares with. */
+function collectSettings(): Partial<AppSettings> {
   const scanTags: string[] = []
   getScanTagCheckboxes().forEach(cb => { if (cb.checked) scanTags.push(cb.dataset.tag!) })
   const update: Partial<AppSettings> = {
@@ -3838,8 +3942,7 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     rename_on_save:    renameOnSaveInput.checked,
     stage_changes:     stageChangesInput.checked,
     cover_target:      coverTargetInput.value as AppSettings['cover_target'],
-    naming_replace_illegal: namingIllegalInput.value === 'replace',
-    naming_colon:      namingColonInput.value as AppSettings['naming_colon'],
+    ...(() => { const n = namingChoice(); return { naming_colon: n.smart_colon ? 'smart' : 'chars', naming_chars: n.chars, naming_other: n.other } as Partial<AppSettings> })(),
     ...Object.fromEntries(Object.entries(integInputs).map(([k, el]) => [k, el.value.trim()])),
     ma_providers:      maProvidersInput.value.split(/[\s,]+/).filter(Boolean),
     navidrome_folders: linesToMap(navidromeFoldersInput.value),
@@ -3853,18 +3956,16 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     rename_template:   renameTemplateInput.value.trim(),
     scan_tags:         scanTags,
     search_fields:     searchFieldBtns().filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.searchField!),
-    ...(qualityBtns().length ? { quality_off: qualityBtns().filter(b => b.getAttribute('aria-pressed') !== 'true').map(b => b.dataset.qualityKey!) } : {}),
     music_dirs:        localMusicDirs,
     scan_exclude:      scanExcludeInput.value.split('\n').map(x => x.trim()).filter(Boolean),
     auto_scan_minutes: Math.max(0, parseInt(autoScanInput.value, 10) || 0),
   }
   // Layouts: only when the library list loaded (else leave them as they are).
   // A layout equal to the standard one isn't an override -- it follows the standard.
-  const layoutRows = [...libraryLayoutsEl.querySelectorAll<HTMLElement>('[data-layout-path]')]
-  if (layoutRows.length) {
+  if (layoutsLoaded) {
     const std = renameTemplateInput.value.trim()
-    update.layout_libraries = layoutRows
-      .filter(r => r.querySelector<HTMLInputElement>('[data-layout-check]')!.checked).map(r => r.dataset.layoutPath!)
+    const layoutRows = [...libraryLayoutsEl.querySelectorAll<HTMLElement>('[data-layout-path]')]
+    update.layout_libraries = [...layoutCheckEl.querySelectorAll<HTMLElement>('[data-layout-check][aria-pressed="true"]')].map(b => b.dataset.layoutCheck!)
     update.library_templates = Object.fromEntries(layoutRows.map(r => {
       const v = r.querySelector<HTMLInputElement>('[data-layout-input]')!.value.trim()
       return [r.dataset.layoutPath!, v === std ? '' : v]
@@ -3875,6 +3976,27 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
   const groupSelects = [...librariesListEl.querySelectorAll<HTMLSelectElement>('[data-lyrics-path]')]
   if (groupSelects.length) update.library_lyrics_groups = Object.fromEntries(
     groupSelects.filter(s => s.value).map(s => [s.dataset.lyricsPath!, s.value]))
+  return update
+}
+
+// Unsaved settings: Cancel shows only then, and leaving asks first.
+const settingsCancelBtn = document.getElementById('settings-cancel') as HTMLButtonElement
+let settingsBaseline: string | null = null
+const settingsDirty = () => settingsBaseline !== null && JSON.stringify(collectSettings()) !== settingsBaseline
+const markSettingsDirty = () => requestAnimationFrame(() => { settingsCancelBtn.hidden = !settingsDirty() })
+for (const ev of ['input', 'change', 'click']) document.getElementById('pane-settings')!.addEventListener(ev, markSettingsDirty)
+
+/** Close Settings, asking first if there are unsaved changes. False: stay. */
+function leaveSettings(): boolean {
+  if (!settingsModal.classList.contains('open')) return true
+  if (settingsDirty() && !confirm('Discard your unsaved settings?')) return false
+  closeSettings()
+  return true
+}
+settingsCancelBtn.addEventListener('click', () => closeSettings())
+
+document.getElementById('settings-save')!.addEventListener('click', async () => {
+  const update = collectSettings()
   try {
     const saved = await api.settings.update(update)
     state.musicDirs = [saved.default_music_dir ?? '', ...(saved.music_dirs ?? [])].filter(Boolean)
@@ -3978,9 +4100,11 @@ statusSel.addEventListener('click', (e) => {
   renderTracks(); renderEditor()
 })
 
-// The logo: home (all tracks, nothing selected, no search).
+// The logo: home (all tracks, nothing selected, no search). From Settings:
+// back to the screen you were on.
 document.getElementById('logo')!.addEventListener('click', async (e) => {
   e.preventDefault()
+  if (settingsModal.classList.contains('open')) { leaveSettings(); return }
   await restoreView({ mode: 'tags', view: 'list', offset: 0, q: '', qm: '', path: [], dir: null, issue: null })
   recordView()
 })

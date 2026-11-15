@@ -40,7 +40,6 @@ export const APP_HTML = `
         <button type="button" data-sect="sources">Sources</button>
         <button type="button" data-sect="writing">Writing</button>
         <button type="button" data-sect="search">Search</button>
-        <button type="button" data-sect="quality">Quality</button>
       </nav>
       <div class="settings-sect" data-sect="libraries">
       <div class="settings-section">
@@ -70,48 +69,49 @@ export const APP_HTML = `
       </div>
       <div class="settings-sect" data-sect="layouts" hidden>
       <div class="settings-section">
-        <div class="settings-section-title">Layouts</div>
-        <p class="settings-hint">A track uses the first layout set: <strong>1.</strong> its group's, <strong>2.</strong> its library's, <strong>3.</strong> the standard one. Libraries with <strong>Check</strong> on are compared — tracks elsewhere are listed under Quality → <em>Not in layout</em>, to re-file the ones you choose.</p>
-        <label class="field-label" id="rename-template-wrap">Standard layout
-          <input id="setting-rename-template" type="text" spellcheck="false" />
+        <div class="settings-section-title">Default layout</div>
+        <p class="settings-hint">Where a file belongs, relative to its library. A library or group layout below overrides it: a track uses its group's, else its library's, else this one.</p>
+        <label class="field-label" id="rename-template-wrap">
+          <input id="setting-rename-template" type="text" spellcheck="false" aria-label="Default layout" />
           <div id="rename-preview" class="rename-preview"></div>
         </label>
-        <p class="settings-hint">Where a file belongs, relative to its library. Variables: {title} {artist} {album} {album_artist} {year} {genre} {track_number:02d} {disc_number}, and {artist_the} {album_artist_the} {album_the} ("The Pogues" → "Pogues, The", as Lidarr names folders).</p>
+        <p class="settings-hint">Variables: {title} {artist} {album} {album_artist} {year} {genre} {track_number:02d} {disc_number}, and {artist_the} {album_artist_the} {album_the} ("The Pogues" → "Pogues, The", as Lidarr names folders).</p>
         <label class="settings-toggle">
           <input id="setting-rename-on-save" type="checkbox" />
           <span>Rename files on save — saving a track's tags also plans a move to where its layout puts it</span>
         </label>
-      </div>
-      <div class="settings-section">
-        <div class="settings-section-title">Characters in names</div>
-        <p class="settings-hint">How a tag value's characters become a folder or file name — set these like Lidarr's <em>Media Management</em> so Lidarr's folders count as in layout. Each value is cleaned on its own, so a "/" in a tag never makes a folder.</p>
-        <label class="field-label">Illegal characters
-          <select id="setting-naming-illegal">
-            <option value="replace">Replace: / \ → +, ? → !, * → -, others removed (Lidarr on)</option>
-            <option value="remove">Remove (Lidarr off)</option>
-          </select></label>
-        <label class="field-label">Colons
-          <select id="setting-naming-colon">
-            <option value="smart">Smart: "a: b" → "a - b", "10:30" → "10-30"</option>
-            <option value="dash">Dash: "-"</option>
-            <option value="space_dash">Space dash: " -"</option>
-            <option value="space_dash_space">Space dash space: " - "</option>
-            <option value="delete">Delete</option>
-          </select></label>
-        <div id="naming-preview" class="rename-preview"></div>
-        <button type="button" id="naming-from-lidarr" class="btn btn-ghost btn-sm" title="Set both from Lidarr (Settings → Sources → Lidarr); Save to keep">Copy from Lidarr</button>
-        <div id="lidarr-formats" class="settings-hint" hidden></div>
+        <div class="field-label">Check these libraries</div>
+        <p class="settings-hint">Tracks not where their layout puts them are listed under Quality → <em>Not in layout</em>, to re-file the ones you choose. Click a library to switch it.</p>
+        <div id="layout-check-libs" class="tog-row"></div>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Library layouts</div>
-        <table class="settings-table layouts-table"><thead><tr><th>Check</th><th>Library</th><th>Layout <span class="ma-dim">(blank: standard)</span></th></tr></thead>
-          <tbody id="library-layouts-list"></tbody></table>
+        <p class="settings-hint">Only if a library's tracks belong somewhere else than the default.</p>
+        <table class="settings-table layouts-table"><tbody id="library-layouts-list"></tbody></table>
+        <select id="library-layout-add" class="layout-add" aria-label="Add a library layout"></select>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Group layouts</div>
-        <p class="settings-hint">For tracks put in the group by hand (<strong>Group…</strong> on a selection). Blank: the library's layout.</p>
-        <table class="settings-table layouts-table"><thead><tr><th>Group</th><th>Layout <span class="ma-dim">(blank: library's)</span></th></tr></thead>
-          <tbody id="group-layouts-list"></tbody></table>
+        <p class="settings-hint">For tracks put in a group by hand (<strong>Group…</strong> on a selection); wins over their library's.</p>
+        <table class="settings-table layouts-table"><tbody id="group-layouts-list"></tbody></table>
+        <select id="group-layout-add" class="layout-add" aria-label="Add a group layout"></select>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Characters in names</div>
+        <p class="settings-hint">How a tag value's characters become a folder or file name, for every layout above. Set these like Lidarr's <em>Media Management</em> so Lidarr's folders count as in layout. Each value is cleaned on its own, so a "/" in a tag never makes a folder.</p>
+        <div class="naming-presets">Start from
+          <button type="button" class="btn btn-ghost btn-sm" data-naming-preset="lidarr" title="\\ and / → +, ? → !, * → -, smart colons, the rest removed (Lidarr's Replace Illegal Characters on)">Lidarr</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-naming-preset="remove" title="Every one removed (Lidarr's Replace Illegal Characters off)">Remove all</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-naming-preset="underscore" title="Every one → _">Underscores</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-naming-preset="lookalike" title="Each → a Unicode look-alike (／ ： ？ ＊ …), so names read like the tag">Look-alikes</button>
+          <button type="button" id="naming-from-lidarr" class="btn btn-ghost btn-sm" title="Your Lidarr's own settings (Settings → Sources → Lidarr)">Copy from Lidarr</button>
+        </div>
+        <p class="settings-hint"><button type="button" id="naming-smart-colon" class="tog" aria-pressed="true">Smart colons</button>
+          On: "Live: Tokyo" → "Live - Tokyo" and "10:30" → "10-30"; off: a colon is replaced like the characters below.</p>
+        <p class="settings-hint">Click a character to give it its own replacement (blank removes it); the rest get <strong>all others</strong>. With Lidarr's: "AC/DC" → "AC+DC", "Why?" → "Why!", "Me &lt;3" → "Me 3".</p>
+        <div id="naming-chars" class="naming-chars"></div>
+        <div id="naming-preview" class="rename-preview"></div>
+        <div id="lidarr-formats" class="settings-hint" hidden></div>
       </div>
       </div>
       <div class="settings-sect" data-sect="groups" hidden>
@@ -267,13 +267,6 @@ export const APP_HTML = `
         </div>
       </div>
       </div>
-      <div class="settings-sect" data-sect="quality" hidden>
-      <div class="settings-section">
-        <div class="settings-section-title">Quality checks</div>
-        <p class="settings-hint">The Quality panel runs every check that's on each time it opens or the library changes. Turn slow ones off (struck through) and run them here when you want: <strong>Check</strong> counts the tracks and albums it finds and keeps the result, which the panel then shows dimmed. Missing files, duplicates and Not in layout are the slow ones on a big library.</p>
-        <div id="quality-checks" class="quality-checks"></div>
-      </div>
-      </div>
       <div class="settings-sect" data-sect="writing" hidden>
       <div class="settings-section">
         <div class="settings-section-title">Writing Changes</div>
@@ -313,6 +306,7 @@ export const APP_HTML = `
     </div>
     <div class="settings-sidebar-footer" id="settings-footer">
       <button id="settings-logout" class="btn btn-ghost" hidden>Log out</button>
+      <button id="settings-cancel" class="btn btn-ghost" title="Discard your changes" hidden>Cancel</button>
       <button id="settings-save" class="btn btn-primary">Save</button>
     </div>
   </aside>

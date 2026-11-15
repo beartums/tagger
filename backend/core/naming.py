@@ -17,20 +17,48 @@ COLONS = {
     "smart": None,          # ": " → " - ", any other ":" → "-"
 }
 
-# Lidarr's "Replace Illegal Characters" (FileNameBuilder.CleanFileName).
-_ILLEGAL = [("\\", "+"), ("/", "+"), ("<", ""), (">", ""), ("?", "!"), ("*", "-"), ("|", ""), ('"', "")]
+# The characters a name can't hold; each is replaced by its own choice, else `other`.
+ILLEGAL = '\\/:<>?*|"'
+# Lidarr's "Replace Illegal Characters" (FileNameBuilder.CleanFileName); the rest are removed.
+LIDARR_CHARS = {"\\": "+", "/": "+", "?": "!", "*": "-"}
+
+
+def _clean_sub(v: str) -> str:
+    """A replacement can't itself hold an illegal or control character."""
+    return "".join(c for c in str(v) if c not in ILLEGAL and c >= " ")
 
 
 @dataclass(frozen=True)
 class NamingRules:
     """How characters in a tag value become a file or folder name; defaults match Lidarr's."""
-    replace_illegal: bool = True
-    colon: str = "smart"
+    smart_colon: bool = True
+    chars: tuple = tuple(sorted(LIDARR_CHARS.items()))
+    other: str = ""
+
+    def sub(self, c: str) -> str:
+        return dict(self.chars).get(c, self.other)
+
+    @classmethod
+    def make(cls, smart_colon: bool, chars: dict, other: str = "") -> "NamingRules":
+        return cls(smart_colon=bool(smart_colon),
+                   chars=tuple(sorted((k, _clean_sub(v)) for k, v in (chars or {}).items() if k in ILLEGAL)),
+                   other=_clean_sub(other or ""))
+
+    @classmethod
+    def lidarr(cls, replace_illegal: bool = True, colon: str = "smart") -> "NamingRules":
+        """Lidarr's two settings: replace on/off and the colon option."""
+        if not replace_illegal:
+            return cls(smart_colon=False, chars=(), other="")
+        chars = dict(LIDARR_CHARS)
+        if colon != "smart":
+            chars[":"] = COLONS.get(colon) or ""
+        return cls.make(colon == "smart", chars)
 
     @classmethod
     def from_settings(cls, s) -> "NamingRules":
-        colon = s.naming_colon if s.naming_colon in COLONS else "smart"
-        return cls(replace_illegal=s.naming_replace_illegal, colon=colon)
+        if getattr(s, "naming_chars", None) is None:    # saved before per-character choices
+            return cls.lidarr(s.naming_replace_illegal, s.naming_colon if s.naming_colon in COLONS else "smart")
+        return cls.make(s.naming_colon == "smart", s.naming_chars, s.naming_other)
 
 
 def current_rules() -> NamingRules:
@@ -40,19 +68,14 @@ def current_rules() -> NamingRules:
 
 def clean_value(value: str, rules: NamingRules = NamingRules()) -> str:
     """
-    One tag value as Lidarr would write it into a name: colons per the colon
-    setting, then / \\ ? * < > | " replaced (or deleted with replacement off).
-    A "/" in a value therefore never makes a folder ("AC/DC" → "AC+DC").
+    One tag value as Lidarr would write it into a name: smart colons first
+    ("a: b" → "a - b", "10:30" → "10-30"), then each of / \\ : ? * < > | "
+    replaced per the rules. A "/" in a value never makes a folder ("AC/DC" → "AC+DC").
     """
-    if rules.replace_illegal:
-        if rules.colon == "smart":
-            value = value.replace(": ", " - ").replace(":", "-")
-        else:
-            value = value.replace(":", COLONS[rules.colon])
-    else:
-        value = value.replace(":", "")
-    for bad, good in _ILLEGAL:
-        value = value.replace(bad, good if rules.replace_illegal else "")
+    if rules.smart_colon:
+        value = value.replace(": ", " - ").replace(":", "-")
+    table = {c: rules.sub(c) for c in ILLEGAL}
+    value = "".join(table.get(ch, ch) for ch in value)
     return _CONTROL.sub("_", value)
 
 

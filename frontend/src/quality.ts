@@ -2,7 +2,7 @@ import { Track, IssueKey } from './api'
 
 // ─── Track quality rating ───────────────────────────────────────────────────────
 
-// The row's dot runs the per-track Quality checks; one turned off in Settings → Quality
+// The row's dot runs the per-track Quality checks; one switched off in the Quality panel
 // is left out here too. Poor: the track can't be identified. Fair: incomplete.
 type DotCheck = { key: IssueKey; label: string; poor?: boolean; missing: (t: Track) => boolean }
 const blank = (v: unknown) => v == null || v === ''
@@ -23,7 +23,7 @@ const DOT_CHECKS: DotCheck[] = [
 ]
 
 let dotOff = new Set<string>()
-/** The checks turned off in Settings → Quality (the dot skips them). */
+/** The checks switched off in the Quality panel (the dot skips them). */
 export function setQualityOff(keys: string[] | undefined) { dotOff = new Set(keys ?? []) }
 
 function dotMissing(t: Track): DotCheck[] {
