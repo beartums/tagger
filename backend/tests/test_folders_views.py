@@ -138,6 +138,24 @@ def test_filters_are_server_side(client, lib):
     assert client.get("/api/library/formats").json() == ["flac", "mp3"]
 
 
+def test_filter_bar_combines_checks_formats_and_qualities(client, lib):
+    a, b, c, d = _rows(lib)
+    ids = lambda q: set(x["id"] for x in client.get(f"/api/library/tracks?{q}").json()["tracks"])
+    assert ids("issues=missing_album") == {c, d}
+    assert ids("issues=missing_album,missing_artist") == {c}        # checks AND
+    assert ids("format=flac,mp3&issues=missing_year") == {c, d}     # formats OR
+    assert ids("quality=poor,fair") == {c, d}                       # qualities OR
+    assert ids("issues=bogus") == {a, b, c, d}                      # unknown keys ignored
+    assert ids("has=staged") == set()
+
+
+def test_export_selection_in_view_order(client, lib):
+    a, b, c, d = _rows(lib)
+    m3u = client.post("/api/library/export-m3u?sort=track_number", json=[a, c, b]).json()["m3u"]
+    paths = [l for l in m3u.splitlines() if l and not l.startswith("#")]
+    assert [p.rsplit("/", 1)[1] for p in paths] == ["c.mp3", "b.mp3", "a.flac"]   # 1, 2, 10
+
+
 def test_track_ids_cover_every_page_in_view_order(client, lib):
     a, b, c, d = _rows(lib)
     r = client.get("/api/library/track-ids?sort=track_number").json()

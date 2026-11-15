@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **A cleaner toolbar.** The top line holds the count and the view controls as
+  icons (tracks | albums, list | tiles, sheet edit in the track list only,
+  columns). Select something and it turns into the selection: Match, Tags ▾,
+  Files ▾ and Export M3U as one icon bar (Remove and Delete are at the bottom
+  of Files; Export M3U exports the selection).
+- **A real filter bar.** The funnel lists every Quality check, quality rating,
+  format, has lyrics and has staged changes; each filter is a chip with ✕, and
+  they combine (checks all apply, formats and ratings any of).
+- **Album editing.** One album selected: the editor shows album fields only,
+  with artist and composer locked. More than one album: no editor; use the
+  actions.
+- **Locked fields.** Several tracks (or an album) selected: a field holding
+  different values is locked; hover the lock to see that what you type replaces
+  it on every track, click it to edit.
 - **Match albums is easier to read.** Each album is a header (cover now →
   MusicBrainz cover, the album, how many tracks match) and a short table of
   only what would change: field · now → MusicBrainz. Unchanged fields are
