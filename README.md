@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><em>"the tggr's a wonderful thing!"</em></p>
+<p align="center"><em>"the tggr's a wonderful thing!"</em> - . . Mln </p>
 
 ---
 
