@@ -430,6 +430,23 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
 // Library
 export const api = {
+  backup: {
+    /** The backup zip (with this browser's interface preferences). */
+    download: async (prefs: Record<string, string>): Promise<{ blob: Blob; name: string }> => {
+      const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefs }) })
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+      const name = /filename="?([^";]+)"?/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'tggr-backup.zip'
+      return { blob: await res.blob(), name }
+    },
+    restore: async (file: File) => {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/backup/restore', { method: 'POST', body: fd })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.detail ?? `${res.status}`)
+      return body as { ok: boolean; tracks: number; created: string | null; version: string | null; prefs: Record<string, string> }
+    },
+  },
+
   auth: {
     status: () => request<{ required: boolean; authed: boolean }>('GET', '/api/auth/status'),
     login: (password: string) => request<{ ok: boolean }>('POST', '/api/auth/login', { password }),

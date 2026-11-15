@@ -45,7 +45,7 @@ class AppSettings(BaseModel):
     # Edits are held for review and written by "Write changes" (api/staged.py).
     stage_changes: bool = True
     # Folders rename templates are relative to (globs allowed). Empty = the
-    # TAGGER_LIBRARY_ROOTS env var, else the music directories.
+    # TGGR_LIBRARY_ROOTS env var, else the music directories.
     library_roots: list[str] = []
     # Library roots switched off: not scanned, their tracks not in the DB.
     inactive_libraries: list[str] = []
@@ -86,12 +86,12 @@ class AppSettings(BaseModel):
     ma_url: str = ""
     ma_token: str = ""                 # long-lived token of an admin (music/sync needs library.manage)
     ma_providers: list[str] = []       # provider instance ids to sync; [] = all
-    # Rescan just what changed (core/integrations.py). Tagger folder ->
+    # Rescan just what changed (core/integrations.py). tggr folder ->
     # Navidrome "libraryID:folder in it" ("1:" = library 1's root) / MA provider instance id.
     # Empty, or a change outside them: Navidrome scans everything, MA syncs ma_providers.
     navidrome_folders: dict[str, str] = {}
     ma_folders: dict[str, str] = {}
-    # When Navidrome/MA rescan after Tagger changes files (core/integrations.py):
+    # When Navidrome/MA rescan after tggr changes files (core/integrations.py):
     # off | delay (N s after the first change) | quiet (N min after the last change).
     rescan_mode: str = "quiet"
     rescan_delay_seconds: int = 30

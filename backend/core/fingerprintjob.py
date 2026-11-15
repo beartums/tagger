@@ -16,7 +16,7 @@ import time
 from core.database import db
 from core.tasks import _CANCEL, _update_job
 
-logger = logging.getLogger("tagger.fingerprint")
+logger = logging.getLogger("tggr.fingerprint")
 
 PARALLEL = 4
 BATCH = 50

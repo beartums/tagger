@@ -415,7 +415,7 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
         for r in conn.execute(f"SELECT * FROM tracks WHERE id IN ({ph})", list(entries)).fetchall()
     } if entries else {}
     # Every file and folder must still be where the scan found it. If any is
-    # gone the DB is stale (moved or deleted behind Tagger's back): write
+    # gone the DB is stale (moved or deleted behind tggr's back): write
     # nothing and say so once, rather than failing track by track.
     missing = [{"id": tid, "name": r["title"] or r["filename"], "error": "file missing"}
                for tid, r in rows.items() if not Path(r["path"]).exists()]

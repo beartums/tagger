@@ -10,7 +10,7 @@ count as missing lyrics.
 
 A track's group: the one it was assigned (lyrics_members), else its
 library's default (Settings → Libraries), else Standard. Assignments live in
-Tagger's DB, not the files.
+tggr's DB, not the files.
 """
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 """
-Build the full logo (mark + "Tagger" wordmark) as crisp SVGs for the README:
+Build the full logo (mark + "tggr" wordmark) as crisp SVGs for the README:
 logo-full-light.svg and logo-full-dark.svg.
 
 The mark is logo-dark.svg without its glow: the waveform bars are drawn at the
@@ -28,7 +28,7 @@ GAP = 60             # mark to wordmark
 PAD = 16             # around the whole logo
 
 
-def wordmark(font_path: str, text: str = "Tagger") -> tuple[str, float, int, int]:
+def wordmark(font_path: str, text: str = "tggr") -> tuple[str, float, int, int, int]:
     data = Path(font_path).read_bytes()
     buf = hb.Buffer(); buf.add_str(text); buf.guess_segment_properties()
     hb.shape(hb.Font(hb.Face(data)), buf, {"kern": True, "liga": True})
@@ -39,7 +39,7 @@ def wordmark(font_path: str, text: str = "Tagger") -> tuple[str, float, int, int
         gs[order[info.codepoint]].draw(TransformPen(pen, (1, 0, 0, -1, x + pos.x_offset, -pos.y_offset)))
         parts.append(pen.getCommands())
         x += pos.x_advance + TRACK
-    return " ".join(parts), x - TRACK, f["OS/2"].sCapHeight, -f["hhea"].descent
+    return " ".join(parts), x - TRACK, f["OS/2"].sCapHeight, f["OS/2"].sxHeight, -f["hhea"].descent
 
 
 def crisp_mark(ink: str) -> str:
@@ -55,15 +55,15 @@ def crisp_mark(ink: str) -> str:
 
 
 def main(font_path: str) -> None:
-    path, width, cap, desc = wordmark(font_path)
+    path, width, cap, xh, desc = wordmark(font_path)
     s = CAP / cap
-    baseline = 211 + CAP / 2               # cap height centred on the waveform's line
+    baseline = 211 + xh * s / 2            # lowercase: x-height centred on the waveform's line
     x0 = 632 + GAP
     total_w = x0 + width * s
     bottom = max(424, baseline + desc * s)
     for mode, ink in INK.items():
         defs, mark = crisp_mark(ink)
-        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{-PAD} {-PAD} {total_w + 2 * PAD:.0f} {bottom + 2 * PAD:.0f}" role="img" aria-label="Tagger">'
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{-PAD} {-PAD} {total_w + 2 * PAD:.0f} {bottom + 2 * PAD:.0f}" role="img" aria-label="tggr">'
                f"<defs>{defs}</defs>"
                f'<g transform="translate(-196 -252)">{mark}</g>'
                f'<path fill="{ink}" transform="translate({x0} {baseline:.1f}) scale({s:.6f})" d="{path}"/>'

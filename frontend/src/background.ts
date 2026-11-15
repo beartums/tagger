@@ -135,7 +135,7 @@ export async function renderAbout(el: HTMLElement) {
     el.innerHTML = `
       <div class="settings-section">
         <img class="about-logo" src="/logo.svg" alt="" />
-        <div class="about-title">Tagger <span class="ma-dim">${esc(a.image || 'v' + a.version)}</span></div>
+        <div class="about-title">tggr <span class="ma-dim">${esc(a.image || 'v' + a.version)}</span></div>
         <table class="about-table">
           ${row('App version', esc(a.version))}
           ${row('Image', a.image ? esc(a.image) : '<span class="ma-dim">not stamped (local build)</span>')}

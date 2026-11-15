@@ -9,7 +9,7 @@ import musicbrainzngs
 from core.multivalue import join_values
 from core.providers.base import MetadataProvider, TrackMetadata
 
-musicbrainzngs.set_useragent("tagger", "0.2", "https://github.com/beartums/tagger")
+musicbrainzngs.set_useragent("tggr", "0.3.0", "https://github.com/beartums/tggr")
 # MusicBrainz asks for at most one request per second; musicbrainzngs enforces
 # this, but set it explicitly so bulk Auto-fix stays within policy.
 musicbrainzngs.set_rate_limit(1.0, 1)

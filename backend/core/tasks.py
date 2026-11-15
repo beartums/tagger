@@ -13,7 +13,7 @@ from typing import Any
 from core.database import db
 from core.scanner import ScanCancelled
 
-logger = logging.getLogger("tagger.scan")
+logger = logging.getLogger("tggr.scan")
 
 
 _CANCEL: set[str] = set()

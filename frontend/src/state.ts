@@ -1,7 +1,7 @@
 import { Track, Artist, Album, ScanJob, LookupResult, IssueCount, TagValue } from './api'
 
 export const PAGE_SIZES = [50, 100, 250, 500, 1000]
-const PAGE_SIZE_KEY = 'tagger.pageSize'
+const PAGE_SIZE_KEY = 'tggr.pageSize'
 
 function loadPageSize(): number {
   try {
@@ -15,7 +15,7 @@ export function savePageSize(n: number) {
   try { localStorage.setItem(PAGE_SIZE_KEY, String(n)) } catch { /* ignore */ }
 }
 export const DEFAULT_COLS = ['quality', 'title', 'artist', 'album', 'year', 'track_number', 'format', 'duration']
-const COLS_KEY = 'tagger_visible_cols'
+const COLS_KEY = 'tggr_visible_cols'
 
 export function loadColPrefs(): Set<string> {
   try {
@@ -25,7 +25,7 @@ export function loadColPrefs(): Set<string> {
   return new Set(DEFAULT_COLS)
 }
 
-const ORDER_KEY = 'tagger_col_order'
+const ORDER_KEY = 'tggr_col_order'
 
 export function loadColOrder(): string[] {
   try { return JSON.parse(localStorage.getItem(ORDER_KEY) || '[]') } catch { return [] }
@@ -35,7 +35,7 @@ export function saveColOrder(keys: string[]): void {
   try { localStorage.setItem(ORDER_KEY, JSON.stringify(keys)) } catch { /* storage blocked */ }
 }
 
-const WIDTHS_KEY = 'tagger_col_widths'
+const WIDTHS_KEY = 'tggr_col_widths'
 
 /** Column widths (px) the user dragged; empty = the stylesheet's defaults. */
 export function loadColWidths(): Record<string, number> {

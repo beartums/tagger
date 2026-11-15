@@ -603,7 +603,7 @@ def export_m3u(view: View = Depends(), limit: int = Query(10000, le=100000)):
     return PlainTextResponse(
         body,
         media_type="audio/x-mpegurl",
-        headers={"Content-Disposition": 'attachment; filename="tagger-export.m3u"'},
+        headers={"Content-Disposition": 'attachment; filename="tggr-export.m3u"'},
     )
 
 

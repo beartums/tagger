@@ -105,7 +105,7 @@ export async function openDuplicates(onDone: () => Promise<void>) {
   $('#dup-go').addEventListener('click', async () => {
     const ids = losers()
     const trash = $<HTMLSelectElement>('#dup-mode').value === 'trash'
-    if (trash && !confirm(`Move ${ids.length} files to Tagger's trash? Undo from History puts them back until the trash is emptied.`)) return
+    if (trash && !confirm(`Move ${ids.length} files to tggr's trash? Undo from History puts them back until the trash is emptied.`)) return
     $<HTMLButtonElement>('#dup-go').disabled = true
     try {
       if (trash) { const r = await api.library.deleteFiles(ids); toast(`Moved ${r.deleted} duplicate files to trash — undo from History`, 'success') }

@@ -15,7 +15,7 @@ import urllib.request
 from core.providers.base import TrackMetadata
 
 _SEARCH_URL = "https://api.discogs.com/database/search"
-_USER_AGENT = "tagger/0.3.0 +https://github.com/beartums/tagger"
+_USER_AGENT = "tggr/0.3.0 +https://github.com/beartums/tggr"
 
 
 class DiscogsProvider:

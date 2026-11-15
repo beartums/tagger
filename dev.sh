@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# dev.sh — Run tagger locally for development (no Docker required)
+# dev.sh — Run tggr locally for development (no Docker required)
 #
 # Starts:
 #   - FastAPI backend on :8000  (with --reload)
 #   - Vite dev server on :5173  (proxies /api to :8000)
 #
 # Usage:
-#   ./dev.sh                        # uses /tmp/tagger-music as music dir
-#   TAGGER_MUSIC_DIR=~/Music ./dev.sh
+#   ./dev.sh                        # uses /tmp/tggr-music as music dir
+#   TGGR_MUSIC_DIR=~/Music ./dev.sh
 
 set -euo pipefail
 
@@ -36,13 +36,13 @@ if [ ! -d "$ROOT/frontend/node_modules" ]; then
 fi
 
 # ── Default dirs ──────────────────────────────────────────────────────────
-export TAGGER_MUSIC_DIR="${TAGGER_MUSIC_DIR:-/tmp/tagger-music}"
-export TAGGER_CONFIG_DIR="${TAGGER_CONFIG_DIR:-/tmp/tagger-config}"
-mkdir -p "$TAGGER_MUSIC_DIR" "$TAGGER_CONFIG_DIR"
+export TGGR_MUSIC_DIR="${TGGR_MUSIC_DIR:-/tmp/tggr-music}"
+export TGGR_CONFIG_DIR="${TGGR_CONFIG_DIR:-/tmp/tggr-config}"
+mkdir -p "$TGGR_MUSIC_DIR" "$TGGR_CONFIG_DIR"
 
 echo
-echo "  Music dir:  $TAGGER_MUSIC_DIR"
-echo "  Config dir: $TAGGER_CONFIG_DIR"
+echo "  Music dir:  $TGGR_MUSIC_DIR"
+echo "  Config dir: $TGGR_CONFIG_DIR"
 echo "  Backend:    http://localhost:8000"
 echo "  Frontend:   http://localhost:5173"
 echo

@@ -42,14 +42,14 @@ COPY --from=frontend-build /build/backend/static ./static
 # Config and music are mounted at runtime
 RUN mkdir -p /music /config
 
-ENV TAGGER_MUSIC_DIR=/music
-ENV TAGGER_CONFIG_DIR=/config
+# Defaults: TGGR_MUSIC_DIR=/music, TGGR_CONFIG_DIR=/config (set in code, so an
+# older TAGGER_* setting still applies).
 
 # Build stamp for the About page (set by .github/workflows/publish.yml).
 ARG IMAGE_VERSION=""
 ARG GIT_SHA=""
 ARG BUILD_DATE=""
-ENV TAGGER_IMAGE_VERSION=$IMAGE_VERSION TAGGER_GIT_SHA=$GIT_SHA TAGGER_BUILD_DATE=$BUILD_DATE
+ENV TGGR_IMAGE_VERSION=$IMAGE_VERSION TGGR_GIT_SHA=$GIT_SHA TGGR_BUILD_DATE=$BUILD_DATE
 
 EXPOSE 8000
 

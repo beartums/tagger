@@ -170,7 +170,7 @@ def _caa_size(size: int) -> int:
 
 
 def _fetch_caa_url(url: str) -> tuple[str, bytes]:
-    req = urllib.request.Request(url, headers={"User-Agent": "tagger/0.3.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "tggr/0.3.0"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
         data = resp.read(_MAX_COVER_BYTES + 1)

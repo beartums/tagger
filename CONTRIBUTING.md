@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving tagger.
+Thanks for your interest in improving tggr.
 
 ## Development setup
 
