@@ -415,7 +415,6 @@ export const APP_HTML = `
       <div id="album-grid" class="album-grid" style="display:none"></div>
       <div id="album-list" class="album-list" style="display:none"></div>
       <div id="pagination" class="pagination">
-        <span id="status-where" class="status-where"></span>
         <span class="page-controls">
         <span id="page-nav" class="page-nav">
           <button type="button" id="page-prev" class="btn btn-ghost btn-sm" title="Previous page">‹</button>
@@ -426,7 +425,6 @@ export const APP_HTML = `
         </span>
         <span id="page-size-wrap" class="page-size-wrap"><select id="page-size" class="page-size" title="Rows per page"></select> per page</span>
         </span>
-        <span id="status-sel" class="status-sel"></span>
       </div>
     </main>
 
@@ -492,4 +490,9 @@ export const APP_HTML = `
     </aside>
   </div>
 
+  <footer id="statusbar" class="statusbar">
+    <span id="status-where" class="status-where"></span>
+    <span id="status-count" class="status-count"></span>
+    <span id="status-sel" class="status-sel"></span>
+  </footer>
 `

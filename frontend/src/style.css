@@ -810,11 +810,12 @@ body.resizing-pane, body.resizing-pane * { cursor: col-resize !important; user-s
 /* Prev/next, an editable top row, page N of M, and rows per page, under the list. */
 /* The bar under the list: where you are (left), the pager (centre), the selection (right). */
 .pagination {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px;
+  display: flex; justify-content: center; align-items: center; gap: 16px;
   min-height: 28px; padding: 2px 12px; border-top: 1px solid var(--border);
   background: var(--bg-panel); flex-shrink: 0;
   font-size: 12px; color: var(--text-muted); white-space: nowrap;
 }
+.pagination[hidden] { display: none; }
 .page-controls { display: inline-flex; align-items: center; gap: 16px; }
 .page-nav[hidden], .page-size-wrap[hidden] { display: none; }
 
@@ -1574,8 +1575,15 @@ button.scan-status[hidden] { display: none; }
 .cc-preview { min-height: 200px; display: flex; align-items: center; justify-content: center; background: var(--surface2); border-radius: 6px; }
 .cc-preview img { max-width: 100%; max-height: 300px; }
 
-.status-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.status-sel { justify-self: end; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
+/* ─── Status bar: where you are, the view's size, the selection ─────────────── */
+.statusbar {
+  display: flex; align-items: center; gap: 16px; height: 24px; padding: 0 12px; flex-shrink: 0;
+  background: var(--surface); border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted);
+  white-space: nowrap;
+}
+.status-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status-count:empty { display: none; }
+.status-sel { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
 .status-sel:empty { display: none; }
 .status-sel .btn-link { font-size: 12px; margin-left: 6px; }
 
@@ -1666,3 +1674,7 @@ button.scan-status[hidden] { display: none; }
 .naming-char input:disabled { opacity: .55; }
 .naming-char-smart { opacity: .45; }
 .naming-char-all input { width: 3.2em; }
+/* Album tiles: a select box in the corner, shown on hover or once picked. */
+.album-card .album-check { position: absolute; top: 6px; right: 6px; z-index: 2; width: 16px; height: 16px; margin: 0; cursor: pointer; opacity: 0; transition: opacity .1s; }
+.album-card:hover .album-check, .album-card.album-picked .album-check, .album-check:focus-visible { opacity: 1; }
+.album-table .col-check { width: 28px; text-align: center; }

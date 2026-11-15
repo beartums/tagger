@@ -491,8 +491,19 @@ async function pickAlbum(e: MouseEvent, i: number, key: (j: number) => string, i
 
 function markAlbumPicks() {
   if (!state.selectedIds.size) { albumPicks.clear(); albumAnchor = null }
-  document.querySelectorAll<HTMLElement>('[data-album-key]').forEach(el =>
-    el.classList.toggle('album-picked', albumPicks.has(el.dataset.albumKey!)))
+  document.querySelectorAll<HTMLElement>('[data-album-key]').forEach(el => {
+    const on = albumPicks.has(el.dataset.albumKey!)
+    el.classList.toggle('album-picked', on)
+    const cb = el.querySelector<HTMLInputElement>('.album-check')
+    if (cb) cb.checked = on
+  })
+  const all = albumListEl.querySelector<HTMLInputElement>('#album-select-all')
+  if (all) {
+    const keys = [...albumListEl.querySelectorAll<HTMLElement>('tr[data-album-key]')].map(r => r.dataset.albumKey!)
+    const n = keys.filter(k => albumPicks.has(k)).length
+    all.checked = n > 0 && n === keys.length
+    all.indeterminate = n > 0 && n < keys.length
+  }
 }
 
 const tileKey = (a: Album) => JSON.stringify(a.artist === null ? ['aa', a.album_artist, a.album] : [a.artist, a.album])
@@ -502,10 +513,11 @@ function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
   card.className = 'album-card'
   card.dataset.albumKey = tileKey(alb)
   card.classList.toggle('album-picked', albumPicks.has(tileKey(alb)))
-  card.title = 'Click to open · Ctrl/⌘-click or Shift-click to select'
+  card.title = 'Click to open · the box (or Ctrl/⌘-click) selects, Shift-click a range'
   const artistDisplay = esc(alb.album_artist || alb.artist || '(Unknown Artist)')
   card.innerHTML = `
     <div class="album-cover-wrap">
+      <input type="checkbox" class="album-check" ${albumPicks.has(tileKey(alb)) ? 'checked' : ''} aria-label="Select this album" />
       <img class="album-cover" loading="lazy" src="${coverUrl(alb.cover_track_id)}" alt="${esc(alb.album || '')}" />
       ${(() => { const q = albumQuality(alb.quality ?? {}, alb.track_count); return `<span class="quality-dot quality-dot-${q.rating} album-tile-dot" title="${esc(q.title)}"></span>` })()}
       <div class="album-cover-placeholder">♪</div>
@@ -521,7 +533,7 @@ function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
   img.addEventListener('error', () => { img.style.display = 'none'; placeholder.style.display = 'flex' })
   img.addEventListener('load',  () => { img.style.display = 'block'; placeholder.style.display = 'none' })
   card.addEventListener('click', (e) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || (e.target as HTMLElement).closest('.album-check')) {
       pickAlbum(e, i, j => tileKey(albums[j]), async j => albums[j].album
         ? (await api.library.trackIds(albumParams(albums[j]))).ids : [])
       return
@@ -635,15 +647,26 @@ function drawAlbumList(fetched: AlbumRow[]) {
   }
   const dot = (r: AlbumRow) => { const q = albumQuality(r.quality ?? {}, r.tracks); return `<span class="quality-dot quality-dot-${q.rating}" title="${esc(q.title)}"></span>` }
   albumListEl.innerHTML = `<table class="track-table album-table"><thead><tr>
-      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="al-cover"></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
+      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album listed" /></th><th class="al-cover"></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
       ${th('year', 'Year')}${th('genre', 'Genre')}${th('format', 'Format')}${th('folder', 'Folder')}</tr></thead><tbody>
-    ${rows.map((r, i) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}" title="${esc(r.directory)}\nClick to open · Ctrl/⌘-click or Shift-click to select">
-      <td class="al-q">${dot(r)}</td><td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
+    ${rows.map((r, i) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}" title="${esc(r.directory)}\nClick to open · the box (or Ctrl/⌘-click) selects, Shift-click a range">
+      <td class="al-q">${dot(r)}</td><td class="col-check">${r.ids.length ? `<input type="checkbox" class="album-check" ${albumPicks.has(listKey(r)) ? 'checked' : ''} aria-label="Select this album" />` : '<span class="ro-lock" title="Read-only">🔒</span>'}</td><td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
       <td>${esc(r.album || '(no album)')}</td><td>${artist(r)}</td><td class="al-num">${tracks(r)}</td>
       <td class="al-num">${r.discs > 1 ? r.discs : ''}</td><td>${v(r, 'year')}</td><td>${v(r, 'genre')}</td>
       <td>${v(r, 'format')}${r.bitrate ? ` <span class="al-dim">${Math.round(r.bitrate / 1000)}k</span>` : ''}</td>
       <td class="al-dim">${esc(shortPath(r.directory))}</td></tr>`).join('')}
     </tbody></table>`
+  albumListEl.querySelector('#album-select-all')!.addEventListener('click', (e) => {
+    const all = rows.every(r => !r.ids.length || albumPicks.has(listKey(r)))
+    albumPicks.clear()
+    if (!all) for (const r of rows) if (r.ids.length) albumPicks.set(listKey(r), r.ids)
+    albumAnchor = null
+    state.selectedIds = new Set([...albumPicks.values()].flat())
+    ;(e.target as HTMLInputElement).checked = !all
+    updateBulkBar()
+    renderEditor()
+  })
+  markAlbumPicks()
   albumListEl.querySelector('thead')!.addEventListener('click', (e) => {
     const h = (e.target as HTMLElement).closest<HTMLElement>('[data-al-sort]')
     if (!h) return
@@ -655,7 +678,8 @@ function drawAlbumList(fetched: AlbumRow[]) {
   albumListEl.querySelector('tbody')!.addEventListener('click', async (e) => {
     const tr = (e.target as HTMLElement).closest<HTMLElement>('tr[data-i]')
     if (!tr) return
-    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || (e.target as HTMLElement).closest('.album-check, .col-check')) {
+      if ((e.target as HTMLElement).closest('.ro-lock')) return
       pickAlbum(e, Number(tr.dataset.i), j => listKey(rows[j]), async j => rows[j].ids)
       return
     }
@@ -690,6 +714,7 @@ function renderViewMode() {
   tableWrapEl.style.display  = state.viewMode === 'list' ? '' : 'none'
   albumGridEl.style.display  = albums && albumStyle === 'tiles' ? 'grid' : 'none'
   albumListEl.style.display  = albums && albumStyle === 'list' ? '' : 'none'
+  renderPagination()   // the pager pages tracks: hidden with albums
   albumStyleEl.hidden = !albums
   albumStyleEl.querySelectorAll<HTMLElement>('[data-style]').forEach(b => b.classList.toggle('active', b.dataset.style === albumStyle))
   viewListBtn.classList.toggle('active',   state.viewMode === 'list')
@@ -1060,12 +1085,13 @@ const pageSizeWrap = document.getElementById('page-size-wrap')!
 const pageSize    = document.getElementById('page-size') as HTMLSelectElement
 pageSize.innerHTML = PAGE_SIZES.map(n => `<option value="${n}">${n}</option>`).join('')
 
-/** The bar under the list: where you are, the pager (when there's paging to do), the selection. */
+/** The pager under the list, when there's paging to do (where you are and the selection: the status bar). */
 function renderPagination() {
   const p = paged()
   const sizable = state.total > PAGE_SIZES[0]
   pageNav.hidden = !p
   pageSizeWrap.hidden = !sizable
+  document.getElementById('pagination')!.hidden = state.viewMode === 'albums' || (!p && !sizable)
   pageSize.value = String(state.pageSize)
   if (!p) return
   if (document.activeElement !== pageTop) pageTop.value = String(state.offset + 1)
@@ -4066,6 +4092,7 @@ function showLogin() {
 
 const statusWhere = document.getElementById('status-where')!
 const statusSel   = document.getElementById('status-sel')!
+const statusCount = document.getElementById('status-count')!
 function plural(n: number, w: string) { return `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}` }   // hoisted: the Quality panel uses it at startup
 
 function updateStatusBar() {
@@ -4082,6 +4109,7 @@ function updateStatusBar() {
   if (state.query) where.push(state.queryMode === 'regex' ? `/${state.query}/` : state.queryMode === 'glob' ? `glob “${state.query}”` : `“${state.query}”`)
   statusWhere.textContent = where.join(' › ')
   statusWhere.title = statusWhere.textContent
+  statusCount.textContent = state.total ? plural(state.total, 'track') + (state.filterFormat || state.filterQuality ? ' (filtered)' : '') : ''
 
 
   // Albums: the picked ones, else the folders of the selected tracks when they're all loaded.

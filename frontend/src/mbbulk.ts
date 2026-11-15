@@ -13,7 +13,7 @@ import { errText, shortPath } from './staged'
 import { openMbAlbum, KEEP } from './mbalbum'
 
 const TRIES = 4           // candidates scored per album
-const GOOD = 0.8          // share of your tracks paired with the release (titles agree) at or above: ticked
+const GOOD = 0.9          // share of your tracks paired with the release (titles agree) at or above: ticked
 
 const FIELDS: { key: string; label: string }[] = [
   { key: 'album', label: 'Album' }, { key: 'album_artist', label: 'Album artist' }, { key: 'year', label: 'Year' },
