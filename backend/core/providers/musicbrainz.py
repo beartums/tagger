@@ -210,6 +210,26 @@ def search_releases(album: str | None, artist: str | None, limit: int = 15) -> l
     return [_candidate(rel) for rel in resp.get("release-list", [])]
 
 
+def find_artist(name: str) -> tuple[str, str | None]:
+    """
+    ("linked", mbid) when exactly one MusicBrainz artist has this exact name
+    (ignoring case); ("ambiguous", None) when several do; ("unknown", None)
+    when none does (or the search failed).
+    """
+    # The quoted phrase: unquoted, the words are searched apart and a common
+    # name ("John Smith") comes back as popular Johns instead of its 22 namesakes.
+    phrase = name.replace("\\", "\\\\").replace('"', '\\"')
+    try:
+        resp = _with_retry(musicbrainzngs.search_artists, query=f'artist:"{phrase}"', limit=25)
+    except Exception:
+        return "unknown", None
+    want = name.casefold().strip()
+    same = [a for a in resp.get("artist-list", []) if (a.get("name") or "").casefold().strip() == want]
+    if len(same) == 1:
+        return "linked", same[0]["id"]
+    return ("ambiguous" if same else "unknown"), None
+
+
 def releases_by_discid(discid: str) -> list[dict]:
     """The releases MusicBrainz has this disc ID on (exact; no TOC fuzzing)."""
     try:

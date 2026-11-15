@@ -555,16 +555,22 @@ async def fill_disc_ids(req: TrackIds):
     return {"results": results, "tracks": n, **out}
 
 
-def _credit(prefix: str, names: str | None, mbid: str | None = None) -> list[tuple[str, str]]:
-    """artist_credit fields for a "; "-joined artist value: "A", "A & B", "A, B & C"."""
+ARTIST_LOOKUPS = 20     # ~1 s each at MusicBrainz's rate: stay inside the proxy's 30 s
+
+
+def _credit(prefix: str, names: str | None, ids: dict[str, str]) -> list[tuple[str, str]]:
+    """
+    artist_credit fields for a "; "-joined artist value ("A", "A & B", "A, B & C"),
+    with each artist's MBID when known, so the release editor has it linked.
+    """
     from core.multivalue import split_values
     parts = split_values(names or "") if names else []
     out = []
     for i, p in enumerate(parts):
         out.append((f"{prefix}artist_credit.names.{i}.name", p))
         out.append((f"{prefix}artist_credit.names.{i}.artist.name", p))
-        if mbid and len(parts) == 1:
-            out.append((f"{prefix}artist_credit.names.{i}.mbid", mbid))
+        if ids.get(p):
+            out.append((f"{prefix}artist_credit.names.{i}.mbid", ids[p]))
         if i < len(parts) - 1:
             out.append((f"{prefix}artist_credit.names.{i}.join_phrase", " & " if i == len(parts) - 2 else ", "))
     return out
@@ -592,8 +598,9 @@ def mb_seed(req: Seed):
     tracks = [t for g in groups.values() for t in g]
     album = _common(tracks, "album") or next(iter(albums))[0].rsplit("/", 1)[-1]
     album_artist = _common(tracks, "album_artist") or _common(tracks, "artist")
+    artists = _artist_ids(tracks, album_artist)
     f: list[tuple[str, str]] = [("name", album), ("status", "official")]
-    f += _credit("", album_artist, _common(tracks, "mb_album_artist_id"))
+    f += _credit("", album_artist, artists["ids"])
     year = (_common(tracks, "year") or "")[:4]
     if year.isdigit():
         f.append(("events.0.date.year", year))
@@ -612,13 +619,43 @@ def mb_seed(req: Seed):
             if t.get("duration"):
                 f.append((tp + "length", str(round(t["duration"] * 1000))))
             if t.get("artist") and t["artist"] != album_artist:
-                f += _credit(tp, t["artist"])
+                f += _credit(tp, t["artist"], artists["ids"])
             if t.get("mb_track_id"):
                 f.append((tp + "recording", t["mb_track_id"]))
     f.append(("edit_note", "Added with tggr from a CD rip (FLAC): titles and order from the tags, lengths from the files."))
     if req.redirect_uri:
         f.append(("redirect_uri", req.redirect_uri))
-    return {"action": "https://musicbrainz.org/release/add", "album": album, "fields": f}
+    return {"action": "https://musicbrainz.org/release/add", "album": album, "fields": f,
+            "artists": {k: v for k, v in artists.items() if k != "ids"}}
+
+
+def _artist_ids(tracks: list[dict], album_artist: str | None) -> dict:
+    """
+    An MBID for each artist the release credits, so the release editor arrives
+    with them linked: from the tags when the files were matched before (a lone
+    artist's mb_artist_id / mb_album_artist_id), else MusicBrainz's one artist
+    with exactly that name. Several with that name, or none: left for you.
+    """
+    from core.multivalue import split_values
+    ids: dict[str, str] = {}
+    names: list[str] = []
+    for a, mbid in [(album_artist, _common(tracks, "mb_album_artist_id")),
+                    *((t.get("artist"), t.get("mb_artist_id")) for t in tracks)]:
+        parts = split_values(a or "") if a else []
+        if len(parts) == 1 and mbid and _UUID_RE.match(mbid):
+            ids.setdefault(parts[0], mbid)
+        names += [p for p in parts if p not in names]
+    out = {"ids": ids, "linked": len([n for n in names if n in ids]), "ambiguous": [], "unknown": [], "unchecked": []}
+    todo = [n for n in names if n not in ids]
+    for n in todo[:ARTIST_LOOKUPS]:
+        status, mbid = mbp.find_artist(n)
+        if mbid:
+            ids[n] = mbid
+            out["linked"] += 1
+        else:
+            out[status].append(n)
+    out["unchecked"] = todo[ARTIST_LOOKUPS:]
+    return out
 
 
 @router.post("/disc-info")

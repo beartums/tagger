@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Add to MusicBrainz links the artists.** Each artist arrives linked in the
+  release editor: from the tags when the files were matched before, else the
+  one MusicBrainz artist with exactly that name. Names shared by several
+  artists, or new to MusicBrainz, are left for you, and the message says which.
 - **Add to MusicBrainz: no "Unknown field" warning.** It sent a medium
   position MusicBrainz doesn't take; now only documented fields go, and a test
   holds it to that list.
