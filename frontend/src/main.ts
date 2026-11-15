@@ -1055,9 +1055,18 @@ function renderEditorFile(t: Track | null) {
 
 // The tag editor's unsaved changes: typed fields and chip adds/removes.
 let editorFor = new Set<number>()   // the tracks the form was last filled for
+// Only what Save would write counts: a tag field (or Compilation) whose value differs
+// from what the form was filled with, or chip adds/removes on a multi-track selection.
+// (Other controls in the editor -- chip search boxes, lookups -- aren't edits.)
 function editorDirty(): boolean {
   if (tagEditor.hidden) return false
-  return !!tagForm.querySelector('[data-dirty="1"]') || [...valueChips.values()].some(c => c.dirty)
+  for (const field of TAG_FIELDS) {
+    const el = tagForm.elements.namedItem(field) as HTMLInputElement | HTMLTextAreaElement | null
+    if (el && el.dataset.dirty === '1' && el.value !== (el.dataset.filled ?? '')) return true
+  }
+  const cb = compilationCheckbox()
+  if (cb.dataset.dirty === '1' && !cb.indeterminate && String(cb.checked) !== cb.dataset.filled) return true
+  return editorFor.size > 1 && [...valueChips.values()].some(c => c.dirty)
 }
 function clearEditorDirty() {
   tagForm.querySelectorAll<HTMLElement>('[data-dirty="1"]').forEach(el => delete el.dataset.dirty)
@@ -1289,6 +1298,7 @@ function populateForm(tracks: Track[]) {
     }
     el.closest('.field-label')?.classList.toggle('field-staged', tracks.some(t => t._orig && field in t._orig))
     delete (el as HTMLElement).dataset.dirty
+    el.dataset.filled = el.value
   }
   setChipMode()
   // compilation: boolean checkbox; indeterminate = mixed across the selection.
@@ -1298,6 +1308,7 @@ function populateForm(tracks: Track[]) {
   cb.indeterminate = !compSame
   cb.checked = compSame ? comp[0] : false
   delete cb.dataset.dirty
+  cb.dataset.filled = cb.indeterminate ? 'mixed' : String(cb.checked)
 }
 
 // ─── MusicBrainz lookup ───────────────────────────────────────────────────────
