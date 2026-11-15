@@ -1,11 +1,9 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="branding/logo-dark.svg">
-    <img src="branding/logo-light.svg" alt="Tagger" width="240">
+    <source media="(prefers-color-scheme: dark)" srcset="branding/logo-full-dark.svg">
+    <img src="branding/logo-full-light.svg" alt="Tagger" width="420">
   </picture>
 </p>
-
-<h1 align="center">Tagger</h1>
 
 Self-hosted web app for editing audio tags (FLAC, MP3, AAC/M4A, OGG) — run it
 on a NAS or server and tag your library from any browser.

@@ -6,6 +6,7 @@ the app; the social preview sets "Tagger" beside it.
 
 | File | Use |
 |---|---|
+| `logo-full-light.svg`, `logo-full-dark.svg` | The full logo: mark + "Tagger", crisp (no glow), wordmark as outlines. Used in the README. Built by `build_lockup.py`. |
 | `logo-dark.svg` | The mark on dark backgrounds (white ink). Same as `frontend/public/logo.svg`. |
 | `logo-light.svg` | The mark on light backgrounds (dark ink). |
 | `favicon.svg` | Browser tab icon; ink follows the browser's light/dark setting. Same as `frontend/public/favicon.svg`. |
@@ -22,6 +23,13 @@ the app; the social preview sets "Tagger" beside it.
 | Ink on dark | `#ffffff` |
 | Ink on light | `#1f2328` |
 | Tile / app background | `#0f1117` |
+
+## Wordmark
+
+Inter Bold (SIL Open Font License), kerned and tracked slightly tight, drawn
+as outlines so it looks the same everywhere. To rebuild the full logo after
+changing the mark: `pip install fonttools uharfbuzz`, download Inter Bold, then
+`python build_lockup.py Inter-Bold.ttf`.
 
 ## Regenerating the PNGs
 
