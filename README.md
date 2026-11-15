@@ -1,11 +1,11 @@
-```
-   __
-  / /_____ _____ _____ ____  _____
- / __/ __ `/ __ `/ __ `/ _ \/ ___/
-/ /_/ /_/ / /_/ / /_/ /  __/ /
-\__/\__,_/\__, /\__, /\___/_/
-         /____//____/
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="branding/logo-dark.svg">
+    <img src="branding/logo-light.svg" alt="Tagger" width="240">
+  </picture>
+</p>
+
+<h1 align="center">Tagger</h1>
 
 Self-hosted web app for editing audio tags (FLAC, MP3, AAC/M4A, OGG) — run it
 on a NAS or server and tag your library from any browser.
