@@ -6,6 +6,8 @@
 </p>
 
 <p align="center"><em>"the tggr's a wonderful thing!"</em></p>
+
+---
 ________
 
 Self-hosted web app for editing audio tags (FLAC, MP3, AAC/M4A, OGG) — run it
