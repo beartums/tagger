@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 
 from core.fileops import root_for
-from core.naming import render_template
+from core.naming import NamingRules, render_template
 
 # Columns the SQL function takes, in order (see sql_function); the last is
 # the track's assigned group.
@@ -38,6 +38,7 @@ class Layouts:
         self.groups = {g["id"]: g.get("layout", "").strip() for g in lyricsgroups.groups() if g.get("layout", "").strip()}
         self.checked = {os.path.normpath(p) for p in s.layout_libraries}
         self.roots = get_library_roots()
+        self.rules = NamingRules.from_settings(s)
 
     def template(self, path: str, group_id: str | None = None) -> str:
         """Its group's layout, else its library's, else the standard one."""
@@ -55,7 +56,7 @@ class Layouts:
         if not template:
             return None
         try:
-            return str(root / render_template(template, dict(row), Path(row["path"]).suffix))
+            return str(root / render_template(template, dict(row), Path(row["path"]).suffix, self.rules))
         except (KeyError, ValueError, IndexError):
             return None
 

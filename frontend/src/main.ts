@@ -3282,6 +3282,24 @@ const autoScanInput     = document.getElementById('setting-auto-scan') as HTMLIn
 const renameOnSaveInput = document.getElementById('setting-rename-on-save') as HTMLInputElement
 const stageChangesInput = document.getElementById('setting-stage-changes') as HTMLInputElement
 const coverTargetInput  = document.getElementById('setting-cover-target') as HTMLSelectElement
+const namingIllegalInput = document.getElementById('setting-naming-illegal') as HTMLSelectElement
+const namingColonInput   = document.getElementById('setting-naming-colon') as HTMLSelectElement
+const namingPreviewEl    = document.getElementById('naming-preview')!
+function namingChoice() {
+  return { replace_illegal: namingIllegalInput.value === 'replace', colon: namingColonInput.value }
+}
+
+// The sample track has nothing to clean, so show the rules on a value that does.
+const NAMING_SAMPLE = { album_artist: 'AC/DC', album: 'Live: At Donington?', title: 'Who Made Who', track_number: '1' }
+const updateNamingPreview = debounce(async () => {
+  try {
+    const res = await api.settings.renamePreview('{album_artist}/{album}/{track_number:02d} {title}',
+      NAMING_SAMPLE, '.flac', undefined, namingChoice())
+    namingPreviewEl.textContent = res.ok ? `AC/DC · Live: At Donington? → ${res.preview}` : ''
+  } catch {
+    namingPreviewEl.textContent = ''
+  }
+}, 150)
 const coverSizeInput    = document.getElementById('setting-cover-size') as HTMLSelectElement
 const coverFolderSizeInput = document.getElementById('setting-cover-folder-size') as HTMLSelectElement
 const libraryRootsInput = document.getElementById('setting-library-roots') as HTMLTextAreaElement
@@ -3391,6 +3409,9 @@ async function openSettings() {
     renameOnSaveInput.checked = s.rename_on_save
     stageChangesInput.checked = s.stage_changes ?? true
     coverTargetInput.value    = s.cover_target ?? 'folder'
+    namingIllegalInput.value  = (s.naming_replace_illegal ?? true) ? 'replace' : 'remove'
+    namingColonInput.value    = s.naming_colon ?? 'smart'
+    updateNamingPreview()
     coverSizeInput.value      = String(s.cover_embed_size ?? 500)
     coverFolderSizeInput.value = String(s.cover_folder_size ?? 1200)
     libraryRootsInput.value   = (s.library_roots ?? []).join('\n')
@@ -3463,7 +3484,7 @@ const updateRenamePreview = debounce(async () => {
   const tpl = renameTemplateInput.value.trim()
   if (!tpl) { renamePreviewEl.textContent = ''; return }
   try {
-    const res = await api.settings.renamePreview(tpl)
+    const res = await api.settings.renamePreview(tpl, undefined, undefined, undefined, namingChoice())
     if (res.ok) {
       renamePreviewEl.textContent = 'Preview: ' + res.preview
       renamePreviewEl.classList.remove('rename-preview-error')
@@ -3544,6 +3565,9 @@ logoutBtn.addEventListener('click', async () => {
   }
 })
 
+namingIllegalInput.addEventListener('change', () => { updateNamingPreview(); updateRenamePreview() })
+namingColonInput.addEventListener('change', () => { updateNamingPreview(); updateRenamePreview() })
+
 renameTemplateInput.addEventListener('input', () => {
   updateRenamePreview()
   // libraries following the standard layout show it as you type
@@ -3591,6 +3615,8 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     rename_on_save:    renameOnSaveInput.checked,
     stage_changes:     stageChangesInput.checked,
     cover_target:      coverTargetInput.value as AppSettings['cover_target'],
+    naming_replace_illegal: namingIllegalInput.value === 'replace',
+    naming_colon:      namingColonInput.value as AppSettings['naming_colon'],
     cover_embed_size:  parseInt(coverSizeInput.value, 10),
     cover_folder_size: parseInt(coverFolderSizeInput.value, 10),
     library_roots:     libraryRootsInput.value.split('\n').map(x => x.trim()).filter(Boolean),

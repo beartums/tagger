@@ -82,6 +82,24 @@ export const APP_HTML = `
         </label>
       </div>
       <div class="settings-section">
+        <div class="settings-section-title">Characters in names</div>
+        <p class="settings-hint">How a tag value's characters become a folder or file name — set these like Lidarr's <em>Media Management</em> so Lidarr's folders count as in layout. Each value is cleaned on its own, so a "/" in a tag never makes a folder.</p>
+        <label class="field-label">Illegal characters
+          <select id="setting-naming-illegal">
+            <option value="replace">Replace: / \ → +, ? → !, * → -, others removed (Lidarr on)</option>
+            <option value="remove">Remove (Lidarr off)</option>
+          </select></label>
+        <label class="field-label">Colons
+          <select id="setting-naming-colon">
+            <option value="smart">Smart: "a: b" → "a - b", "10:30" → "10-30"</option>
+            <option value="dash">Dash: "-"</option>
+            <option value="space_dash">Space dash: " -"</option>
+            <option value="space_dash_space">Space dash space: " - "</option>
+            <option value="delete">Delete</option>
+          </select></label>
+        <div id="naming-preview" class="rename-preview"></div>
+      </div>
+      <div class="settings-section">
         <div class="settings-section-title">Library layouts</div>
         <table class="settings-table layouts-table"><thead><tr><th>Check</th><th>Library</th><th>Layout <span class="ma-dim">(blank: standard)</span></th></tr></thead>
           <tbody id="library-layouts-list"></tbody></table>

@@ -6,6 +6,14 @@
   pager (prev/next, editable top row, page N of M, rows per page) and the
   selection share one row below the track list, replacing the old Prev/Next.
   The track count stays in the toolbar.
+- **Names follow Lidarr's character rules**: a "/" inside a tag no longer
+  makes an extra folder (AC/DC filed as `AC/DC/…`); each value is cleaned on
+  its own, as Lidarr does. With the defaults (Lidarr's *Replace Illegal
+  Characters* on, colons *Smart*): `/` and `\` → `+`, `?` → `!`, `*` → `-`,
+  `< > | "` removed, `a: b` → `a - b`, `10:30` → `10-30`. Settings → Layouts →
+  *Characters in names* matches other Lidarr choices. Folders named the old
+  way (`_` for these characters) now show under *Not in layout*; Re-file moves
+  them. Typed folder renames use the same rules.
 - **Browse paths in the Tags panel**: each tag opens down through the tags
   you choose, in your order (Genre › Album Artist › Album, Year › Genre, …).
   ✎ beside a tag opens its path: drag tags in or along it, × to remove (or
