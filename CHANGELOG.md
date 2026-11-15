@@ -7,6 +7,11 @@
   a NAS), longer than other writes waited (5 s). It now reads with no lock
   held and writes each batch (200 files or 1 s) in one short transaction, and
   other writes wait up to 30 s.
+- **Fixed: "unsaved changes" warnings with nothing changed.** The tag editor
+  counted any control it holds (a chip's search box, other inputs) as an
+  edit, and refilling it never cleared those. Now only what Save writes
+  counts: a tag field whose value differs from what it was filled with, the
+  Compilation box, or chip changes on a multi-track selection.
 - **The list's quality dot checks more**: red when a track has no title,
   artist or album; yellow for no album artist, year, track #, genre, cover art
   (in the file or the folder) or MusicBrainz album ID, or incomplete
