@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **An emptied view goes back.** When an opened album, a filter, a Quality
+  check or a search loses all its tracks to something you did (fixed, written,
+  moved, removed, deleted), tggr returns to the view before it and says so.
+  Going somewhere that happens to be empty stays put.
 - **Filters survive a refresh.** They're part of the page address now, so
   refresh, Back/Forward and copied links keep them. The album view's count no
   longer shows a stale number before its list loads.

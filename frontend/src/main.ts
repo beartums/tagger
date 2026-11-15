@@ -2218,6 +2218,7 @@ async function loadTracks() {
         result = await api.library.tracks({ ...viewParams(), limit: state.pageSize, offset: state.offset })
       }
     }
+    if (emptiedInPlace(result.total)) { trackLoading.hidden = true; leaveEmptiedView(); return }
     state.tracks = result.tracks.map(overlayStaged)
     state.total  = result.total
     renderTracks()
@@ -4561,9 +4562,14 @@ statusSel.addEventListener('click', (e) => {
 document.getElementById('logo')!.addEventListener('click', async (e) => {
   e.preventDefault()
   if (settingsModal.classList.contains('open')) { leaveSettings(); return }
+  await goHome()
+})
+
+/** All tracks, nothing narrowing them. */
+async function goHome() {
   await restoreView({ mode: 'tags', view: 'list', offset: 0, q: '', qm: '', path: [], dir: null, issue: null })
   recordView()
-})
+}
 
 // ─── History ──────────────────────────────────────────────────────────────────
 // Each view (tab, selection, search, page, tracks/albums) is a history entry
@@ -4573,6 +4579,7 @@ interface View {
   mode: State['sidebarMode']; view: State['viewMode']; offset: number; q: string; qm: State['queryMode']
   path: TagStep[]; dir: string | null; issue: string | null
   f?: string              // the filter bar (filterbar.ts filtersKey); none when missing
+  depth?: number          // views back to the first one tggr recorded in this tab
 }
 
 let restoring = false
@@ -4636,8 +4643,31 @@ function recordView() {
   if (hash === location.hash) return
   const prev = history.state as View | null
   const typing = prev && prev.q && viewHash({ ...prev, q: v.q }) === hash
-  if (prev && !typing) history.pushState(v, '', hash)
-  else history.replaceState(v, '', hash)
+  if (prev && !typing) history.pushState({ ...v, depth: (prev.depth ?? 0) + 1 }, '', hash)
+  else history.replaceState({ ...v, depth: prev?.depth ?? 0 }, '', hash)
+}
+
+// A narrowed view (an opened album, a filter, a Quality check, a search) that
+// an action empties -- its tracks fixed, written, moved, removed or deleted --
+// goes back to the view before it. Only when the same view had tracks a
+// moment ago: going somewhere that happens to be empty stays put.
+let lastLoad = { key: '', total: 0 }
+const viewKey = () => viewHash({ ...currentView(), offset: 0 })
+const HOME_KEY = () => viewHash({ mode: 'tags', view: state.viewMode, offset: 0, q: '', qm: '', path: [], dir: null, issue: null })
+
+function emptiedInPlace(total: number): boolean {
+  const key = viewKey()
+  const emptied = total === 0 && lastLoad.key === key && lastLoad.total > 0 && !restoring && key !== HOME_KEY()
+  lastLoad = { key, total }
+  return emptied
+}
+
+function leaveEmptiedView() {
+  lastLoad = { key: '', total: 0 }
+  toast('Nothing left in this view: back to the one before', 'info')
+  const depth = (history.state as View | null)?.depth ?? 0
+  if (depth > 0) history.back()
+  else goHome()
 }
 
 /** Open the Files tree down to `dir`. */
