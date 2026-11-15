@@ -1,7 +1,7 @@
 """
 API keys and tokens in settings.json, encrypted at rest.
 
-The encryption key is TAGGER_SECRET_KEY (a Fernet key, from a Kubernetes
+The encryption key is TGGR_SECRET_KEY (a Fernet key, from a Kubernetes
 Secret) -- never the settings file, so the file and its backups alone don't
 reveal them. Stored values look like "enc:v1:<token>". Without the env var
 they're stored as plain text, as before. Plain values already in the file
@@ -13,15 +13,16 @@ from __future__ import annotations
 
 import logging
 import os
+from core.env import env
 
-logger = logging.getLogger("tagger.secrets")
+logger = logging.getLogger("tggr.secrets")
 
 FIELDS = ("acoustid_api_key", "discogs_token", "lrclib_api_key", "lidarr_api_key", "navidrome_password", "ma_token")
 PREFIX = "enc:v1:"
 
 
 def _fernet():
-    key = os.environ.get("TAGGER_SECRET_KEY", "").strip()
+    key = env("SECRET_KEY", "").strip()
     if not key:
         return None
     from cryptography.fernet import Fernet
@@ -44,13 +45,13 @@ def unseal(value: str, field: str = "") -> str:
         return value
     f = _fernet()
     if f is None:
-        logger.warning("%s is encrypted but TAGGER_SECRET_KEY isn't set: ignoring it", field)
+        logger.warning("%s is encrypted but TGGR_SECRET_KEY isn't set: ignoring it", field)
         return ""
     from cryptography.fernet import InvalidToken
     try:
         return f.decrypt(value[len(PREFIX):].encode()).decode()
     except InvalidToken:
-        logger.warning("%s can't be decrypted with this TAGGER_SECRET_KEY: ignoring it", field)
+        logger.warning("%s can't be decrypted with this TGGR_SECRET_KEY: ignoring it", field)
         return ""
 
 

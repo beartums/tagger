@@ -10,7 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-_UA = "tagger/0.3.0 (https://github.com/beartums/tagger)"
+_UA = "tggr/0.3.0 (https://github.com/beartums/tggr)"
 
 
 def _fetch(url: str, headers: dict) -> tuple[int, dict]:

@@ -1,5 +1,5 @@
 """
-Other music apps Tagger talks to (Settings → Integrations), each
+Other music apps tggr talks to (Settings → Integrations), each
 optional:
 
 - Lidarr: read its file-naming choices (GET /api/v1/config/naming) so
@@ -29,11 +29,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-logger = logging.getLogger("tagger.integrations")
+logger = logging.getLogger("tggr.integrations")
 
 RESCAN_MODES = ("off", "delay", "quiet")
 _SETTINGS_TTL = 10.0     # changed() runs per file written: don't re-read settings each time
-_UA = "tagger (https://github.com/beartums/tagger)"
+_UA = "tggr (https://github.com/beartums/tggr)"
 
 # Lidarr's ColonReplacementFormat (an int in the API) -> core.naming.COLONS.
 LIDARR_COLONS = {0: "delete", 1: "dash", 2: "space_dash", 3: "space_dash_space", 4: "smart"}
@@ -76,7 +76,7 @@ def _base(url: str) -> str:
 # ── Lidarr ─────────────────────────────────────────────────────────────────
 
 def lidarr_naming(url: str, key: str) -> dict:
-    """Lidarr's naming config, in Tagger's terms. Raises ValueError with a readable message."""
+    """Lidarr's naming config, in tggr's terms. Raises ValueError with a readable message."""
     status, body = _request(f"{_base(url)}/api/v1/config/naming", headers={"X-Api-Key": key})
     if status != 200 or not isinstance(body, dict):
         raise ValueError(_why("Lidarr", status, body))
@@ -113,7 +113,7 @@ def test_lidarr(url: str, key: str) -> dict:
 def _subsonic(url: str, user: str, password: str, method: str, **params) -> dict:
     salt = _secrets.token_hex(6)
     q = {"u": user, "t": hashlib.md5((password + salt).encode()).hexdigest(), "s": salt,
-         "v": "1.16.1", "c": "tagger", "f": "json", **params}
+         "v": "1.16.1", "c": "tggr", "f": "json", **params}
     status, body = _request(f"{_base(url)}/rest/{method}?{urllib.parse.urlencode(q, doseq=True)}")
     r = body.get("subsonic-response") if isinstance(body, dict) else None
     if status != 200 or not isinstance(r, dict):
@@ -153,7 +153,7 @@ def rescan_navidrome(url: str, user: str, password: str, targets: list[str] | No
 
 
 def _longest(path: str, mapping: dict[str, str]) -> tuple[str, str] | None:
-    """The mapping entry whose Tagger folder contains path (deepest wins)."""
+    """The mapping entry whose tggr folder contains path (deepest wins)."""
     best = None
     for root, v in mapping.items():
         root = os.path.normpath(root)
@@ -183,7 +183,7 @@ def navidrome_targets(dirs: set[str], mapping: dict[str, str]) -> list[str] | No
     """
     "libraryID:folder" targets for the changed folders, or None = scan everything
     (no mapping, a folder outside it, or more than MAX_TARGETS). mapping:
-    Tagger folder -> "libraryID:folder in that library" ("1:" = the library root).
+    tggr folder -> "libraryID:folder in that library" ("1:" = the library root).
     """
     if not mapping or not dirs:
         return None
@@ -218,7 +218,7 @@ def navidrome_targets(dirs: set[str], mapping: dict[str, str]) -> list[str] | No
 
 def _ma(url: str, token: str, command: str, **args):
     status, body = _request(f"{_base(url)}/api", headers={"Authorization": f"Bearer {token}"},
-                            body={"message_id": "tagger", "command": command, "args": args})
+                            body={"message_id": "tggr", "command": command, "args": args})
     if status != 200:
         raise ValueError(_why("Music Assistant", status, body))
     return body
@@ -242,7 +242,7 @@ def test_ma(url: str, token: str) -> dict:
 
 def ma_providers_for(dirs: set[str] | None, mapping: dict[str, str], default: list[str]) -> list[str]:
     """
-    Providers whose folders changed (mapping: Tagger folder -> provider instance id);
+    Providers whose folders changed (mapping: tggr folder -> provider instance id);
     the default list (blank = all) when there's no mapping, no folder list, or a
     changed folder outside the mapping.
     """

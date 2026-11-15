@@ -22,7 +22,7 @@ const COL: Record<string, string> = {
   track_number: 'Track', disc_number: 'Disc', genre: 'Genre', composer: 'Composer',
 }
 const FIELD_OF: Record<string, string> = { track: 'track_number', disc: 'disc_number', albumartist: 'album_artist' }
-const KEY = 'tagger.parsePattern'
+const KEY = 'tggr.parsePattern'
 
 interface Item { id: number; path: string; matched: boolean; tags: Record<string, string>; changes: Record<string, string> }
 

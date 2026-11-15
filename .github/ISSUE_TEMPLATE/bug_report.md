@@ -15,11 +15,11 @@ A clear description of the bug.
 What you expected instead.
 
 **Environment**
-- tagger version (see the footer of `/api/health` or the image tag):
+- tggr version (see the footer of `/api/health` or the image tag):
 - How you run it (Docker / GHCR image / Apple `container` / local dev):
 - Audio format(s) involved (FLAC / MP3 / M4A / OGG):
 - Browser (if a UI issue):
 
 **Logs**
-Relevant server logs (`docker logs tagger`). Set `TAGGER_LOG_LEVEL=DEBUG` for
+Relevant server logs (`docker logs tagger`). Set `TGGR_LOG_LEVEL=DEBUG` for
 more detail if needed.

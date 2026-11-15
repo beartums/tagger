@@ -2,14 +2,14 @@
 
 ## Supported versions
 
-Security fixes go to `main` (published as `ghcr.io/beartums/tagger:latest`)
+Security fixes go to `main` (published as `ghcr.io/beartums/tggr:latest`)
 and the next release; older releases aren't patched.
 
 ## Reporting a vulnerability
 
 Please report security issues **privately** — do not open a public issue.
 
-Use GitHub's **[Report a vulnerability](https://github.com/beartums/tagger/security/advisories/new)**
+Use GitHub's **[Report a vulnerability](https://github.com/beartums/tggr/security/advisories/new)**
 (Security → Advisories) to open a private advisory. Include:
 
 - a description of the issue and its impact,
@@ -22,11 +22,11 @@ disclosure.
 
 ## Scope & notes
 
-tagger is designed to run on a trusted network and it **reads, writes, and
+tggr is designed to run on a trusted network and it **reads, writes, and
 deletes files** in the directories you mount. When exposing it beyond a trusted
 LAN:
 
-- set `TAGGER_PASSWORD` to require a login, and
-- serve it over HTTPS behind a reverse proxy with `TAGGER_SECURE_COOKIE=1`.
+- set `TGGR_PASSWORD` to require a login, and
+- serve it over HTTPS behind a reverse proxy with `TGGR_SECURE_COOKIE=1`.
 
 See the [self-hosting guide](docs/SELF-HOSTING.md) for details.

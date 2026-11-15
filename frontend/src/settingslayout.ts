@@ -5,14 +5,15 @@
 import { esc } from './util'
 
 const SECTS: Record<string, [string, string]> = {
-  libraries:    ['Libraries', 'What Tagger scans, and where its library roots are.'],
+  libraries:    ['Libraries', 'What tggr scans, and where its library roots are.'],
   layouts:      ['Layouts', 'Where files belong, and how tag values become folder and file names.'],
   groups:       ['Groups', 'Sets of tracks with their own lyrics lookups (and, under Layouts, their own layout).'],
   scanning:     ['Scanning', 'What a scan reads and skips, and when it runs on its own.'],
-  integrations: ['Integrations', "Your own self-hosted music apps. Tagger reads Lidarr's naming rules and asks the players to rescan after it writes files."],
+  integrations: ['Integrations', "Your own self-hosted music apps. tggr reads Lidarr's naming rules and asks the players to rescan after it writes files."],
   metadata:     ['Metadata', 'Where tags, matches and lyrics come from. MusicBrainz needs no setup; these add to it.'],
   writing:      ['Writing', 'How changes reach your files: staging, cover art, volume tags, the trash.'],
   search:       ['Search', 'What the search box looks in.'],
+  backup:       ['Backup', 'Everything tggr keeps, in one file: to keep safe, or to move to a new config volume.'],
 }
 
 // Card title -> [card key, what it's for]. The key matches its Test (data-source-test).

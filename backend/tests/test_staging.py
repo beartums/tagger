@@ -467,7 +467,7 @@ def test_undo_with_the_file_gone_stays_not_undone(client, lib):
     client.post("/api/tags/reorganize", json={"track_ids": [tid]})
     cid = client.post("/api/staged/apply", json={}).json()["change_id"]
     moved = lib / "Shared" / "A" / "Al" / "01 T.mp3"
-    moved.unlink()   # deleted behind Tagger's back
+    moved.unlink()   # deleted behind tggr's back
 
     res = client.post(f"/api/library/history/{cid}/undo").json()
     assert res["restored"] == 0 and res["errors"][0]["error"] == f"file missing: {moved}"

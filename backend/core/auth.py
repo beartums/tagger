@@ -1,7 +1,7 @@
 """
 Optional single-password authentication.
 
-Enabled only when TAGGER_PASSWORD is set; otherwise the app is fully open
+Enabled only when TGGR_PASSWORD is set; otherwise the app is fully open
 (unchanged behaviour). A successful login sets an HMAC session cookie derived
 from the password, so it stays valid across restarts until the password changes.
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+from core.env import env
 
 COOKIE_NAME = "tagger_session"
 _COOKIE_MSG = b"tagger-session-v1"
@@ -17,7 +18,7 @@ COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 
 def password() -> str:
-    return os.environ.get("TAGGER_PASSWORD", "")
+    return env("PASSWORD", "")
 
 
 def auth_enabled() -> bool:
@@ -26,7 +27,7 @@ def auth_enabled() -> bool:
 
 def secure_cookie() -> bool:
     """Whether to mark the session cookie Secure (set behind HTTPS)."""
-    return os.environ.get("TAGGER_SECURE_COOKIE", "").lower() in ("1", "true", "yes")
+    return env("SECURE_COOKIE", "").lower() in ("1", "true", "yes")
 
 
 def _secret() -> bytes:

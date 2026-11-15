@@ -4,7 +4,7 @@ import { ICON } from './icons'
 export const APP_HTML = `
   <header class="topbar">
     <button id="sidebar-toggle" class="btn btn-ghost btn-icon" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
-    <a id="logo" class="logo" href="#" title="Home: all tracks">${LOGO_MARK}Tagger</a>
+    <a id="logo" class="logo" href="#" title="Home: all tracks">${LOGO_MARK}tggr</a>
     <div class="search-wrap">
       <input id="search" class="search-input" type="search" placeholder="Search tracks…" aria-label="Search tracks" autocomplete="off" />
       <button type="button" class="search-mode" data-qmode="glob" aria-pressed="false" title="Glob: * any text, ? one character, [abc] one of; matches a whole tag (love* = starts with love); which tags: Settings → Search. Click again for plain search">*</button>
@@ -45,11 +45,13 @@ export const APP_HTML = `
         <div class="rail-h">Output</div>
         <button type="button" data-sect="writing">Writing</button>
         <button type="button" data-sect="search">Search</button>
+        <div class="rail-h">Data</div>
+        <button type="button" data-sect="backup">Backup</button>
       </nav>
       <div class="settings-sect" data-sect="libraries">
       <div class="settings-section">
         <div class="settings-section-title">Libraries</div>
-        <p class="settings-hint">A full scan covers the libraries switched on. Switching one off removes its tracks from Tagger (files untouched); switching it on scans it. 🔒 = read-only: shown, never written. <strong>Group</strong>: the group its tracks are in unless put in another (Groups).</p>
+        <p class="settings-hint">A full scan covers the libraries switched on. Switching one off removes its tracks from tggr (files untouched); switching it on scans it. 🔒 = read-only: shown, never written. <strong>Group</strong>: the group its tracks are in unless put in another (Groups).</p>
         <table class="settings-table libraries-table"><thead><tr><th>On</th><th>Library</th><th>Tracks</th><th>Group</th></tr></thead>
           <tbody id="libraries-list"></tbody></table>
       </div>
@@ -63,7 +65,7 @@ export const APP_HTML = `
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Music Directories</div>
-        <p class="settings-hint">Directories scanned for audio files when no library roots are set. The default from <code>TAGGER_MUSIC_DIR</code> is always included.</p>
+        <p class="settings-hint">Directories scanned for audio files when no library roots are set. The default from <code>TGGR_MUSIC_DIR</code> is always included.</p>
         <div id="music-dirs-default" class="music-dir-row music-dir-default"></div>
         <ul id="music-dirs-list" class="music-dirs-list"></ul>
         <div class="music-dir-add-row">
@@ -207,7 +209,7 @@ export const APP_HTML = `
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Navidrome</div>
-        <p class="settings-hint">Optional. Navidrome rescans 30 s after Tagger last changes a file. Needs an <strong>admin</strong> user (rescans are admin-only).</p>
+        <p class="settings-hint">Optional. Navidrome rescans 30 s after tggr last changes a file. Needs an <strong>admin</strong> user (rescans are admin-only).</p>
         <label class="field-label">URL
           <input id="setting-navidrome-url" data-integ-url type="text" spellcheck="false" placeholder="http://navidrome:4533" /></label>
         <label class="field-label">User
@@ -216,14 +218,14 @@ export const APP_HTML = `
           <span class="secret-row"><input id="setting-navidrome-password" data-secret="navidrome_password" type="password" autocomplete="off" placeholder="Navidrome password…" data-placeholder="Navidrome password…" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="navidrome" title="Check the connection (what you typed, else the saved values)">Test</button></span>
         </label>
         <div class="source-test-result" data-test-result="navidrome" hidden></div>
-        <label class="field-label">Scan just the changed folders <span class="ma-dim">(one per line: Tagger folder = library id:folder in it; blank: full scans)</span>
+        <label class="field-label">Scan just the changed folders <span class="ma-dim">(one per line: tggr folder = library id:folder in it; blank: full scans)</span>
           <textarea id="setting-navidrome-folders" rows="2" spellcheck="false" placeholder="/music = 1:"></textarea></label>
-        <p class="settings-hint">Test lists the library ids. <code>/music = 1:</code> means Tagger's <code>/music</code> is the root of library 1. A change outside these folders, or more than 50 folders at once, scans everything.</p>
+        <p class="settings-hint">Test lists the library ids. <code>/music = 1:</code> means tggr's <code>/music</code> is the root of library 1. A change outside these folders, or more than 50 folders at once, scans everything.</p>
         <div class="settings-hint" data-rescan-status="navidrome"></div>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Music Assistant</div>
-        <p class="settings-hint">Optional. Music Assistant syncs 30 s after Tagger last changes a file. Token: an <strong>admin</strong>'s long-lived token (Settings → Profile). Test lists the file providers to sync.</p>
+        <p class="settings-hint">Optional. Music Assistant syncs 30 s after tggr last changes a file. Token: an <strong>admin</strong>'s long-lived token (Settings → Profile). Test lists the file providers to sync.</p>
         <label class="field-label">URL
           <input id="setting-ma-url" data-integ-url type="text" spellcheck="false" placeholder="http://music-assistant:8095" /></label>
         <label class="field-label">Token
@@ -232,14 +234,14 @@ export const APP_HTML = `
         <div class="source-test-result" data-test-result="music_assistant" hidden></div>
         <label class="field-label">Providers to sync <span class="ma-dim">(instance ids, comma-separated; blank: all)</span>
           <input id="setting-ma-providers" type="text" spellcheck="false" placeholder="filesystem_local--ab12cd34" /></label>
-        <label class="field-label">Sync just the changed providers <span class="ma-dim">(one per line: Tagger folder = provider instance id; blank: the list above)</span>
+        <label class="field-label">Sync just the changed providers <span class="ma-dim">(one per line: tggr folder = provider instance id; blank: the list above)</span>
           <textarea id="setting-ma-folders" rows="2" spellcheck="false" placeholder="/music/Shared = filesystem_local--ab12cd34"></textarea></label>
         <p class="settings-hint">Music Assistant can't sync a single folder, only whole providers — this helps once each library is its own provider. A change outside these folders syncs the list above.</p>
         <div class="settings-hint" data-rescan-status="music_assistant"></div>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Player rescans</div>
-        <p class="settings-hint">When Navidrome and Music Assistant are asked to rescan after Tagger changes files (tags, moves, covers, ReplayGain). A big write is always one rescan.</p>
+        <p class="settings-hint">When Navidrome and Music Assistant are asked to rescan after tggr changes files (tags, moves, covers, ReplayGain). A big write is always one rescan.</p>
         <label class="field-label">Rescan
           <select id="setting-rescan-mode">
             <option value="quiet">After the last change — each change restarts the wait</option>
@@ -309,6 +311,20 @@ export const APP_HTML = `
         <p class="settings-hint">Deleted files are moved to a trash folder and can be restored with Undo. Emptying trash frees that space permanently.</p>
         <div id="trash-status" class="acoustid-status"></div>
         <button id="empty-trash-btn" class="btn btn-ghost btn-sm">Empty trash</button>
+      </div>
+      </div>
+      <div class="settings-sect" data-sect="backup" hidden>
+      <div class="settings-section">
+        <div class="settings-section-title">Back up</div>
+        <p class="settings-hint">One zip with everything tggr keeps: the library database (tracks, staged changes, history, groups, quality results), these settings, the trash that Undo restores from, and this browser's interface preferences (columns, widths, page size, views). API keys stay encrypted: a restore needs the same <code>TGGR_SECRET_KEY</code>.</p>
+        <button id="backup-download-btn" class="btn btn-sm">Download backup</button>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Restore</div>
+        <p class="settings-hint">Replaces the database, settings, trash and interface preferences with a backup's. Use it to move tggr to a new config volume: back up, start tggr on the new volume, restore. Stop any running scan first.</p>
+        <input id="backup-file" type="file" accept=".zip,application/zip" hidden>
+        <button id="backup-restore-btn" class="btn btn-sm btn-danger">Restore from a backup…</button>
+        <div id="backup-status" class="acoustid-status"></div>
       </div>
       </div>
     </div>

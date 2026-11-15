@@ -1,3 +1,4 @@
+import { exportPrefs, importPrefs } from './prefs'
 import './style.css'
 import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, Naming, RescanResult, TagValue, IssueCount, IssueEntry, IssueKey, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
@@ -599,7 +600,7 @@ function renderAlbumGrid() {
 const albumListEl = document.getElementById('album-list')!
 const albumStyleEl = document.getElementById('album-style')!
 let albumStyle: 'list' | 'tiles' = 'list'
-try { if (localStorage.getItem('tagger.albumStyle') === 'tiles') albumStyle = 'tiles' } catch { /* storage blocked */ }
+try { if (localStorage.getItem('tggr.albumStyle') === 'tiles') albumStyle = 'tiles' } catch { /* storage blocked */ }
 
 function renderAlbumView() { if (albumStyle === 'list') renderAlbumList(); else renderAlbumGrid() }
 
@@ -608,7 +609,7 @@ const listKey = (r: AlbumRow) => JSON.stringify([r.directory, r.album])
 // Album list cover column: drag its edge to size the covers (rows follow). Remembered per browser.
 const COVER_MIN = 28, COVER_MAX = 300
 let albumCover = COVER_MIN
-try { albumCover = Math.min(COVER_MAX, Math.max(COVER_MIN, Number(localStorage.getItem('tagger.albumCover')) || COVER_MIN)) } catch { /* storage blocked */ }
+try { albumCover = Math.min(COVER_MAX, Math.max(COVER_MIN, Number(localStorage.getItem('tggr.albumCover')) || COVER_MIN)) } catch { /* storage blocked */ }
 const setAlbumCover = (px: number) => {
   albumCover = Math.round(Math.min(COVER_MAX, Math.max(COVER_MIN, px)))
   albumListEl.style.setProperty('--al-cover', `${albumCover}px`)
@@ -623,14 +624,14 @@ albumListEl.addEventListener('mousedown', (e) => {
   const up = () => {
     document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up)
     document.body.classList.remove('col-resizing')
-    try { localStorage.setItem('tagger.albumCover', String(albumCover)) } catch { /* storage blocked */ }
+    try { localStorage.setItem('tggr.albumCover', String(albumCover)) } catch { /* storage blocked */ }
   }
   document.addEventListener('mousemove', move); document.addEventListener('mouseup', up)
 })
 albumListEl.addEventListener('dblclick', (e) => {
   if (!(e.target as HTMLElement).closest('[data-al-cover-resize]')) return
   setAlbumCover(COVER_MIN)
-  try { localStorage.removeItem('tagger.albumCover') } catch { /* storage blocked */ }
+  try { localStorage.removeItem('tggr.albumCover') } catch { /* storage blocked */ }
 })
 
 // Album paging (the pager under the list): a different set of albums starts at the first page.
@@ -652,7 +653,7 @@ function redrawAlbums() {
 // Album list sort: a header click sorts by it, again reverses. Remembered per browser.
 type AlbumSortKey = 'quality' | 'album' | 'artist' | 'tracks' | 'discs' | 'year' | 'genre' | 'format' | 'folder'
 let albumSort: { key: AlbumSortKey; dir: 1 | -1 } = { key: 'artist', dir: 1 }
-try { const s = JSON.parse(localStorage.getItem('tagger.albumSort') ?? 'null'); if (s?.key) albumSort = s } catch { /* storage blocked */ }
+try { const s = JSON.parse(localStorage.getItem('tggr.albumSort') ?? 'null'); if (s?.key) albumSort = s } catch { /* storage blocked */ }
 const RANK = { good: 0, fair: 1, poor: 2 }
 function albumSortValue(r: AlbumRow, k: AlbumSortKey): string | number {
   switch (k) {
@@ -727,7 +728,7 @@ function drawAlbumList(fetched: AlbumRow[]) {
     if (!h) return
     const k = h.dataset.alSort as AlbumSortKey
     albumSort = { key: k, dir: albumSort.key === k ? (albumSort.dir === 1 ? -1 : 1) : 1 }
-    try { localStorage.setItem('tagger.albumSort', JSON.stringify(albumSort)) } catch { /* storage blocked */ }
+    try { localStorage.setItem('tggr.albumSort', JSON.stringify(albumSort)) } catch { /* storage blocked */ }
     drawAlbumList(fetched)
   })
   albumListEl.querySelector('tbody')!.addEventListener('click', async (e) => {
@@ -760,7 +761,7 @@ albumStyleEl.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>('[data-style]')
   if (!b) return
   albumStyle = b.dataset.style as 'list' | 'tiles'
-  try { localStorage.setItem('tagger.albumStyle', albumStyle) } catch { /* storage blocked */ }
+  try { localStorage.setItem('tggr.albumStyle', albumStyle) } catch { /* storage blocked */ }
   renderViewMode()
 })
 
@@ -2584,8 +2585,8 @@ document.getElementById('bulk-rename-btn')!.addEventListener('click', () => {
 // ─── Drag and drop: folders and tracks onto a folder in the Files tree ─────────
 // A drop stages a move (same as Move…); nothing touches disk until written.
 
-const DND_DIR = 'application/x-tagger-dir'
-const DND_TRACKS = 'application/x-tagger-tracks'
+const DND_DIR = 'application/x-tggr-dir'
+const DND_TRACKS = 'application/x-tggr-tracks'
 let dragExpandTimer: ReturnType<typeof setTimeout> | null = null
 let dragOverRow: HTMLElement | null = null
 
@@ -2751,7 +2752,7 @@ async function exportM3u() {
   try { body = await api.library.exportM3u(ids, viewParams()) } catch (e) { toast(`Export: ${errText(e)}`, 'error'); return }
   const a = document.createElement('a')
   a.href = URL.createObjectURL(new Blob([body], { type: 'audio/x-mpegurl' }))
-  a.download = 'tagger-export.m3u'
+  a.download = 'tggr-export.m3u'
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -2923,8 +2924,8 @@ document.querySelector('.sidebar')!.addEventListener('click', (e) => {
 // The left nav and the right tag editor can each be widened by dragging the
 // divider beside them; widths persist per-browser and reset on double-click.
 const PANE = {
-  sidebar: { key: 'tagger_sidebar_w', varName: '--sidebar-w', def: 220, min: 160, max: 560, el: sidebarEl },
-  editor:  { key: 'tagger_editor_w',  varName: '--editor-w',  def: 272, min: 240, max: 720, el: tagEditor },
+  sidebar: { key: 'tggr_sidebar_w', varName: '--sidebar-w', def: 220, min: 160, max: 560, el: sidebarEl },
+  editor:  { key: 'tggr_editor_w',  varName: '--editor-w',  def: 272, min: 240, max: 720, el: tagEditor },
 } as const
 type PaneName = keyof typeof PANE
 
@@ -3522,7 +3523,7 @@ function renderSearchMode() {
 }
 
 try {
-  const m = localStorage.getItem('tagger.queryMode')
+  const m = localStorage.getItem('tggr.queryMode')
   if (m === 'glob' || m === 'regex') state.queryMode = m
 } catch { /* storage blocked */ }
 renderSearchMode()
@@ -3531,7 +3532,7 @@ renderSearchMode()
 for (const b of searchModeBtns) b.addEventListener('click', () => {
   const m = b.dataset.qmode as 'glob' | 'regex'
   state.queryMode = state.queryMode === m ? '' : m
-  try { localStorage.setItem('tagger.queryMode', state.queryMode) } catch { /* storage blocked */ }
+  try { localStorage.setItem('tggr.queryMode', state.queryMode) } catch { /* storage blocked */ }
   renderSearchMode()
   searchEl.focus()
   if (state.query) debouncedSearch()
@@ -3564,8 +3565,8 @@ function showSecrets(s: AppSettings) {
     i.parentElement!.querySelector<HTMLElement>('[data-secret-remove]')!.hidden = !set
   }
   document.querySelectorAll('.secrets-note').forEach(el => { el.innerHTML = s.secrets_encrypted
-    ? '🔒 Keys and tokens are stored encrypted (<code>TAGGER_SECRET_KEY</code>) and never shown again.'
-    : '⚠ Keys and tokens are stored as plain text: set <code>TAGGER_SECRET_KEY</code> on the server to encrypt them.' })
+    ? '🔒 Keys and tokens are stored encrypted (<code>TGGR_SECRET_KEY</code>) and never shown again.'
+    : '⚠ Keys and tokens are stored as plain text: set <code>TGGR_SECRET_KEY</code> on the server to encrypt them.' })
 }
 function readSecrets(): Partial<AppSettings> {
   const out: Record<string, string> = {}
@@ -3621,7 +3622,7 @@ const integInputs = {
 const maProvidersInput = document.getElementById('setting-ma-providers') as HTMLInputElement
 const navidromeFoldersInput = document.getElementById('setting-navidrome-folders') as HTMLTextAreaElement
 const maFoldersInput   = document.getElementById('setting-ma-folders') as HTMLTextAreaElement
-// "Tagger folder = value" lines <-> {folder: value}; split on the first " = ".
+// "tggr folder = value" lines <-> {folder: value}; split on the first " = ".
 const mapToLines = (m: Record<string, string> | undefined) => Object.entries(m ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n')
 const linesToMap = (t: string) => Object.fromEntries(t.split('\n').map(l => {
   const i = l.indexOf('=')
@@ -3857,13 +3858,13 @@ function showSettingsSection(name: string) {
   if (!settingsSubnav.querySelector(`[data-sect="${name}"]`)) name = 'libraries'
   settingsSubnav.querySelectorAll<HTMLElement>('[data-sect]').forEach(b => b.classList.toggle('active', b.dataset.sect === name))
   document.querySelectorAll<HTMLElement>('.settings-sect').forEach(el => { el.hidden = el.dataset.sect !== name })
-  try { localStorage.setItem('tagger.settingsSection', name) } catch { /* private window */ }
+  try { localStorage.setItem('tggr.settingsSection', name) } catch { /* private window */ }
 }
 settingsSubnav.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sect]')
   if (b) showSettingsSection(b.dataset.sect!)
 })
-try { showSettingsSection(localStorage.getItem('tagger.settingsSection') ?? 'libraries') } catch { showSettingsSection('libraries') }
+try { showSettingsSection(localStorage.getItem('tggr.settingsSection') ?? 'libraries') } catch { showSettingsSection('libraries') }
 
 /** Libraries (and, opening Settings, the layout tables and group cards: those hold unsaved edits otherwise). */
 async function renderLibraries(all = true) {
@@ -3902,7 +3903,7 @@ librariesListEl.addEventListener('change', async (e) => {
       toast(r.job_id ? 'Library on — scanning it now' : 'Library on — it will be included in the next scan', 'success')
       if (r.job_id) pollScan(r.job_id)
     } else {
-      toast(`Library off — ${(r.removed ?? 0).toLocaleString()} tracks removed from Tagger (files untouched)`, 'success')
+      toast(`Library off — ${(r.removed ?? 0).toLocaleString()} tracks removed from tggr (files untouched)`, 'success')
       state.tagValues = new Map()
       await refreshAfterBulk()
     }
@@ -3959,7 +3960,7 @@ async function openSettings() {
     coverFolderSizeInput.value = String(s.cover_folder_size ?? 1200)
     libraryRootsInput.value   = (s.library_roots ?? []).join('\n')
     libraryRootsDefaultEl.textContent = s.env_library_roots?.length
-      ? `TAGGER_LIBRARY_ROOTS (${s.env_library_roots.join(', ')})`
+      ? `TGGR_LIBRARY_ROOTS (${s.env_library_roots.join(', ')})`
       : 'the music directories'
     libraryRootsEffectiveEl.textContent = s.effective_library_roots?.length
       ? `Now: ${s.effective_library_roots.join(' · ')}`
@@ -3997,6 +3998,42 @@ async function openSettings() {
 
 const trashStatusEl = document.getElementById('trash-status')!
 const emptyTrashBtn = document.getElementById('empty-trash-btn') as HTMLButtonElement
+
+// Backup: download everything; restore replaces it (then reloads with the backup's preferences).
+document.getElementById('backup-download-btn')!.addEventListener('click', async (e) => {
+  const btn = e.currentTarget as HTMLButtonElement
+  btn.disabled = true; btn.textContent = 'Preparing…'
+  try {
+    const { blob, name } = await api.backup.download(exportPrefs())
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob); a.download = name
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+  } catch (err) {
+    toast(`Backup failed: ${errText(err)}`, 'error')
+  } finally {
+    btn.disabled = false; btn.textContent = 'Download backup'
+  }
+})
+const backupFile = document.getElementById('backup-file') as HTMLInputElement
+document.getElementById('backup-restore-btn')!.addEventListener('click', () => { backupFile.value = ''; backupFile.click() })
+backupFile.addEventListener('change', async () => {
+  const f = backupFile.files?.[0]
+  if (!f) return
+  if (!confirm(`Replace tggr's database, settings, trash and interface preferences with ${f.name}? Everything since that backup is lost.`)) return
+  const status = document.getElementById('backup-status')!
+  status.textContent = 'Restoring…'
+  try {
+    const r = await api.backup.restore(f)
+    importPrefs(r.prefs)
+    status.textContent = `Restored ${r.tracks.toLocaleString()} tracks from ${r.created ?? 'the backup'}. Reloading…`
+    setTimeout(() => location.reload(), 1200)
+  } catch (err) {
+    status.textContent = ''
+    toast(`Restore failed: ${errText(err)}`, 'error')
+  }
+})
+
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`
@@ -4261,7 +4298,7 @@ function showLogin() {
   overlay.className = 'login-overlay'
   overlay.innerHTML = `
     <form class="login-card" id="login-form">
-      <div class="login-title">Tagger</div>
+      <div class="login-title">tggr</div>
       <p class="login-hint">This library is password-protected.</p>
       <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" autofocus />
       <div id="login-error" class="login-error"></div>

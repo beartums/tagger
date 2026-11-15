@@ -8,11 +8,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from core.env import env
+
 logging.basicConfig(
-    level=os.environ.get("TAGGER_LOG_LEVEL", "INFO"),
+    level=env("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-logger = logging.getLogger("tagger")
+logger = logging.getLogger("tggr")
 
 from core.config import settings
 from core.database import init_db
@@ -29,6 +31,7 @@ from api.lookup import router as lookup_router
 from api.stream import router as stream_router
 from api.spectrogram import router as spectrogram_router
 from api.staged import router as staged_router
+from api.backup import router as backup_router
 
 
 @asynccontextmanager
@@ -80,7 +83,7 @@ class AuthMiddleware:
         await self.app(scope, receive, send)
 
 
-app = FastAPI(title="Tagger", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="tggr", version="0.3.0", lifespan=lifespan)
 app.add_middleware(AuthMiddleware)
 
 @app.get("/api/health", tags=["ops"])
@@ -105,15 +108,15 @@ def about():
         staged = conn.execute("SELECT COUNT(*) FROM staged").fetchone()[0]
     return {
         "version": app.version,
-        "image": os.environ.get("TAGGER_IMAGE_VERSION") or None,
-        "commit": os.environ.get("TAGGER_GIT_SHA") or None,
-        "built": os.environ.get("TAGGER_BUILD_DATE") or None,
+        "image": env("IMAGE_VERSION") or None,
+        "commit": env("GIT_SHA") or None,
+        "built": env("BUILD_DATE") or None,
         "started": _STARTED,
         "python": platform.python_version(),
         "mutagen": mutagen.version_string,
         "tools": {t: bool(shutil.which(t)) for t in ("ffmpeg", "rsgain", "fpcalc")},
         "tracks": tracks, "staged": staged, "scan_dirs": get_scan_dirs(),
-        "source": "https://github.com/beartums/tagger",
+        "source": "https://github.com/beartums/tggr",
     }
 
 
@@ -135,6 +138,7 @@ app.include_router(lookup_router, prefix="/api/lookup", tags=["lookup"])
 app.include_router(stream_router, prefix="/api/stream", tags=["stream"])
 app.include_router(spectrogram_router, prefix="/api/spectrogram", tags=["spectrogram"])
 app.include_router(staged_router, prefix="/api/staged", tags=["staged"])
+app.include_router(backup_router, prefix="/api/backup", tags=["backup"])
 
 # Serve built frontend assets (production only — dev uses Vite's server)
 _static = os.path.join(os.path.dirname(__file__), "static")

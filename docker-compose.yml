@@ -1,7 +1,7 @@
 services:
-  tagger:
+  tggr:
     build: .
-    container_name: tagger
+    container_name: tggr
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -9,10 +9,10 @@ services:
       # Mount your music library — change the left side to your actual path
       - /path/to/your/music:/music
       # Persists library.db and settings.json between restarts
-      - tagger-config:/config
+      - tggr-config:/config
     environment:
-      - TAGGER_MUSIC_DIR=/music
-      - TAGGER_CONFIG_DIR=/config
+      - TGGR_MUSIC_DIR=/music
+      - TGGR_CONFIG_DIR=/config
 
 volumes:
-  tagger-config:
+  tggr-config:

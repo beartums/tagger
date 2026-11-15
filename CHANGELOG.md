@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Tagger is now tggr.** The name in the app, README, logo, user agents and
+  links (the repo becomes `beartums/tggr`, the image `ghcr.io/beartums/tggr`).
+  Every `TAGGER_*` setting also works as `TGGR_*` (`TGGR_` wins when both are
+  set), and interface preferences carry over by themselves. Compose examples
+  now name the volume `tggr-config`: an existing `tagger-config` volume keeps
+  working if you keep its name, or move with Backup.
+- **Backup and restore** (Settings → Data → Backup): one zip with the
+  database, settings, the trash Undo uses, and this browser's interface
+  preferences. Restore replaces them all, so tggr can move to a new config
+  volume without renaming the old one.
 - **ReplayGain is staged.** ReplayGain… (Tags menu) measures the selection and
   stages the gain and peak tags, so they show in Review, write with the rest
   and can be undone. Each album is measured on its own; album gain is set only

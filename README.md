@@ -1,17 +1,19 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="branding/logo-full-dark.svg">
-    <img src="branding/logo-full-light.svg" alt="Tagger" width="420">
+    <img src="branding/logo-full-light.svg" alt="tggr" width="420">
   </picture>
 </p>
+
+<p align="center"><em>"the tggr's a wonderful thing!"</em></p>
 
 Self-hosted web app for editing audio tags (FLAC, MP3, AAC/M4A, OGG) — run it
 on a NAS or server and tag your library from any browser.
 
 Forked from [rnhinson/tagger](https://github.com/rnhinson/tagger) (MIT) and developed separately since 2026-09.
 
-[![CI](https://github.com/beartums/tagger/actions/workflows/ci.yml/badge.svg)](https://github.com/beartums/tagger/actions/workflows/ci.yml)
-[![Publish image](https://github.com/beartums/tagger/actions/workflows/publish.yml/badge.svg)](https://github.com/beartums/tagger/actions/workflows/publish.yml)
+[![CI](https://github.com/beartums/tggr/actions/workflows/ci.yml/badge.svg)](https://github.com/beartums/tggr/actions/workflows/ci.yml)
+[![Publish image](https://github.com/beartums/tggr/actions/workflows/publish.yml/badge.svg)](https://github.com/beartums/tggr/actions/workflows/publish.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Quick start
@@ -22,20 +24,20 @@ Save this as `docker-compose.yml`, set your music path, and run `docker compose 
 
 ```yaml
 services:
-  tagger:
-    image: ghcr.io/beartums/tagger:latest
-    container_name: tagger
+  tggr:
+    image: ghcr.io/beartums/tggr:latest
+    container_name: tggr
     restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
       - /your/music:/music       # ← your library (read/write)
-      - tagger-config:/config    # library.db + settings.json
+      - tggr-config:/config    # library.db + settings.json
     # environment:
-    #   - TAGGER_PASSWORD=change-me
+    #   - TGGR_PASSWORD=change-me
 
 volumes:
-  tagger-config:
+  tggr-config:
 ```
 
 → http://localhost:8000
@@ -45,8 +47,8 @@ volumes:
 ```bash
 docker run -d -p 8000:8000 \
   -v /your/music:/music \
-  -v tagger-config:/config \
-  ghcr.io/beartums/tagger:latest
+  -v tggr-config:/config \
+  ghcr.io/beartums/tggr:latest
 # → http://localhost:8000
 ```
 
@@ -122,14 +124,17 @@ gives it away, even though its format and bitrate say lossless.
 
 | Variable            | Default    | Description                              |
 |---------------------|------------|------------------------------------------|
-| `TAGGER_MUSIC_DIR`  | `/music`   | Root of your music library               |
-| `TAGGER_CONFIG_DIR` | `/config`  | Where `library.db` + `settings.json` live |
-| `TAGGER_LIBRARY_ROOTS` | *(music dirs)* | Colon-separated library folders that layouts are relative to; globs allowed (`/music/Shared:/music/Libraries/*`). Overridden by Settings |
-| `TAGGER_PASSWORD`   | *(unset)*  | If set, requires a login                 |
-| `TAGGER_SECURE_COOKIE` | *(unset)* | Mark the session cookie `Secure` (HTTPS) |
-| `TAGGER_SECRET_KEY` | *(unset)*  | Fernet key that encrypts API keys in `settings.json`; without it they're stored as plain text |
+| `TGGR_MUSIC_DIR`  | `/music`   | Root of your music library               |
+| `TGGR_CONFIG_DIR` | `/config`  | Where `library.db` + `settings.json` live |
+| `TGGR_LIBRARY_ROOTS` | *(music dirs)* | Colon-separated library folders that layouts are relative to; globs allowed (`/music/Shared:/music/Libraries/*`). Overridden by Settings |
+| `TGGR_PASSWORD`   | *(unset)*  | If set, requires a login                 |
+| `TGGR_SECURE_COOKIE` | *(unset)* | Mark the session cookie `Secure` (HTTPS) |
+| `TGGR_SECRET_KEY` | *(unset)*  | Fernet key that encrypts API keys in `settings.json`; without it they're stored as plain text |
 | `ACOUSTID_API_KEY`  | *(unset)*  | Enables AcoustID fingerprint lookup      |
-| `TAGGER_LOG_LEVEL`  | `INFO`     | Log verbosity                            |
+| `TGGR_LOG_LEVEL`  | `INFO`     | Log verbosity                            |
+
+Each `TGGR_` variable also works under its old name, `TAGGER_` (the app was
+called Tagger); when both are set, `TGGR_` wins.
 
 The AcoustID key, a Discogs token and an LRCLIB app key can also be set in
 **Settings → Metadata**, each with a **Test** button. Generate a secret key with
@@ -137,7 +142,7 @@ The AcoustID key, a Discogs token and an LRCLIB app key can also be set in
 and keep it outside the config volume, so a copy of `settings.json` alone
 doesn't reveal the keys.
 
-Auth is off unless `TAGGER_PASSWORD` is set. ReplayGain uses `rsgain` (bundled
+Auth is off unless `TGGR_PASSWORD` is set. ReplayGain uses `rsgain` (bundled
 in the image) or `loudgain` when present, and spectrograms need `ffmpeg` (also
 bundled); each feature hides itself when its tool is missing. Full details,
 including HTTPS setup, are in the [self-hosting guide](docs/SELF-HOSTING.md).
@@ -147,7 +152,7 @@ including HTTPS setup, are in the [self-hosting guide](docs/SELF-HOSTING.md).
 Requires Python 3.12+ and Node 20+.
 
 ```bash
-export TAGGER_MUSIC_DIR=~/Music   # optional
+export TGGR_MUSIC_DIR=~/Music   # optional
 ./dev.sh                          # backend :8000 + Vite dev server :5173
 ```
 

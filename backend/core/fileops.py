@@ -44,7 +44,7 @@ def move_file(src: str | Path, dst: str | Path) -> None:
             raise MoveError(f"destination already exists: {dst}")
         # Case-only rename on a case-insensitive filesystem: hop via a temp
         # name in the same directory, or the rename is a no-op.
-        tmp = src.with_name(f".tagger-{uuid.uuid4().hex}{src.suffix}")
+        tmp = src.with_name(f".tggr-{uuid.uuid4().hex}{src.suffix}")
         os.rename(src, tmp)
         os.rename(tmp, dst)
         return
@@ -61,7 +61,7 @@ def move_dir(src: str | Path, dst: str | Path) -> None:
     if dst.exists():
         if not _same_file(src, dst):
             raise MoveError(f"destination already exists: {dst}")
-        tmp = src.with_name(f".tagger-{uuid.uuid4().hex}")  # case-only rename
+        tmp = src.with_name(f".tggr-{uuid.uuid4().hex}")  # case-only rename
         os.rename(src, tmp)
         os.rename(tmp, dst)
         return

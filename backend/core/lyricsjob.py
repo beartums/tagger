@@ -16,7 +16,7 @@ from core.lyrics import RateLimited
 from core.database import db
 from core.tasks import _CANCEL, _update_job
 
-logger = logging.getLogger("tagger.lyrics")
+logger = logging.getLogger("tggr.lyrics")
 
 BATCH = 100        # tracks per staging step
 PARALLEL = 4       # tracks at once; core/lyrics.py spaces out the requests

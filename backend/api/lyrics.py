@@ -122,7 +122,7 @@ def list_groups():
 
 @router.post("/assign")
 def assign(req: Assign):
-    """Put tracks in a lyrics group (Tagger's DB only; no file changes)."""
+    """Put tracks in a lyrics group (tggr's DB only; no file changes)."""
     if req.group_id and req.group_id not in {g["id"] for g in lyricsgroups.groups()}:
         raise HTTPException(400, "No such lyrics group")
     with db() as conn:

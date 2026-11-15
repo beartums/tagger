@@ -1,12 +1,12 @@
-# Tagger branding
+# tggr branding
 
 The mark: curly braces (a tag) around lines of text (metadata) and a waveform
-(the audio). The name isn't final, so the mark is used without a wordmark in
-the app; the social preview sets "Tagger" beside it.
+(the audio). The name is **tggr**, always lowercase. The app header sets it
+beside the mark in text; the full logo and the social preview draw it.
 
 | File | Use |
 |---|---|
-| `logo-full-light.svg`, `logo-full-dark.svg` | The full logo: mark + "Tagger", crisp (no glow), wordmark as outlines. Used in the README. Built by `build_lockup.py`. |
+| `logo-full-light.svg`, `logo-full-dark.svg` | The full logo: mark + "tggr", crisp (no glow), wordmark as outlines. Used in the README. Built by `build_lockup.py`. |
 | `logo-dark.svg` | The mark on dark backgrounds (white ink). Same as `frontend/public/logo.svg`. |
 | `logo-light.svg` | The mark on light backgrounds (dark ink). |
 | `favicon.svg` | Browser tab icon; ink follows the browser's light/dark setting. Same as `frontend/public/favicon.svg`. |
