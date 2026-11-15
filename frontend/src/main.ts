@@ -5,7 +5,7 @@ import { esc, fmtDuration, debounce } from './util'
 import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
 import { COL_DEFS, orderedCols, viewCols, sourcePath } from './columns'
 import {
-  trackQuality, qualityTitle, QUALITY_ISSUES, setQualityOff,
+  trackQuality, qualityTitle, QUALITY_ISSUES, setQualityOff, albumQuality,
   toTitleCase, needsNormalization, NORMALIZE_FIELDS,
 } from './quality'
 import { APP_HTML } from './template'
@@ -441,6 +441,8 @@ function getVisibleAlbums(): Album[] {
     }
     m.artist = null   // several track artists: the tile is the album artist's
     m.track_count += a.track_count
+    m.quality = { ...m.quality }
+    for (const [k, n] of Object.entries(a.quality ?? {})) m.quality[k] = (m.quality[k] ?? 0) + n
     m.cover_track_id = Math.min(m.cover_track_id, a.cover_track_id)
   }
   const name = (a: Album) => (a.album_artist || a.artist || '').toLowerCase()
@@ -492,6 +494,7 @@ function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
   card.innerHTML = `
     <div class="album-cover-wrap">
       <img class="album-cover" loading="lazy" src="${coverUrl(alb.cover_track_id)}" alt="${esc(alb.album || '')}" />
+      ${(() => { const q = albumQuality(alb.quality ?? {}, alb.track_count); return `<span class="quality-dot quality-dot-${q.rating} album-tile-dot" title="${esc(q.title)}"></span>` })()}
       <div class="album-cover-placeholder">♪</div>
     </div>
     <div class="album-info">
@@ -569,11 +572,42 @@ function renderAlbumView() { if (albumStyle === 'list') renderAlbumList(); else 
 
 const listKey = (r: AlbumRow) => JSON.stringify([r.directory, r.album])
 
+// Album list sort: a header click sorts by it, again reverses. Remembered per browser.
+type AlbumSortKey = 'quality' | 'album' | 'artist' | 'tracks' | 'discs' | 'year' | 'genre' | 'format' | 'folder'
+let albumSort: { key: AlbumSortKey; dir: 1 | -1 } = { key: 'artist', dir: 1 }
+try { const s = JSON.parse(localStorage.getItem('tagger.albumSort') ?? 'null'); if (s?.key) albumSort = s } catch { /* storage blocked */ }
+const RANK = { good: 0, fair: 1, poor: 2 }
+function albumSortValue(r: AlbumRow, k: AlbumSortKey): string | number {
+  switch (k) {
+    case 'quality': { const q = albumQuality(r.quality ?? {}, r.tracks); return RANK[q.rating] * 1e6 + q.failing }
+    case 'album':   return r.album.toLowerCase()
+    case 'artist':  return (r.album_artist || r.values.artist?.[0] || r.artist || '').toLowerCase()
+    case 'tracks':  return r.tracks
+    case 'discs':   return r.discs
+    case 'year':    return r.year ?? ''
+    case 'genre':   return (r.genre ?? r.values.genre?.[0] ?? '').toLowerCase()
+    case 'format':  return (r.format ?? '') + String(1e7 + (r.bitrate ?? 0))
+    case 'folder':  return r.directory.toLowerCase()
+  }
+}
+
 async function renderAlbumList() {
   albumListEl.innerHTML = '<div class="album-empty">Loading albums…</div>'
-  let rows: AlbumRow[]
-  try { rows = await api.library.albumList(viewParams()) } catch (e) { albumListEl.innerHTML = `<div class="album-empty">${esc(String(e))}</div>`; return }
-  if (!rows.length) { albumListEl.innerHTML = '<div class="album-empty">No albums found.</div>'; return }
+  let fetched: AlbumRow[]
+  try { fetched = await api.library.albumList(viewParams()) } catch (e) { albumListEl.innerHTML = `<div class="album-empty">${esc(String(e))}</div>`; return }
+  if (!fetched.length) { albumListEl.innerHTML = '<div class="album-empty">No albums found.</div>'; return }
+  drawAlbumList(fetched)
+}
+
+function drawAlbumList(fetched: AlbumRow[]) {
+  const { key: sk, dir } = albumSort
+  // Ties keep the server's order (album artist, album, folder).
+  const rows = fetched.map((r, i) => ({ r, i })).sort((a, b) => {
+    const x = albumSortValue(a.r, sk), y = albumSortValue(b.r, sk)
+    return (x < y ? -1 : x > y ? 1 : 0) * dir || a.i - b.i
+  }).map(o => o.r)
+  const th = (k: AlbumSortKey, label: string, cls = '', title = '') =>
+    `<th data-al-sort="${k}" class="al-sortable ${cls}"${title ? ` title="${esc(title)}"` : ''}>${label}${sk === k ? (dir === 1 ? ' ↑' : ' ↓') : ''}</th>`
   const hover = (r: AlbumRow, f: string) => esc(`Not the same on every track:\n${(r.values[f] ?? []).join('\n')}`)
   const v = (r: AlbumRow, f: keyof AlbumRow) => r.mixed.includes(f as string)
     ? `<span class="al-mixed" title="${hover(r, f as string)}">mixed</span>` : esc(String(r[f] ?? ''))
@@ -586,16 +620,25 @@ async function renderAlbumList() {
     const cls = r.tracks < r.expected ? 'al-short' : r.tracks > r.expected ? 'al-over' : 'al-full'
     return `<span class="${cls}" title="${r.tracks} present of ${r.expected} expected (from “n/N” track numbers)">${r.tracks} / ${r.expected}</span>`
   }
+  const dot = (r: AlbumRow) => { const q = albumQuality(r.quality ?? {}, r.tracks); return `<span class="quality-dot quality-dot-${q.rating}" title="${esc(q.title)}"></span>` }
   albumListEl.innerHTML = `<table class="track-table album-table"><thead><tr>
-      <th class="al-cover"></th><th>Album</th><th title="Album artist, or the track artists when there is none">Artist</th><th class="al-num">Tracks</th><th class="al-num">Discs</th>
-      <th>Year</th><th>Genre</th><th>Format</th><th>Folder</th></tr></thead><tbody>
+      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="al-cover"></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
+      ${th('year', 'Year')}${th('genre', 'Genre')}${th('format', 'Format')}${th('folder', 'Folder')}</tr></thead><tbody>
     ${rows.map((r, i) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}" title="${esc(r.directory)}\nClick to open · Ctrl/⌘-click or Shift-click to select">
-      <td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
+      <td class="al-q">${dot(r)}</td><td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
       <td>${esc(r.album || '(no album)')}</td><td>${artist(r)}</td><td class="al-num">${tracks(r)}</td>
       <td class="al-num">${r.discs > 1 ? r.discs : ''}</td><td>${v(r, 'year')}</td><td>${v(r, 'genre')}</td>
       <td>${v(r, 'format')}${r.bitrate ? ` <span class="al-dim">${Math.round(r.bitrate / 1000)}k</span>` : ''}</td>
       <td class="al-dim">${esc(shortPath(r.directory))}</td></tr>`).join('')}
     </tbody></table>`
+  albumListEl.querySelector('thead')!.addEventListener('click', (e) => {
+    const h = (e.target as HTMLElement).closest<HTMLElement>('[data-al-sort]')
+    if (!h) return
+    const k = h.dataset.alSort as AlbumSortKey
+    albumSort = { key: k, dir: albumSort.key === k ? (albumSort.dir === 1 ? -1 : 1) : 1 }
+    try { localStorage.setItem('tagger.albumSort', JSON.stringify(albumSort)) } catch { /* storage blocked */ }
+    drawAlbumList(fetched)
+  })
   albumListEl.querySelector('tbody')!.addEventListener('click', async (e) => {
     const tr = (e.target as HTMLElement).closest<HTMLElement>('tr[data-i]')
     if (!tr) return

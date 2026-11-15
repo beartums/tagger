@@ -277,3 +277,13 @@ def test_rows_flag_a_folder_cover_and_album_artist_is_a_check(client, lib):
     rows = {t["directory"].rsplit("/", 1)[1]: t for t in client.get("/api/library/tracks").json()["tracks"]}
     assert rows["a"]["folder_cover"] is True and rows["b"]["folder_cover"] is False
     assert client.get("/api/library/issues").json()["missing_album_artist"]["tracks"] == 1
+
+
+def test_albums_count_tracks_failing_each_dot_check(client, lib):
+    _insert(lib / "Shared" / "a" / "1.mp3", album="A", artist="X", title="t", album_artist="X")
+    _insert(lib / "Shared" / "a" / "2.mp3", album="A", artist="X", album_artist="X")            # no title
+    rows = client.get("/api/library/album-list").json()
+    q = next(r for r in rows if r["album"] == "A")["quality"]
+    assert q["missing_title"] == 1 and q["missing_genre"] == 2 and "missing_album_artist" not in q
+    tile = next(a for a in client.get("/api/library/albums").json() if a["album"] == "A")
+    assert tile["quality"]["missing_title"] == 1 and tile["track_count"] == 2

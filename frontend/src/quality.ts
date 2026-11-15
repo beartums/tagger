@@ -42,6 +42,16 @@ export function qualityTitle(t: Track): string {
   return `${m.some(c => c.poor) ? 'Poor' : 'Fair'}: no ${m.map(c => c.label).join(', ')}`
 }
 
+/** An album's dot: its worst track's rating, from {check: tracks failing it}. */
+export function albumQuality(q: Record<string, number>, tracks: number): { rating: 'good' | 'fair' | 'poor'; title: string; failing: number } {
+  const m = DOT_CHECKS.filter(c => !dotOff.has(c.key) && (q[c.key] ?? 0) > 0)
+  const rating = m.some(c => c.poor) ? 'poor' : m.length ? 'fair' : 'good'
+  const failing = m.reduce((n, c) => n + (q[c.key] ?? 0), 0)
+  const title = !m.length ? 'Good: nothing missing on any track'
+    : `${rating === 'poor' ? 'Poor' : 'Fair'}: ` + m.map(c => `no ${c.label} (${q[c.key] === tracks ? 'all' : `${q[c.key]} of ${tracks}`} tracks)`).join(', ')
+  return { rating, title, failing }
+}
+
 export const QUALITY_TITLES = {
   good: 'Nothing missing',
   fair: 'Incomplete: album artist, year, track #, genre, cover art or MusicBrainz IDs',
