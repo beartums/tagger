@@ -11,7 +11,8 @@ from core.tagger import TAG_FIELDS
 from core.multivalue import MULTI_FIELDS, edit_values
 from core.cleanup import SEPARATORS, found_separators, standardize
 from core.nameparse import PatternError, compile_pattern, parse_path
-from core.replaygain import rg_tool, scan as rg_scan
+from core.replaygain import RgError, measure as rg_measure, rg_tool
+from core.tagger import RG_FIELDS, read_replaygain
 from api.config import _load as load_settings, get_library_roots
 
 router = APIRouter()
@@ -77,18 +78,51 @@ def replaygain_status():
 
 @router.post("/replaygain")
 def scan_replaygain(req: ReplayGainRequest):
+    """
+    Measure ReplayGain and stage it. Each album (folder + album tag) is measured
+    on its own; album gain only when the whole album is selected, else track gain.
+    """
     if not req.track_ids:
         raise HTTPException(400, "No track IDs provided")
+    if not rg_tool():
+        raise HTTPException(400, "rsgain isn't installed")
     with db() as conn:
-        placeholders = ",".join("?" * len(req.track_ids))
-        rows = conn.execute(
-            f"SELECT path FROM tracks WHERE id IN ({placeholders})", req.track_ids
-        ).fetchall()
-    paths = [r["path"] for r in rows]
-    try:
-        return rg_scan(paths, album_mode=req.album_mode)
-    except RuntimeError as exc:
-        raise HTTPException(400, str(exc))
+        rows = _rows(conn, req.track_ids)
+        groups: dict[tuple, list] = {}
+        for r in rows:
+            groups.setdefault((r["directory"], r["album"] or ""), []).append(r)
+        whole = {k: len(g) == conn.execute(
+                    "SELECT COUNT(*) FROM tracks WHERE directory = ? AND COALESCE(album, '') = ?", k).fetchone()[0]
+                 for k, g in groups.items()}
+    # Measuring is slow: no database connection held meanwhile.
+    values: dict[int, dict] = {}
+    errors: list[dict] = []
+    for k, g in groups.items():
+        g = sorted(g, key=lambda r: r["path"])
+        try:
+            got = rg_measure([r["path"] for r in g], album=whole[k])
+        except RgError as exc:
+            errors.append({"name": k[1] or k[0].rsplit("/", 1)[-1], "error": str(exc)})
+            continue
+        values.update({r["id"]: got[r["path"]] for r in g})
+    if not values:
+        return {"measured": 0, "albums": 0, "errors": errors, "staged": False}
+    with db() as conn:
+        n = len(values)
+        step = staging.Step(conn, f"ReplayGain for {n} track{'s' if n != 1 else ''}")
+        for tid, v in values.items():
+            row = conn.execute("SELECT path FROM tracks WHERE id = ?", (tid,)).fetchone()
+            if not row:
+                continue
+            # What the file holds now, so Review shows it and undo restores it.
+            cur = read_replaygain(row["path"])
+            conn.execute(f"UPDATE tracks SET {', '.join(f'{f} = ?' for f in RG_FIELDS)} WHERE id = ?",
+                         [*(cur[f] for f in RG_FIELDS), tid])
+            row = conn.execute("SELECT * FROM tracks WHERE id = ?", (tid,)).fetchone()
+            staging.stage(conn, row, v, step=step)
+        res = _finish(conn, step, list(values))
+    return {"measured": n, "albums": sum(1 for k in groups if whole[k] and any(r["id"] in values for r in groups[k])),
+            "errors": errors, **res}
 
 
 @router.patch("/{track_id}")

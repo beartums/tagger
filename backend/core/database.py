@@ -64,6 +64,10 @@ def _migrate(conn) -> None:
         ("cover_bytes", "INTEGER"),
         ("mb_release_group_id", "TEXT"),
         ("mb_release_track_id", "TEXT"),
+        ("rg_track_gain", "TEXT"),     # ReplayGain as written in the file ("-6.21 dB", "0.987654")
+        ("rg_track_peak", "TEXT"),
+        ("rg_album_gain", "TEXT"),
+        ("rg_album_peak", "TEXT"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {decl}")

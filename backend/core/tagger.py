@@ -69,6 +69,20 @@ _MB_VORBIS = {
 # Picard's names. "Track Id" is the RECORDING; "Release Track Id" the track on this release.
 MB_FIELDS: list[str] = list(_MB_TXXX)
 
+# ReplayGain, as rsgain writes it (core/replaygain.py): the same name in a TXXX
+# frame, a Vorbis comment and an MP4 freeform atom. Read in either case.
+_RG_NAMES = {
+    "rg_track_gain": "REPLAYGAIN_TRACK_GAIN",
+    "rg_track_peak": "REPLAYGAIN_TRACK_PEAK",
+    "rg_album_gain": "REPLAYGAIN_ALBUM_GAIN",
+    "rg_album_peak": "REPLAYGAIN_ALBUM_PEAK",
+}
+RG_FIELDS: list[str] = list(_RG_NAMES)
+
+# Every field kept in a format's free-form tags.
+_FREE_TXXX = {**_MB_TXXX, **_RG_NAMES}
+_FREE_VORBIS = {**_MB_VORBIS, **{k: v.lower() for k, v in _RG_NAMES.items()}}
+
 
 def _joined(val: Any) -> str | None:
     """All values of a (possibly multi-value) tag as one '; '-joined string."""
@@ -154,7 +168,7 @@ def write_tags(path: str | Path, updates: dict) -> None:
 
     f.save()
 
-    mb_updates = {k: updates[k] for k in _MB_TXXX if k in updates}
+    mb_updates = {k: updates[k] for k in _FREE_TXXX if k in updates}
     if mb_updates:
         _write_mb_ids(str(path), mb_updates)
 
@@ -163,7 +177,7 @@ def write_tags(path: str | Path, updates: dict) -> None:
 
 
 def _write_mb_ids(path: str, mb_updates: dict) -> None:
-    """Write MusicBrainz ID fields using format-specific raw APIs."""
+    """Write MusicBrainz ID and ReplayGain fields using format-specific raw APIs."""
     ext = Path(path).suffix.lower()
 
     if ext == ".mp3":
@@ -173,28 +187,19 @@ def _write_mb_ids(path: str, mb_updates: dict) -> None:
         except Exception:
             tags = ID3()
         for field, val in mb_updates.items():
-            desc = _MB_TXXX[field]
+            desc = _FREE_TXXX[field]
             tags.delall(f"TXXX:{desc}")
+            tags.delall(f"TXXX:{desc.lower()}")
             if val:
                 tags.add(TXXX(encoding=3, desc=desc, text=[val]))
         tags.save(path)
 
-    elif ext == ".flac":
-        from mutagen.flac import FLAC
-        f = FLAC(path)
+    elif ext in (".flac", ".ogg", ".oga", ".opus"):
+        f = mutagen.File(path)   # Vorbis comments: keys ignore case
+        if f.tags is None:
+            f.add_tags()
         for field, val in mb_updates.items():
-            key = _MB_VORBIS[field]
-            if val:
-                f[key] = [val]
-            elif key in f:
-                del f[key]
-        f.save()
-
-    elif ext in (".ogg", ".oga"):
-        from mutagen.oggvorbis import OggVorbis
-        f = OggVorbis(path)
-        for field, val in mb_updates.items():
-            key = _MB_VORBIS[field]
+            key = _FREE_VORBIS[field]
             if val:
                 f[key] = [val]
             elif key in f:
@@ -207,44 +212,52 @@ def _write_mb_ids(path: str, mb_updates: dict) -> None:
         if f.tags is None:
             f.add_tags()
         for field, val in mb_updates.items():
-            key = f"----:com.apple.iTunes:{_MB_TXXX[field]}"
+            key = f"----:com.apple.iTunes:{_FREE_TXXX[field]}"
+            for k in {key, key.lower().replace("----:com.apple.itunes:", "----:com.apple.iTunes:")}:
+                if k in f.tags:
+                    del f.tags[k]
             if val:
                 f.tags[key] = [MP4FreeForm(val.encode())]
-            elif key in f.tags:
-                del f.tags[key]
         f.save()
 
 
 def _read_mb_ids(path: str) -> dict:
-    """The MusicBrainz IDs (MB_FIELDS) from their format-specific tags. Never raises."""
-    out: dict = dict.fromkeys(MB_FIELDS)
+    """The MusicBrainz IDs and ReplayGain values from their format-specific tags. Never raises."""
+    out: dict = dict.fromkeys([*MB_FIELDS, *RG_FIELDS])
     ext = Path(path).suffix.lower()
     try:
         if ext == ".mp3":
             from mutagen.id3 import ID3
             tags = ID3(path)
-            for field, desc in _MB_TXXX.items():
-                frames = tags.getall(f"TXXX:{desc}")
+            for field, desc in _FREE_TXXX.items():
+                frames = tags.getall(f"TXXX:{desc}") or tags.getall(f"TXXX:{desc.lower()}")
                 if frames and frames[0].text:
                     out[field] = str(frames[0].text[0]) or None
         elif ext in (".flac", ".ogg", ".oga", ".opus"):
             f = mutagen.File(path)
             if f is not None and f.tags is not None:
-                for field, key in _MB_VORBIS.items():
+                for field, key in _FREE_VORBIS.items():
                     vals = f.tags.get(key)
                     if vals:
                         out[field] = str(vals[0]) or None
         elif ext in (".m4a", ".aac"):
             from mutagen.mp4 import MP4
             f = MP4(path)
-            for field, desc in _MB_TXXX.items():
-                vals = (f.tags or {}).get(f"----:com.apple.iTunes:{desc}")
+            for field, desc in _FREE_TXXX.items():
+                t = f.tags or {}
+                vals = t.get(f"----:com.apple.iTunes:{desc}") or t.get(f"----:com.apple.iTunes:{desc.lower()}")
                 if vals:
                     v = vals[0]   # MP4FreeForm is bytes
                     out[field] = (bytes(v).decode("utf-8", "replace") if isinstance(v, bytes) else str(v)) or None
     except Exception:
         pass
     return out
+
+
+def read_replaygain(path: str) -> dict:
+    """The file's ReplayGain values, "" for each it doesn't have."""
+    got = _read_mb_ids(path)
+    return {f: got.get(f) or "" for f in RG_FIELDS}
 
 
 def _read_extended(path: str) -> dict:

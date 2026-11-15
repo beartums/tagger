@@ -508,9 +508,9 @@ export const api = {
         'POST', '/api/tags/merge-albums', body),
     editValues: (trackIds: number[], field: string, add: string[], remove: string[]) =>
       request<EditResult & { changed: number }>('POST', '/api/tags/values', { track_ids: trackIds, field, add, remove }),
-    replaygain: (trackIds: number[], albumMode = false) =>
-      request<{ ok: boolean; tool: string | null; processed: number; error?: string }>(
-        'POST', '/api/tags/replaygain', { track_ids: trackIds, album_mode: albumMode }),
+    replaygain: (trackIds: number[]) =>
+      request<EditResult & { measured: number; albums: number; errors: { id?: number; name: string; error: string }[] }>(
+        'POST', '/api/tags/replaygain', { track_ids: trackIds }),
     replaygainStatus: () =>
       request<{ available: boolean; tool: string | null }>('GET', '/api/tags/replaygain/status'),
     renamePreview: (req: BulkRenameRequest) =>
