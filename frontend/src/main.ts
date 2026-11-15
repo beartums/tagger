@@ -223,10 +223,12 @@ function renderLevel(top: string, parent: TagStep[], values: TagValue[], selecte
     const key = pathKey(path)
     const expanded = !!childField && state.expandedNodes.has(key)
     const sub = childField && v.child_count !== undefined ? countOf(v.child_count, childField) : undefined
+    // The album view counts albums; the track view, tracks.
+    const albums = state.viewMode === 'albums' && v.album_count !== undefined
     const li = navRow('nav-value' + (key === selected ? ' active' : ''),
                       childField ? (expanded ? 'open' : 'closed') : 'none',
-                      v.value ? esc(v.value) : '<span class="nav-none">(none)</span>', v.track_count, sub)
-    li.title = `${sub ? sub + ', ' : ''}${v.track_count.toLocaleString()} track${v.track_count === 1 ? '' : 's'}`
+                      v.value ? esc(v.value) : '<span class="nav-none">(none)</span>', albums ? v.album_count : v.track_count, sub)
+    li.title = `${sub ? sub + ', ' : ''}${v.album_count !== undefined ? plural(v.album_count, 'album') + ', ' : ''}${plural(v.track_count, 'track')}`
     li.style.paddingLeft = `${26 + 16 * parent.length}px`
     li.dataset.path = key
     artistListEl.appendChild(li)
@@ -390,7 +392,7 @@ async function renderQualityPanel() {
     // panel: its last count shows dimmed, and ↻ runs it now.
     const e = issues[issue.key]
     const off = !!e?.off
-    const count = e?.tracks
+    const count = state.viewMode === 'albums' ? e?.albums : e?.tracks   // the album view counts albums
     if (issue.group && issue.group !== group) {
       const h = document.createElement('li')
       h.className = 'quality-group'
@@ -403,7 +405,7 @@ async function renderQualityPanel() {
       + (off ? ' quality-off' : '') + (!count ? ' quality-zero' : '')
     li.dataset.issue = issue.key
     li.title = count == null ? 'Not checked yet — ↻ checks it now'
-      : `${plural(count, 'track')} in ${plural(e.albums ?? 0, 'album')}` + (off ? ` · last checked ${checkedAt(e.at)}` : '')
+      : `${plural(e.tracks ?? 0, 'track')} in ${plural(e.albums ?? 0, 'album')}` + (off ? ` · last checked ${checkedAt(e.at)}` : '')
     li.innerHTML = `
       <button type="button" class="q-switch" data-q-switch aria-pressed="${!off}" title="${off ? 'Off: not run with the panel (it\'s slow on a big library). Click to turn it on' : 'On: run each time the panel opens or the library changes. Click to turn it off'}" aria-label="${esc(issue.label)} on"></button>
       <span class="quality-issue-dot${issue.warn ? ' quality-issue-dot-warn' : ''}"></span>
@@ -600,6 +602,34 @@ function renderAlbumView() { if (albumStyle === 'list') renderAlbumList(); else 
 
 const listKey = (r: AlbumRow) => JSON.stringify([r.directory, r.album])
 
+// Album list cover column: drag its edge to size the covers (rows follow). Remembered per browser.
+const COVER_MIN = 28, COVER_MAX = 300
+let albumCover = COVER_MIN
+try { albumCover = Math.min(COVER_MAX, Math.max(COVER_MIN, Number(localStorage.getItem('tagger.albumCover')) || COVER_MIN)) } catch { /* storage blocked */ }
+const setAlbumCover = (px: number) => {
+  albumCover = Math.round(Math.min(COVER_MAX, Math.max(COVER_MIN, px)))
+  albumListEl.style.setProperty('--al-cover', `${albumCover}px`)
+}
+setAlbumCover(albumCover)
+albumListEl.addEventListener('mousedown', (e) => {
+  if (!(e.target as HTMLElement).closest('[data-al-cover-resize]')) return
+  e.preventDefault(); e.stopPropagation()
+  const x0 = e.clientX, w0 = albumCover
+  document.body.classList.add('col-resizing')
+  const move = (ev: MouseEvent) => setAlbumCover(w0 + ev.clientX - x0)
+  const up = () => {
+    document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up)
+    document.body.classList.remove('col-resizing')
+    try { localStorage.setItem('tagger.albumCover', String(albumCover)) } catch { /* storage blocked */ }
+  }
+  document.addEventListener('mousemove', move); document.addEventListener('mouseup', up)
+})
+albumListEl.addEventListener('dblclick', (e) => {
+  if (!(e.target as HTMLElement).closest('[data-al-cover-resize]')) return
+  setAlbumCover(COVER_MIN)
+  try { localStorage.removeItem('tagger.albumCover') } catch { /* storage blocked */ }
+})
+
 // Album paging (the pager under the list): a different set of albums starts at the first page.
 const albumPage = { offset: 0, total: 0, sig: '' }
 function albumPageFor(sig: string, total: number) {
@@ -668,7 +698,7 @@ function drawAlbumList(fetched: AlbumRow[]) {
   }
   const dot = (r: AlbumRow) => { const q = albumQuality(r.quality ?? {}, r.tracks); return `<span class="quality-dot quality-dot-${q.rating}" title="${esc(q.title)}"></span>` }
   albumListEl.innerHTML = `<table class="track-table album-table"><thead><tr>
-      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album on this page" /></th><th class="al-cover"></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
+      ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album on this page" /></th><th class="al-cover"><span class="col-resizer" data-al-cover-resize title="Drag to resize the covers · double-click to reset"></span></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
       ${th('year', 'Year')}${th('genre', 'Genre')}${th('format', 'Format')}${th('folder', 'Folder')}</tr></thead><tbody>
     ${rows.map((r, i) => ({ r, i })).slice(albumPage.offset, albumPage.offset + state.pageSize).map(({ r, i }) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}" title="${esc(r.directory)}\nClick to open · the box (or Ctrl/⌘-click) selects, Shift-click a range">
       <td class="al-q">${dot(r)}</td><td class="col-check">${r.ids.length ? `<input type="checkbox" class="album-check" ${albumPicks.has(listKey(r)) ? 'checked' : ''} aria-label="Select this album" />` : '<span class="ro-lock" title="Read-only">🔒</span>'}</td><td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
@@ -736,7 +766,10 @@ function renderViewMode() {
   tableWrapEl.style.display  = state.viewMode === 'list' ? '' : 'none'
   albumGridEl.style.display  = albums && albumStyle === 'tiles' ? 'grid' : 'none'
   albumListEl.style.display  = albums && albumStyle === 'list' ? '' : 'none'
-  renderPagination()   // the pager pages tracks: hidden with albums
+  renderPagination()
+  // The side panel counts albums in the album view, tracks otherwise.
+  if (state.sidebarMode === 'tags') renderTagsPanel()
+  else if (state.sidebarMode === 'quality' && state.qualityIssues) renderQualityPanel()
   albumStyleEl.hidden = !albums
   albumStyleEl.querySelectorAll<HTMLElement>('[data-style]').forEach(b => b.classList.toggle('active', b.dataset.style === albumStyle))
   viewListBtn.classList.toggle('active',   state.viewMode === 'list')
@@ -1120,8 +1153,9 @@ pageSize.innerHTML = PAGE_SIZES.map(n => `<option value="${n}">${n}</option>`).j
 
 /** The pager under the list, when there's paging to do (where you are and the selection: the status bar). */
 function renderPagination() {
-  const p = paged()
   const total = pageTotalOf(), offset = pageOffset()
+  // Albums always show where you are ("albums 1–40 of 40 · page 1 of 1"); tracks only when paged.
+  const p = paged() || (albumsPaged() && total > 0)
   const sizable = total > PAGE_SIZES[0]
   pageNav.hidden = !p
   pageSizeWrap.hidden = !sizable
@@ -3428,9 +3462,9 @@ function showSecrets(s: AppSettings) {
     i.placeholder = set ? 'Saved — type to replace' : i.dataset.placeholder!
     i.parentElement!.querySelector<HTMLElement>('[data-secret-remove]')!.hidden = !set
   }
-  document.getElementById('secrets-note')!.innerHTML = s.secrets_encrypted
+  document.querySelectorAll('.secrets-note').forEach(el => { el.innerHTML = s.secrets_encrypted
     ? '🔒 Keys and tokens are stored encrypted (<code>TAGGER_SECRET_KEY</code>) and never shown again.'
-    : '⚠ Keys and tokens are stored as plain text: set <code>TAGGER_SECRET_KEY</code> on the server to encrypt them.'
+    : '⚠ Keys and tokens are stored as plain text: set <code>TAGGER_SECRET_KEY</code> on the server to encrypt them.' })
 }
 function readSecrets(): Partial<AppSettings> {
   const out: Record<string, string> = {}
@@ -3714,6 +3748,7 @@ layoutCheckEl.addEventListener('click', (e) => {
 // Settings sections: one shown at a time; the last one is remembered.
 const settingsSubnav = document.querySelector<HTMLElement>('.settings-subnav')!
 function showSettingsSection(name: string) {
+  if (name === 'sources') name = 'metadata'   // split into Integrations and Metadata
   if (!settingsSubnav.querySelector(`[data-sect="${name}"]`)) name = 'libraries'
   settingsSubnav.querySelectorAll<HTMLElement>('[data-sect]').forEach(b => b.classList.toggle('active', b.dataset.sect === name))
   document.querySelectorAll<HTMLElement>('.settings-sect').forEach(el => { el.hidden = el.dataset.sect !== name })

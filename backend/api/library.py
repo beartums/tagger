@@ -641,6 +641,7 @@ def tag_values(field: str, path: Optional[str] = None, child: Optional[str] = No
     "Folk; Celtic" is listed under both. `path` limits it to a node of the
     Tags tree (see _path_filters); `child` adds, per value, how many values
     of that tag (the tree's next level, '' included) its tracks have.
+    `album_count`: its albums (folder + album, as the album list counts them).
     """
     if field not in BROWSE_FIELDS or (child is not None and child not in BROWSE_FIELDS):
         raise HTTPException(400, "Invalid field")
@@ -650,17 +651,21 @@ def tag_values(field: str, path: Optional[str] = None, child: Optional[str] = No
     group = f"{field}, {child}" if child else field
     with db() as conn:
         rows = conn.execute(
-            f"SELECT {cols}, COUNT(*) AS n FROM tracks {where} GROUP BY {group}", params
+            f"SELECT {cols}, directory, COALESCE(album, '') AS alb, COUNT(*) AS n FROM tracks {where}"
+            f" GROUP BY {group}, directory, alb", params
         ).fetchall()
     counts: dict[str, int] = {}
     children: dict[str, set[str]] = {}
+    albums: dict[str, set[tuple[str, str]]] = {}
     for r in rows:
         for v in split_values(r["value"]) or [""]:
             counts[v] = counts.get(v, 0) + r["n"]
+            albums.setdefault(v, set()).add((r["directory"], r["alb"]))
             if child:
                 children.setdefault(v, set()).update(split_values(r["child"]) or [""])
     key = (lambda v: v) if field == "year" else (lambda v: v.casefold())
-    return [{"value": v, "track_count": n, **({"child_count": len(children[v])} if child else {})}
+    return [{"value": v, "track_count": n, "album_count": len(albums[v]),
+             **({"child_count": len(children[v])} if child else {})}
             for v, n in sorted(counts.items(), key=lambda kv: key(kv[0]), reverse=field == "year")]
 
 

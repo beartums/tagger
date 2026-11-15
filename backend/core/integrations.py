@@ -1,5 +1,5 @@
 """
-Other music apps Tagger talks to (Settings → Sources → Integrations), each
+Other music apps Tagger talks to (Settings → Integrations), each
 optional:
 
 - Lidarr: read its file-naming choices (GET /api/v1/config/naming) so

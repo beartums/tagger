@@ -213,7 +213,7 @@ class SourceTest(BaseModel):
 
 @router.post("/test/{source}")
 def test_source(source: str, req: SourceTest):
-    """Check a key/token against its service (Settings → Sources → Test)."""
+    """Check a key/token against its service (Settings → Integrations / Metadata → Test)."""
     from core import sourcetest
     s = _load()
     if source == "acoustid":
@@ -256,7 +256,7 @@ def lidarr_naming():
     from core import integrations
     s = _load()
     if not (s.lidarr_url and s.lidarr_api_key):
-        raise HTTPException(400, "Set Lidarr's URL and API key in Settings → Sources first")
+        raise HTTPException(400, "Set Lidarr's URL and API key in Settings → Integrations first")
     try:
         return integrations.lidarr_naming(s.lidarr_url, s.lidarr_api_key)
     except ValueError as exc:

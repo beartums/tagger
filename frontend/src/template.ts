@@ -37,7 +37,8 @@ export const APP_HTML = `
         <button type="button" data-sect="layouts">Layouts</button>
         <button type="button" data-sect="groups">Groups</button>
         <button type="button" data-sect="scanning">Scanning</button>
-        <button type="button" data-sect="sources">Sources</button>
+        <button type="button" data-sect="integrations" title="Your self-hosted music apps: Lidarr, Navidrome, Music Assistant">Integrations</button>
+        <button type="button" data-sect="metadata" title="Where tags, matches and lyrics come from: AcoustID, Discogs, LRCLIB">Metadata</button>
         <button type="button" data-sect="writing">Writing</button>
         <button type="button" data-sect="search">Search</button>
       </nav>
@@ -104,7 +105,7 @@ export const APP_HTML = `
           <button type="button" class="btn btn-ghost btn-sm" data-naming-preset="remove" title="Every one removed (Lidarr's Replace Illegal Characters off)">Remove all</button>
           <button type="button" class="btn btn-ghost btn-sm" data-naming-preset="underscore" title="Every one → _">Underscores</button>
           <button type="button" class="btn btn-ghost btn-sm" data-naming-preset="lookalike" title="Each → a Unicode look-alike (／ ： ？ ＊ …), so names read like the tag">Look-alikes</button>
-          <button type="button" id="naming-from-lidarr" class="btn btn-ghost btn-sm" title="Your Lidarr's own settings (Settings → Sources → Lidarr)">Copy from Lidarr</button>
+          <button type="button" id="naming-from-lidarr" class="btn btn-ghost btn-sm" title="Your Lidarr's own settings (Settings → Integrations → Lidarr)">Copy from Lidarr</button>
         </div>
         <p class="settings-hint"><button type="button" id="naming-smart-colon" class="tog" aria-pressed="true">Smart colons</button>
           On: "Live: Tokyo" → "Live - Tokyo" and "10:30" → "10-30"; off: a colon is replaced like the characters below.</p>
@@ -157,8 +158,9 @@ export const APP_HTML = `
           <span class="settings-hint">Progress and Cancel are on the Background tab.</span></div>
       </div>
       </div>
-      <div class="settings-sect" data-sect="sources" hidden>
-      <p id="secrets-note" class="settings-hint"></p>
+      <div class="settings-sect" data-sect="metadata" hidden>
+      <p class="settings-hint secrets-note"></p>
+      <p class="settings-hint">MusicBrainz needs no setup; these add to it.</p>
       <div class="settings-section">
         <div class="settings-section-title">AcoustID</div>
         <p class="settings-hint">Identifies audio by fingerprint — much more accurate than text search. Get a free application API key at <span class="settings-link">acoustid.org</span>.</p>
@@ -187,11 +189,9 @@ export const APP_HTML = `
         </label>
         <div class="source-test-result" data-test-result="lrclib" hidden></div>
       </div>
-      <div class="settings-section">
-        <div class="settings-section-title">ReplayGain</div>
-        <p class="settings-hint">Scan volume levels and write ReplayGain tags, so players that read them play tracks at an even volume. Run it from the selection toolbar.</p>
-        <div id="replaygain-status" class="acoustid-status"></div>
       </div>
+      <div class="settings-sect" data-sect="integrations" hidden>
+      <p class="settings-hint secrets-note"></p>
       <div class="settings-section">
         <div class="settings-section-title">Lidarr</div>
         <p class="settings-hint">Optional. Lets Settings → Layouts → <em>Characters in names</em> copy Lidarr's naming choices. API key: Lidarr → Settings → General.</p>
@@ -268,6 +268,11 @@ export const APP_HTML = `
       </div>
       </div>
       <div class="settings-sect" data-sect="writing" hidden>
+      <div class="settings-section">
+        <div class="settings-section-title">ReplayGain</div>
+        <p class="settings-hint">Scan volume levels and write ReplayGain tags, so players that read them play tracks at an even volume. Run it from the selection toolbar.</p>
+        <div id="replaygain-status" class="acoustid-status"></div>
+      </div>
       <div class="settings-section">
         <div class="settings-section-title">Writing Changes</div>
         <label class="settings-toggle">

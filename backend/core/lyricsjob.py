@@ -102,7 +102,7 @@ async def run(job_id: str, ids: list[int], prefer: str = "synced", instrumental_
                 # risk a ban. What was found is staged; a new run picks up the rest.
                 _update_job(job_id, status="error", phase=None, finished_at=time.time(),
                             error=f"LRCLIB rate limit: stopped after {done} tracks ({found} found). Try again later, "
-                                  "or add an LRCLIB API key in Settings → Sources.")
+                                  "or add an LRCLIB API key in Settings → Metadata.")
                 logger.warning("lyrics lookup %s stopped by the rate limit after %d", job_id, done)
                 return
         _update_job(job_id, status="done", phase=None, finished_at=time.time(), scanned=done, changed=found)
