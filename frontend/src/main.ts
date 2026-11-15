@@ -23,6 +23,7 @@ import { openLyrics } from './lyricsdialog'
 import { openDuplicates } from './duplicates'
 import { openLyricsSearch } from './lyricssearch'
 import { openFindReplace } from './findreplace'
+import { shapeSettings, setPill, snapshotSettings, changedSections, sectionName } from './settingslayout'
 import { openAssignGroup, renderLyricsGroups, groupLayoutChoices, addGroupLayout, wireLyricsGroups, readLyricsGroups, libraryGroupSelect, renderGroupLayouts } from './lyricsgroups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
@@ -3473,13 +3474,15 @@ function readSecrets(): Partial<AppSettings> {
   }
   return out as Partial<AppSettings>
 }
+const paneSettings = document.getElementById('pane-settings')!
+shapeSettings(paneSettings)
 document.getElementById('pane-settings')!.addEventListener('click', async (e) => {
   const t = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-source-test]')
   if (t) {
     e.preventDefault()
     const src = t.dataset.sourceTest!
     const out = document.querySelector<HTMLElement>(`[data-test-result="${src}"]`)!
-    const typed = t.parentElement!.querySelector<HTMLInputElement>('[data-secret]')!.value.trim()
+    const typed = t.closest('.settings-section')!.querySelector<HTMLInputElement>('[data-secret]')!.value.trim()
     t.disabled = true
     out.hidden = false; out.className = 'source-test-result'; out.textContent = 'Testing…'
     try {
@@ -3490,8 +3493,10 @@ document.getElementById('pane-settings')!.addEventListener('click', async (e) =>
       const r = await api.settings.testSource(src, typed, src === 'lrclib' ? lrclibAppIdInput.value.trim() : undefined, extra)
       out.className = `source-test-result ${r.ok ? 'status-ok' : 'status-warn'}`
       out.textContent = `${r.ok ? '✓' : '⚠'} ${r.message}`
+      setPill(paneSettings, src, r.ok ? 'ok' : 'warn', r.ok ? (INTEG_CARDS.includes(src) ? 'Connected' : 'Working') : 'Failed')
     } catch (err) {
       out.className = 'source-test-result status-warn'; out.textContent = `⚠ ${errText(err)}`
+      setPill(paneSettings, src, 'warn', 'Failed')
     } finally { t.disabled = false }
     return
   }
@@ -3808,6 +3813,22 @@ librariesListEl.addEventListener('change', async (e) => {
   }
 })
 
+const INTEG_CARDS = ['lidarr', 'navidrome', 'music_assistant']
+
+/** Each tool card's pill from the saved settings (a Test then says Connected or Failed). */
+function showCardPills(s: AppSettings, status: { fpcalc_installed?: boolean; acoustid_configured: boolean }, rg: { available: boolean }) {
+  const has = (k: string) => !!(s as unknown as Record<string, unknown>)[k]
+  const set = (key: string, on: boolean) => setPill(paneSettings, key, on ? 'ok' : 'off', on ? 'Set up' : 'Not set up')
+  set('lidarr', has('lidarr_url') && has('lidarr_api_key'))
+  set('navidrome', has('navidrome_url') && has('navidrome_user'))
+  set('music_assistant', has('ma_url') && has('ma_token'))
+  set('discogs', has('discogs_token'))
+  if (status.fpcalc_installed === false) setPill(paneSettings, 'acoustid', 'warn', 'Tool missing')
+  else set('acoustid', status.acoustid_configured)
+  setPill(paneSettings, 'lrclib', 'ok', has('lrclib_api_key') ? 'Key set' : 'Works without a key')
+  setPill(paneSettings, 'replaygain', rg.available ? 'ok' : 'warn', rg.available ? 'Ready' : 'Tool missing')
+}
+
 async function openSettings() {
   let libsDone: Promise<void> = Promise.resolve()
   try {
@@ -3855,6 +3876,7 @@ async function openSettings() {
     localMusicDirs = [...(s.music_dirs ?? [])]
     renderMusicDirsList()
     renderAcoustidStatus(status)
+    showCardPills(s, status, rgStatus)
     replaygainStatusEl.innerHTML = rgStatus.available
       ? `<span class="status-ok">✓ ReplayGain available via ${rgStatus.tool}</span>`
       : '<span class="status-warn">⚠ No ReplayGain tool found — install <code>rsgain</code> (or loudgain) on the server</span>'
@@ -3869,6 +3891,8 @@ async function openSettings() {
   settingsBaseline = null
   await libsDone
   settingsBaseline = JSON.stringify(collectSettings())
+  snapshotSettings(paneSettings)
+  markSettingsDirty()
 }
 
 const trashStatusEl = document.getElementById('trash-status')!
@@ -4080,7 +4104,15 @@ function collectSettings(): Partial<AppSettings> {
 const settingsCancelBtn = document.getElementById('settings-cancel') as HTMLButtonElement
 let settingsBaseline: string | null = null
 const settingsDirty = () => settingsBaseline !== null && JSON.stringify(collectSettings()) !== settingsBaseline
-const markSettingsDirty = () => requestAnimationFrame(() => { settingsCancelBtn.hidden = !settingsDirty() })
+const settingsUnsavedEl = document.getElementById('settings-unsaved')!
+const markSettingsDirty = () => requestAnimationFrame(() => {
+  const dirty = settingsDirty()
+  settingsCancelBtn.hidden = !dirty
+  // Which sections: a dot in the rail, and named in the save bar.
+  const sects = dirty ? changedSections(paneSettings) : []
+  settingsSubnav.querySelectorAll<HTMLElement>('[data-sect]').forEach(b => b.classList.toggle('sect-dirty', sects.includes(b.dataset.sect!)))
+  settingsUnsavedEl.textContent = dirty ? `Unsaved changes${sects.length ? ' · ' + sects.map(sectionName).join(', ') : ''}` : ''
+})
 for (const ev of ['input', 'change', 'click']) document.getElementById('pane-settings')!.addEventListener(ev, markSettingsDirty)
 
 /** Close Settings, asking first if there are unsaved changes. False: stay. */

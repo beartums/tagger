@@ -33,12 +33,15 @@ export const APP_HTML = `
     <div id="pane-about" class="settings-sidebar-body settings-pane" hidden></div>
     <div id="pane-settings" class="settings-sidebar-body settings-pane">
       <nav class="settings-subnav" role="tablist" aria-label="Settings sections">
+        <div class="rail-h">Library</div>
         <button type="button" data-sect="libraries" class="active">Libraries</button>
         <button type="button" data-sect="layouts">Layouts</button>
         <button type="button" data-sect="groups">Groups</button>
         <button type="button" data-sect="scanning">Scanning</button>
-        <button type="button" data-sect="integrations" title="Your self-hosted music apps: Lidarr, Navidrome, Music Assistant">Integrations</button>
-        <button type="button" data-sect="metadata" title="Where tags, matches and lyrics come from: AcoustID, Discogs, LRCLIB">Metadata</button>
+        <div class="rail-h">Sources</div>
+        <button type="button" data-sect="integrations">Integrations</button>
+        <button type="button" data-sect="metadata">Metadata</button>
+        <div class="rail-h">Output</div>
         <button type="button" data-sect="writing">Writing</button>
         <button type="button" data-sect="search">Search</button>
       </nav>
@@ -160,7 +163,6 @@ export const APP_HTML = `
       </div>
       <div class="settings-sect" data-sect="metadata" hidden>
       <p class="settings-hint secrets-note"></p>
-      <p class="settings-hint">MusicBrainz needs no setup; these add to it.</p>
       <div class="settings-section">
         <div class="settings-section-title">AcoustID</div>
         <p class="settings-hint">Identifies audio by fingerprint — much more accurate than text search. Get a free application API key at <span class="settings-link">acoustid.org</span>.</p>
@@ -310,6 +312,7 @@ export const APP_HTML = `
       </div>
     </div>
     <div class="settings-sidebar-footer" id="settings-footer">
+      <span id="settings-unsaved" class="settings-unsaved"></span>
       <button id="settings-logout" class="btn btn-ghost" hidden>Log out</button>
       <button id="settings-cancel" class="btn btn-ghost" title="Discard your changes" hidden>Cancel</button>
       <button id="settings-save" class="btn btn-primary">Save</button>
