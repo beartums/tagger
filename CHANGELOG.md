@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Add to MusicBrainz comes back to your tab.** MusicBrainz opens in one tab
+  of its own; when you submit, that tab hands the new release to the tggr tab
+  you started from (still on the same view) and closes.
 - **Add to MusicBrainz links the artists.** Each artist arrives linked in the
   release editor: from the tags when the files were matched before, else the
   one MusicBrainz artist with exactly that name. Names shared by several
