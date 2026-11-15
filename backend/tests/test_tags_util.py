@@ -1,6 +1,6 @@
 import pytest
 
-from core.naming import render_template, _safe
+from core.naming import NamingRules, render_template, safe_name, _safe
 from api.library import _m3u, _fts_query
 from core.tagger import TAG_FIELDS, is_audio_file, _detect_format
 from api.config import ALL_SCAN_TAGS
@@ -40,6 +40,43 @@ def test_render_bad_template_raises():
 def test_safe_never_empty():
     assert _safe("...") == "_"
     assert _safe("") == "_"
+
+
+def test_slash_in_a_value_is_not_a_folder():
+    tags = {**SAMPLE, "album_artist": "AC/DC", "album": "Love\\Hate"}
+    assert render_template("{album_artist}/{album}/{title}", tags, ".flac") == "AC+DC/Love+Hate/So What.flac"
+    assert render_template("{album_artist_the}/{title}", {**SAMPLE, "album_artist": "The A/B"}, ".flac") == "A+B, The/So What.flac"
+
+
+def test_lidarr_illegal_and_smart_colon():
+    tags = {**SAMPLE, "title": 'Re: Mix? <"10:30"> * |x|'}
+    assert render_template("{title}", tags, ".mp3") == "Re - Mix! 10-30 - x.mp3"
+
+
+@pytest.mark.parametrize("colon,want", [
+    ("delete", "Re Mix 1030"), ("dash", "Re- Mix 10-30"),
+    ("space_dash", "Re - Mix 10 -30"), ("space_dash_space", "Re -  Mix 10 - 30"),
+])
+def test_colon_options(colon, want):
+    out = render_template("{title}", {"title": "Re: Mix 10:30"}, "", NamingRules(colon=colon))
+    assert out == want
+
+
+def test_replace_illegal_off_deletes():
+    rules = NamingRules(replace_illegal=False)
+    assert render_template("{title}", {"title": "AC/DC: Live?*"}, "", rules) == "ACDC Live"
+
+
+def test_names_trimmed_and_control_chars():
+    assert render_template("{album}/{title}", {"album": "Vol. 2...", "title": " a\x01b. "}, ".mp3") == "Vol. 2/a_b.mp3"
+
+
+def test_template_text_still_sanitized():
+    assert render_template("{title}: live", {"title": "X"}, "") == "X_ live"
+
+
+def test_safe_name_for_typed_folder():
+    assert safe_name("AC/DC: Live") == "AC+DC - Live"
 
 
 # ── m3u ────────────────────────────────────────────────────────────────────

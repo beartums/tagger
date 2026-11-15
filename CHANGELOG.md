@@ -2,9 +2,122 @@
 
 ## Unreleased
 
-### Staged changes (beartums fork)
+- **One bar under the list**: the status bar is gone. Where you are, the
+  pager (prev/next, editable top row, page N of M, rows per page) and the
+  selection share one row below the track list, replacing the old Prev/Next.
+  The track count stays in the toolbar.
+- **Integrations** (Settings → Sources), each optional, keys encrypted:
+  - **Lidarr**: Settings → Layouts → *Copy from Lidarr* sets *Characters in
+    names* from Lidarr's own naming choices and shows its folder and track
+    formats beside them.
+  - **Navidrome** and **Music Assistant** rescan after Tagger changes files
+    (tags, moves, covers, ReplayGain); a big write is one rescan. *Player
+    rescans* sets when: N minutes after the last change (each change restarts
+    the wait; default 5), N seconds after a change (later changes don't push it
+    back), or off. A rescan that's waiting shows when it's due.
+  - **Just the changed folders**: map Tagger folders to Navidrome libraries
+    (`/music = 1:`; Test lists the library ids) and Navidrome scans only the
+    folders that changed -- both ends of a move, the nearest folder that still
+    exists for one moved away. Unmapped changes or more than 50 folders: a
+    full scan. Music Assistant can only sync whole providers, so its map
+    (Tagger folder = provider instance id) syncs just the providers whose
+    folders changed. Both need an admin (Navidrome's `startScan`, MA's `music/sync`);
+    Test says so, and MA's Test lists its file providers to pick from. The
+    last result shows under each; *Rescan now* forces one.
+- **Names follow Lidarr's character rules**: a "/" inside a tag no longer
+  makes an extra folder (AC/DC filed as `AC/DC/…`); each value is cleaned on
+  its own, as Lidarr does. With the defaults (Lidarr's *Replace Illegal
+  Characters* on, colons *Smart*): `/` and `\` → `+`, `?` → `!`, `*` → `-`,
+  `< > | "` removed, `a: b` → `a - b`, `10:30` → `10-30`. Settings → Layouts →
+  *Characters in names* matches other Lidarr choices. Folders named the old
+  way (`_` for these characters) now show under *Not in layout*; Re-file moves
+  them. Typed folder renames use the same rules.
+- **Browse paths in the Tags panel**: each tag opens down through the tags
+  you choose, in your order (Genre › Album Artist › Album, Year › Genre, …).
+  ✎ beside a tag opens its path: drag tags in or along it, × to remove (or
+  click a tag to add it at the end). Saved in Settings; the default keeps
+  Artist › Album and Album Artist › Album. Every level filters by the whole
+  path above it; links and the back button carry the path (old links still
+  open).
+- Each level of the Tags tree counts the level below and the tracks:
+  "Electronic — 3 album artists · 21"; the last level shows tracks only.
+  Tag headers count their values ("10 artists").
+- **Artist and composer chips**: with several tracks selected, artist and
+  composer are edited like genre -- add or remove one value on every track,
+  keeping the values each track already has. Album artist stays one value
+  (players group albums by it). Long names in the chip menu wrap instead of
+  being cut off.
+
+## 0.3.0 — 2026-11-14
+
+The first release of [beartums/tagger](https://github.com/beartums/tagger),
+developed separately from [rnhinson/tagger](https://github.com/rnhinson/tagger)
+since 2026-09.
+
+### Paging & selection
+- The status bar pages the track list: rows per page (50–1000), an editable
+  top row, page N of M, and the number of tracks selected.
+- ⌘/Ctrl-click adds or removes one track; Shift-click selects from the last
+  track clicked, across pages.
+- The header **Scan** follows the Files selection at any folder level; *Scan
+  all* otherwise. A back button returns to the previous view.
+
+### Edit mode
+- **✎** turns the table's tag cells into a spreadsheet: type in place, move
+  with Tab, Enter and the arrows, undo with ⌘/Ctrl-Z. Edited cells are marked
+  with their old value on hover, and one click stages every edit.
+
+### Search and find & replace
+- Glob and regex toggles for track search. Settings → **Search** picks the
+  fields searched; the full-text index covers every searchable field but
+  lyrics and rebuilds itself when that list changes.
+- Find & replace takes regular expressions with captures and a live preview,
+  and works on year, track/disc number, BPM and lyrics too.
+- Staging updates the rows in place instead of reloading the page and losing
+  the scroll position.
+
+### Review
+- Staged changes are written in the background, with a progress bar in Review.
+
+### Auto-fix & matching
+- **Auto-fix** enriches the best three AcoustID matches from MusicBrainz,
+  picks the release that matches the file's album, and proposes album, album
+  artist, year, track/disc numbers, genre (per-genre chips) and composer.
+- Click a row or field to leave it out, ✕ drops a track, and each track can
+  take another match or edition. No checkboxes.
+- **Match albums** matches several albums at once, covers included.
+- Match album: *Unknown* tags fall back to folder names, unnamed tracks pair
+  by number and length, and underscored names (`track_01`) count as
+  placeholders.
+- Fix: AcoustID enrichment always failed (musicbrainzngs rejected the
+  `release-groups` include on recording lookups).
+
+### Cover art
+- Settings choose where covers go (folder file, embedded in tracks, or both)
+  and the size they're resized to; cover size and bytes are tracked.
+- **Change cover…** from disk, the Cover Art Archive, a MusicBrainz search
+  (album/artist or release id, with thumbnails) or a URL.
+- Find covers for many albums at once. **Covers…** moves, copies, shrinks or
+  deletes the selection's covers. Quality → *Cover art* lists missing and
+  oversized covers.
+
+### Layout
+- *Not in layout*: a resizable Layout column; hovering shows both paths with
+  the differences marked.
+
+### Fixes
+- The page bar under the table hid itself only in name: after a search
+  shrank the view it stayed, with the old "1–50 of 78".
+- Album tiles showed a compilation once per track artist; across artists it
+  is now one tile for its album artist, opening all its tracks.
+
+### Project
+- Repository, badges, image and user agents point at beartums/tagger; the
+  README credits the original. Renovate keeps dependencies current.
+
+### Staged changes
 - **Review before writing.** Edits, auto-fix, find/replace, auto-number and
-  Organize are held as staged changes; the topbar **Review N changes** button
+  moves are held as staged changes; the topbar **Review N changes** button
   shows a field-by-field diff and planned moves, and writes them as one
   undoable change (or discards them, all or per track). Settings → *Review
   changes before writing* turns it off. Cover art and ReplayGain still write
@@ -12,12 +125,12 @@
 - The track list shows staged values in place (amber, with the on-file value
   on hover); rows with a planned move are marked.
 - **History** dialog: every change, undo any of them newest-first per track.
-- **Undo staged steps.** Each staging action (save, bulk edit, organize,
+- **Undo staged steps.** Each staging action (save, bulk edit, move,
   find/replace, auto-number) is a step, labelled by the fields it changed;
   ↶ undoes the newest staged step first, and Review has *Undo last step*.
   Writing or discarding a track drops it from the steps.
 
-### Browsing (beartums fork)
+### Browsing
 - The Tags panel is a tree: tag (Artist, Album Artist, Album, Genre, Year,
   Composer) → its values with counts → (for artists) albums. `(none)` lists
   tracks missing that tag. `GET /api/library/tag-values`, and `tag`/`value`
@@ -31,7 +144,7 @@
 - **Saving sends only the fields you changed** -- the form can stand for
   tracks on other pages, so re-sending untouched fields would overwrite them.
 
-### Folders (beartums fork)
+### Folders
 - **Move…** and **Rename…** a folder from the Files panel: staged, written
   as one directory move (cover art and other files come along), undone as
   one. Destination must be inside a library root; library roots themselves
@@ -56,10 +169,10 @@
   "Other staged changes". Steps now record their result (`after`);
   steps from earlier versions still list and undo, without details.
 
-### Safe moves (beartums fork)
+### Safe moves
 - **Library roots**: rename templates are relative to the deepest root
   containing the file (`TAGGER_LIBRARY_ROOTS` or Settings, globs allowed),
-  so Organize keeps files inside their library. Files outside every root are
+  so re-filing keeps files inside their library. Files outside every root are
   refused. Previously the template was relative to `TAGGER_MUSIC_DIR`, which
   could place files outside any mounted volume.
 - Moves never overwrite, work across filesystems, handle case-only renames on
@@ -79,7 +192,7 @@
   Undoing a delete whose trash copy is gone no longer re-adds the row.
 - Template output keeps dots in the last part ("Vol. 2.mp3", not "Vol.mp3").
 
-### Library layouts (beartums fork)
+### Library layouts
 - **Standard layout** (Settings → Layout, formerly the rename template) with
   **Check layout** per library (Settings → Libraries); ✎ gives a library its
   own layout, edited in place. Rename on save uses the library's layout.
@@ -95,7 +208,7 @@
 - **Group layouts**: a group can set its own layout. A track uses the first
   set of its group's (one it was put in by hand), its library's, the standard.
 
-### Settings (beartums fork)
+### Settings
 - Split into sections: Libraries · Layouts · Groups · Scanning · Sources ·
   Writing. Every layout (standard, per library with its Check, per group) is
   under Layouts; libraries are a table (on/off, tracks, group).
@@ -112,7 +225,7 @@
 - Dark inputs throughout; built-in group names readable; hints no longer
   shouted in capitals.
 
-### Duplicates (beartums fork)
+### Duplicates
 - **Duplicate tracks** match on cleaned-up title + first artist ("The",
   "feat. X", "(Remastered)", " - 2009 Remaster" ignored) **and lengths within
   2 s**, so live takes and remixes aren't duplicates; or **by sound** --
@@ -125,7 +238,7 @@
 - **Duplicate albums** (Quality): the same cleaned-up album + album artist in
   more than one folder, shown in the album list.
 
-### Selection & views (beartums fork)
+### Selection & views
 - **Lyrics column** (Columns menu): synced / plain / none, sortable.
 - Quality views add their own column right after Title: *Missing lyrics* →
   **Lookup** (group, last lookup, a per-row **Search…**); *Not in layout* →
@@ -152,7 +265,7 @@
   but images moves them along when the tracks went to a folder the move
   created, else to the trash; the folder is pruned and undo puts them back.
 
-### Lyrics (beartums fork)
+### Lyrics
 - **Quality → Missing lyrics** lists tracks with no lyrics, with each one's
   lyrics group and how its last lookup went.
 - **Lyrics groups** (Settings → Lyrics groups): queries tried in order on

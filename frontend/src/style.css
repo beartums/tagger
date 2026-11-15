@@ -231,6 +231,37 @@ body.resizing-pane, body.resizing-pane * { cursor: col-resize !important; user-s
 }
 .nav-item.active .nav-count { color: color-mix(in srgb, var(--accent) 60%, transparent); }
 
+/* A tag's browse path: shown after its name, edited under it. */
+.nav-chain { font-weight: 400; color: var(--text-dim); }
+.nav-sub { color: var(--text-dim); opacity: 0.8; }
+.nav-tag .nav-count { font-weight: 400; }
+.nav-path-btn {
+  background: none; border: none; padding: 0 4px; font-size: 12px; cursor: pointer;
+  color: var(--text-dim); visibility: hidden;
+}
+.nav-tag:hover .nav-path-btn, .nav-path-btn[aria-pressed="true"] { visibility: visible; }
+.nav-path-btn:hover, .nav-path-btn[aria-pressed="true"] { color: var(--accent); }
+.path-editor {
+  list-style: none; margin: 2px 8px 6px 26px; padding: 6px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+}
+.path-chain, .path-free { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 26px; padding: 2px; border-radius: var(--radius); }
+.path-free { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.path-root { font-weight: 600; color: var(--text-muted); }
+.path-sep { color: var(--text-dim); }
+.path-hint { color: var(--text-dim); font-style: italic; }
+.path-chip {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px 6px; cursor: grab;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); color: var(--text);
+}
+.path-chip-free { background: none; color: var(--text-muted); border-style: dashed; }
+.path-chip.dragging { opacity: 0.4; }
+.path-x { background: none; border: none; padding: 0 0 0 2px; cursor: pointer; color: var(--text-dim); font-size: 13px; line-height: 1; }
+.path-x:hover { color: var(--danger); }
+.path-chip.drop-before { box-shadow: -3px 0 0 var(--accent); }
+.path-chain.drop-end { box-shadow: inset -3px 0 0 var(--accent); }
+.path-free.drop-target { background: var(--accent-dim); }
+
 /* ─── Directory tree ────────────────────────────────────────────────────────── */
 
 .dir-tree { padding: 6px 0; }
@@ -776,18 +807,26 @@ body.resizing-pane, body.resizing-pane * { cursor: col-resize !important; user-s
 .fix-empty-note   { font-size: 12px; color: var(--text-muted); font-style: italic; margin: 0; }
 
 /* ─── Pagination ─────────────────────────────────────────────────────────────── */
+/* Prev/next, an editable top row, page N of M, and rows per page, under the list. */
+/* The bar under the list: where you are (left), the pager (centre), the selection (right). */
 .pagination {
-  display: flex; align-items: center; justify-content: center; gap: 12px;
-  padding: 10px 16px; border-top: 1px solid var(--border);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px;
+  min-height: 28px; padding: 2px 12px; border-top: 1px solid var(--border);
   background: var(--bg-panel); flex-shrink: 0;
+  font-size: 12px; color: var(--text-muted); white-space: nowrap;
 }
-.pagination button {
-  padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px;
-  background: var(--bg-row); color: var(--text); cursor: pointer; font-size: 13px;
+.page-controls { display: inline-flex; align-items: center; gap: 16px; }
+.page-nav[hidden], .page-size-wrap[hidden] { display: none; }
+.page-nav { display: inline-flex; align-items: center; gap: 4px; }
+.page-nav button {
+  padding: 0 8px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-row); color: var(--text); cursor: pointer; font-size: 13px; line-height: 20px;
 }
-.pagination button:hover:not(:disabled) { background: var(--bg-hover); }
-.pagination button:disabled { opacity: 0.4; cursor: default; }
-.page-info { font-size: 13px; color: var(--text-muted); }
+.page-nav button:hover:not(:disabled) { background: var(--bg-hover); }
+.page-nav button:disabled { opacity: 0.4; cursor: default; }
+.page-of { margin-left: 8px; }
+.page-top { width: 7ch; font-size: 12px; padding: 0 2px; }
+.page-size { font-size: 12px; padding: 0 2px; }
 
 /* ─── Settings sidebar ───────────────────────────────────────────────────────── */
 
@@ -1199,7 +1238,8 @@ body.resizing-pane, body.resizing-pane * { cursor: col-resize !important; user-s
 .chip-menu[hidden] { display: none; }
 .chip-opt { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 12px; }
 .chip-opt:hover { background: var(--accent-dim); }
-.chip-opt-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+/* Wraps rather than clips: artist names are long and the editor pane is narrow. */
+.chip-opt-label { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--text); }
 .chip-opt-meta { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
 .chip-opt-new .chip-opt-label { font-style: italic; }
 .chip-opt-empty { padding: 6px 8px; font-size: 12px; color: var(--text-muted); }
@@ -1531,18 +1571,8 @@ button.scan-status[hidden] { display: none; }
 .cc-preview { min-height: 200px; display: flex; align-items: center; justify-content: center; background: var(--surface2); border-radius: 6px; }
 .cc-preview img { max-width: 100%; max-height: 300px; }
 
-/* ─── Status bar: where you are, the view's size, the selection ─────────────── */
-.statusbar {
-  display: flex; align-items: center; gap: 16px; height: 26px; padding: 0 12px; flex-shrink: 0;
-  background: var(--surface); border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted);
-  white-space: nowrap;
-}
-.status-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.status-view .btn-link { font-size: 13px; padding: 0 4px; }
-.status-view .btn-link:disabled { opacity: .35; cursor: default; }
-.status-top { width: 7ch; font-size: 12px; padding: 0 2px; }
-.status-size { font-size: 12px; padding: 0 2px; }
-.status-sel { color: var(--accent); }
+.status-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status-sel { justify-self: end; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
 .status-sel:empty { display: none; }
 .status-sel .btn-link { font-size: 12px; margin-left: 6px; }
 

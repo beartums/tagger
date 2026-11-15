@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from api.config import _load as load_settings, get_music_dirs
 from core import staging
 from core.database import db
-from core.naming import _safe
+from core.naming import current_rules, safe_name
 from core.tagger import is_audio_file
 
 router = APIRouter()
@@ -124,7 +124,7 @@ def move_folder(req: FolderMove):
 @router.post("/rename")
 def rename_folder(req: FolderRename):
     """Stage renaming a folder in place."""
-    name = _safe(req.name.strip())
+    name = safe_name(req.name.strip(), current_rules())
     src = os.path.normpath(req.path)
     dst = os.path.join(os.path.dirname(src), name)
     return _stage_folder(src, dst, f"Rename folder {os.path.basename(src)} → {name}")

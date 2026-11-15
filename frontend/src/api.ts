@@ -148,6 +148,16 @@ export interface AlbumRow {
   ids: number[]                        // its tracks (none when read-only)
 }
 
+export interface RescanResult { at: number; ok: boolean; message: string }
+
+export interface LidarrNaming {
+  replace_illegal: boolean
+  colon: AppSettings['naming_colon']
+  artist_folder_format: string
+  track_format: string
+  multi_disc_track_format: string
+}
+
 export interface AppSettings {
   rename_on_save: boolean
   rename_template: string
@@ -169,6 +179,24 @@ export interface AppSettings {
   cover_embed_size: number
   search_fields: string[]
   cover_folder_size: number
+  browse_paths: Record<string, string[]>
+  naming_replace_illegal: boolean
+  naming_colon: 'smart' | 'delete' | 'dash' | 'space_dash' | 'space_dash_space'
+  lidarr_url: string
+  lidarr_api_key: string
+  navidrome_url: string
+  navidrome_user: string
+  navidrome_password: string
+  ma_url: string
+  ma_token: string
+  ma_providers: string[]
+  navidrome_folders: Record<string, string>
+  ma_folders: Record<string, string>
+  rescans?: Record<string, RescanResult>
+  rescan_mode: 'off' | 'delay' | 'quiet'
+  rescan_delay_seconds: number
+  rescan_quiet_minutes: number
+  rescan_pending?: { since: number; due: number; folders: number } | null
   secrets_set?: Record<string, boolean>   // keys/tokens are never sent back, only whether set
   secrets_encrypted?: boolean
   default_music_dir?: string
@@ -342,6 +370,7 @@ export interface LibraryInfo {
 export interface TagValue {
   value: string
   track_count: number
+  child_count?: number   // values of the tree's next tag among these tracks, when asked for
 }
 
 export interface StagedCount {
@@ -430,8 +459,10 @@ export const api = {
     valueCounts: (ids: number[], field: string) =>
       request<{ count: number; values: { value: string; tracks: number }[] }>(
         'POST', '/api/library/value-counts', { track_ids: ids, field }),
-    tagValues: (field: string) =>
-      request<TagValue[]>('GET', `/api/library/tag-values?field=${encodeURIComponent(field)}`),
+    tagValues: (field: string, path?: string, child?: string) => {
+      const qs = new URLSearchParams({ field, ...(path ? { path } : {}), ...(child ? { child } : {}) })
+      return request<TagValue[]>('GET', `/api/library/tag-values?${qs}`)
+    },
     albumList: (params: Record<string, string | number> = {}) => {
       const qs = new URLSearchParams(params as Record<string, string>).toString()
       return request<AlbumRow[]>('GET', `/api/library/album-list${qs ? '?' + qs : ''}`)
@@ -538,14 +569,17 @@ export const api = {
   settings: {
     get: () => request<AppSettings>('GET', '/api/config'),
     libraries: () => request<LibraryInfo[]>('GET', '/api/config/libraries'),
-    testSource: (source: string, value: string, app_id?: string) =>
-      request<{ ok: boolean; message: string }>('POST', `/api/config/test/${source}`, { value, app_id }),
+    testSource: (source: string, value: string, app_id?: string, extra?: { url?: string; user?: string }) =>
+      request<{ ok: boolean; message: string }>('POST', `/api/config/test/${source}`, { value, app_id, ...extra }),
+    lidarrNaming: () => request<LidarrNaming>('GET', '/api/config/lidarr-naming'),
+    rescan: () => request<Record<string, RescanResult>>('POST', '/api/config/rescan'),
     setLibrary: (path: string, active: boolean) =>
       request<{ active: boolean; removed?: number; job_id?: string | null }>('POST', '/api/config/libraries', { path, active }),
     update: (s: Partial<AppSettings>) => request<AppSettings>('PATCH', '/api/config', s),
-    renamePreview: (template: string, tags?: Record<string, string>, ext?: string, trackId?: number) =>
+    renamePreview: (template: string, tags?: Record<string, string>, ext?: string, trackId?: number,
+                    naming?: { replace_illegal: boolean; colon: string }) =>
       request<{ ok: boolean; preview?: string; path?: string; error?: string }>(
-        'POST', '/api/config/rename-preview', { template, tags, ext, track_id: trackId }),
+        'POST', '/api/config/rename-preview', { template, tags, ext, track_id: trackId, ...naming }),
   },
 
   lyrics: {

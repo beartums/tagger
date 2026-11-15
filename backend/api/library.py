@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -107,6 +108,26 @@ def _blank(col: str) -> str:
     return f"({col} IS NULL OR {col} = '')"
 
 
+def _path_filters(path: Optional[str]) -> tuple[list[str], list]:
+    """A node of the Tags tree: JSON [[field, value], ...], each step narrowing the last."""
+    if not path:
+        return [], []
+    try:
+        steps = json.loads(path)
+        assert isinstance(steps, list) and all(
+            isinstance(s, list) and len(s) == 2 and s[0] in BROWSE_FIELDS and isinstance(s[1], str) for s in steps)
+    except (ValueError, AssertionError):
+        raise HTTPException(400, "Bad path")
+    clauses, params = [], []
+    for field, value in steps:   # field is whitelisted, so safe to interpolate
+        if value == "":
+            clauses.append(_blank(field))
+        else:
+            clauses.append(f"has_value({field}, ?)")
+            params.append(value)
+    return clauses, params
+
+
 # Same rule as the UI's quality dot (frontend/src/quality.ts).
 _POOR = f"({_blank('title')} OR {_blank('artist')})"
 _FAIR = f"(NOT {_POOR} AND ({_blank('album')} OR {_blank('year')} OR {_blank('track_number')}))"
@@ -143,10 +164,12 @@ class View:
         quality: Optional[str] = None,
         sort: Optional[str] = None,
         sort_dir: str = "asc",
+        path: Optional[str] = None,
     ):
         self.directory, self.artist, self.album, self.issue = directory, artist, album, issue
         self.tag, self.value, self.q, self.q_mode = tag, value, q, q_mode
         self.format, self.quality, self.sort, self.sort_dir = format, quality, sort, sort_dir
+        self.path = path
 
 
 def _track_filters(v: View) -> tuple[str, list, str]:
@@ -174,6 +197,9 @@ def _track_filters(v: View) -> tuple[str, list, str]:
         else:  # one of its ';'-separated values (core/multivalue.py)
             clauses.append(f"has_value({v.tag}, ?)")
             params.append(v.value)
+    path_clauses, path_params = _path_filters(v.path)
+    clauses += path_clauses
+    params += path_params
     if v.directory:
         clauses.append("(directory = ? OR substr(directory, 1, ?) = ?)")
         params.extend([v.directory, len(v.directory) + 1, v.directory + "/"])
@@ -540,24 +566,33 @@ def get_track(track_id: int):
 
 
 @router.get("/tag-values")
-def tag_values(field: str):
+def tag_values(field: str, path: Optional[str] = None, child: Optional[str] = None):
     """
     Values of one tag with track counts; '' = tracks without it. A tag holding
     several ';'-separated values counts under each, so an album tagged
-    "Folk; Celtic" is listed under both.
+    "Folk; Celtic" is listed under both. `path` limits it to a node of the
+    Tags tree (see _path_filters); `child` adds, per value, how many values
+    of that tag (the tree's next level, '' included) its tracks have.
     """
-    if field not in BROWSE_FIELDS:
+    if field not in BROWSE_FIELDS or (child is not None and child not in BROWSE_FIELDS):
         raise HTTPException(400, "Invalid field")
+    clauses, params = _path_filters(path)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    cols = f"{field} AS value, {child} AS child" if child else f"{field} AS value, NULL AS child"
+    group = f"{field}, {child}" if child else field
     with db() as conn:
         rows = conn.execute(
-            f"SELECT {field} AS value, COUNT(*) AS n FROM tracks GROUP BY {field}"
+            f"SELECT {cols}, COUNT(*) AS n FROM tracks {where} GROUP BY {group}", params
         ).fetchall()
     counts: dict[str, int] = {}
+    children: dict[str, set[str]] = {}
     for r in rows:
         for v in split_values(r["value"]) or [""]:
             counts[v] = counts.get(v, 0) + r["n"]
+            if child:
+                children.setdefault(v, set()).update(split_values(r["child"]) or [""])
     key = (lambda v: v) if field == "year" else (lambda v: v.casefold())
-    return [{"value": v, "track_count": n}
+    return [{"value": v, "track_count": n, **({"child_count": len(children[v])} if child else {})}
             for v, n in sorted(counts.items(), key=lambda kv: key(kv[0]), reverse=field == "year")]
 
 

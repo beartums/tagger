@@ -1,8 +1,8 @@
 import './style.css'
-import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, setUnauthorizedHandler, onSessionExpired } from './api'
+import { api, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, RescanResult, TagValue, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
 import { esc, fmtDuration, debounce } from './util'
-import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder } from './state'
+import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
 import { COL_DEFS, orderedCols, viewCols, sourcePath } from './columns'
 import {
   trackQuality, qualityTitle, QUALITY_ISSUES,
@@ -57,8 +57,8 @@ onSessionExpired(() => {
   bar.querySelector('button')!.addEventListener('click', () => location.reload())
   document.body.appendChild(bar)
 })
-// Genre on a multi-track selection: chips (add/remove values per track)
-// instead of one string that would overwrite every track's genres.
+// Genre, artist and composer on a multi-track selection: chips (add/remove
+// values per track) instead of one string that would overwrite every track's.
 // Read-only tracks (e.g. a reference mount): say so, and don't offer Save.
 const readOnlyNote = document.createElement('div')
 readOnlyNote.className = 'readonly-note'
@@ -79,9 +79,15 @@ function setReadOnly(n: number, of: number) {
   saveBtn.hidden = n > 0
 }
 
-const genreChips = new ValueChips('genres')
-const genreInput = tagForm.elements.namedItem('genre') as HTMLInputElement
-genreInput.closest('.field-label')!.after(genreChips.el)
+// Album artist stays one string: players group albums by it.
+const CHIP_FIELDS = { artist: 'artists', genre: 'genres', composer: 'composers' } as const
+type ChipField = keyof typeof CHIP_FIELDS
+const valueChips = new Map<ChipField, ValueChips>()
+for (const [field, noun] of Object.entries(CHIP_FIELDS) as [ChipField, string][]) {
+  const chips = new ValueChips(noun)
+  valueChips.set(field, chips)
+  ;(tagForm.elements.namedItem(field) as HTMLInputElement).closest('.field-label')!.after(chips.el)
+}
 const editorTitle    = document.getElementById('editor-title')!
 const bulkActions    = document.getElementById('bulk-actions')!
 const lyricsLookupBtn = document.getElementById('lyrics-lookup-btn') as HTMLButtonElement
@@ -161,24 +167,30 @@ function renderSidebarTabs() {
 
 // ─── Tags panel ───────────────────────────────────────────────────────────────
 
-function navRow(cls: string, arrow: 'open' | 'closed' | 'none', label: string, count?: number): HTMLLIElement {
+function navRow(cls: string, arrow: 'open' | 'closed' | 'none', label: string, count?: number | string, sub?: string): HTMLLIElement {
   const li = document.createElement('li')
   li.className = 'nav-item ' + cls
   const a = arrow === 'none' ? '' : (arrow === 'open' ? '▾' : '▸')
   li.innerHTML = `
     <span class="nav-arrow${arrow === 'none' ? ' nav-arrow-empty' : ''}" data-toggle="1">${a}</span>
     <span class="nav-label">${label}</span>
-    ${count !== undefined ? `<span class="nav-count">${count.toLocaleString()}</span>` : ''}`
+    ${count !== undefined ? `<span class="nav-count">${sub ? `<span class="nav-sub">${sub} · </span>` : ''}${count.toLocaleString()}</span>` : ''}`
   return li
 }
 
+const fieldLabel = (f: string) => BROWSE_TAGS.find(t => t.field === f)?.label ?? f
+/** "3 albums", "1 album artist". */
+const countOf = (n: number, f: string) => `${n.toLocaleString()} ${fieldLabel(f).toLowerCase()}${n === 1 ? '' : 's'}`
+const parsePath = (key: string): TagStep[] => (JSON.parse(key) as string[][]).map(([field, value]) => ({ field, value }))
+let editingPath: string | null = null   // the top tag whose browse path is open for editing
+
 function renderTagsPanel() {
   artistListEl.innerHTML = ''
-  const nothingSelected = state.selectedArtist === null && !state.selectedTag
+  const selected = pathKey(state.tagPath)
 
   // All tracks
   const allLi = document.createElement('li')
-  allLi.className = 'nav-item nav-all' + (nothingSelected ? ' active' : '')
+  allLi.className = 'nav-item nav-all' + (state.tagPath.length ? '' : ' active')
   allLi.dataset.all = '1'
   allLi.innerHTML = `<span class="nav-icon">♪</span><span class="nav-label">All tracks</span>`
   artistListEl.appendChild(allLi)
@@ -186,46 +198,110 @@ function renderTagsPanel() {
   for (const { field, label } of BROWSE_TAGS) {
     const open = state.expandedTags.has(field)
     const values = state.tagValues.get(field)
+    const chain = state.browsePaths[field] ?? []
     const header = navRow('nav-tag', values && !values.length ? 'none' : (open ? 'open' : 'closed'),
-                          esc(label), values ? values.length : undefined)
+                          esc(label), values ? countOf(values.length, field) : undefined)
     header.dataset.tag = field
+    header.querySelector('.nav-label')!.insertAdjacentHTML('beforeend',
+      chain.map(f => `<span class="nav-chain"> › ${esc(fieldLabel(f))}</span>`).join(''))
+    header.querySelector('.nav-label')!.insertAdjacentHTML('afterend',
+      `<button type="button" class="nav-path-btn" data-edit-path="1" aria-pressed="${editingPath === field}"
+        title="Choose the tags to browse down through under ${esc(label)}">✎</button>`)
     artistListEl.appendChild(header)
-    if (!open || !values) continue
+    if (editingPath === field) artistListEl.appendChild(pathEditor(field))
+    if (open && values) renderLevel(field, [], values, selected)
+  }
+}
 
-    for (const v of values) {
-      const isArtist = field === 'artist'
-      const albums = isArtist ? (state.albumsByArtist.get(v.value) ?? []) : []
-      const expanded = isArtist && state.expandedArtists.has(v.value)
-      const selected = isArtist
-        ? state.selectedArtist === v.value && !state.selectedAlbum
-        : state.selectedTag?.field === field && state.selectedTag.value === v.value
-      const li = navRow('nav-value' + (selected ? ' active' : ''),
-                        albums.length ? (expanded ? 'open' : 'closed') : 'none',
-                        v.value ? esc(v.value) : '<span class="nav-none">(none)</span>', v.track_count)
-      li.dataset.tag = field
-      li.dataset.value = v.value
-      artistListEl.appendChild(li)
+/** One level of a tag's tree: `values` of the tag at this depth, under `parent`. */
+function renderLevel(top: string, parent: TagStep[], values: TagValue[], selected: string) {
+  const chain = state.browsePaths[top] ?? []
+  const field = parent.length ? chain[parent.length - 1] : top
+  const childField = chain[parent.length]
+  for (const v of values) {
+    const path = [...parent, { field, value: v.value }]
+    const key = pathKey(path)
+    const expanded = !!childField && state.expandedNodes.has(key)
+    const sub = childField && v.child_count !== undefined ? countOf(v.child_count, childField) : undefined
+    const li = navRow('nav-value' + (key === selected ? ' active' : ''),
+                      childField ? (expanded ? 'open' : 'closed') : 'none',
+                      v.value ? esc(v.value) : '<span class="nav-none">(none)</span>', v.track_count, sub)
+    li.title = `${sub ? sub + ', ' : ''}${v.track_count.toLocaleString()} track${v.track_count === 1 ? '' : 's'}`
+    li.style.paddingLeft = `${26 + 16 * parent.length}px`
+    li.dataset.path = key
+    artistListEl.appendChild(li)
+    const kids = state.nodeValues.get(key)
+    if (expanded && kids) renderLevel(top, path, kids, selected)
+  }
+}
 
-      if (!expanded) continue
-      for (const alb of albums) {
-        const albLi = document.createElement('li')
-        albLi.className = 'nav-item nav-album'
-          + (state.selectedArtist === v.value && state.selectedAlbum === alb.album ? ' active' : '')
-        albLi.dataset.artist = v.value
-        albLi.dataset.album  = alb.album
-        albLi.innerHTML = `
-          <span class="nav-label">${esc(alb.album || '(Unknown Album)')}</span>
-          <span class="nav-count">${alb.track_count}</span>
-        `
-        artistListEl.appendChild(albLi)
-      }
-    }
+/** Under a tag: the tags its values open to, in order. Drag to add or reorder, × to remove. */
+function pathEditor(top: string): HTMLLIElement {
+  const chain = state.browsePaths[top] ?? []
+  const free = BROWSE_TAGS.filter(t => t.field !== top && !chain.includes(t.field))
+  const li = document.createElement('li')
+  li.className = 'path-editor'
+  li.dataset.top = top
+  li.innerHTML = `
+    <div class="path-chain" data-zone="chain" title="Drop a tag here; drag to reorder">
+      <span class="path-root">${esc(fieldLabel(top))}</span>
+      ${chain.map(f => `<span class="path-sep">›</span><span class="path-chip" draggable="true" data-field="${f}">${esc(fieldLabel(f))}<button
+        type="button" class="path-x" data-remove="${f}" title="Stop browsing by ${esc(fieldLabel(f))}">×</button></span>`).join('')}
+      ${chain.length ? '' : '<span class="path-hint">drag a tag here</span>'}
+    </div>
+    <div class="path-free" data-zone="free">${free.length
+      ? free.map(t => `<span class="path-chip path-chip-free" draggable="true" data-field="${t.field}"
+          title="Drag into the path above (or click to add it at the end)">${esc(t.label)}</span>`).join('')
+      : '<span class="path-hint">every tag is in the path</span>'}</div>`
+  return li
+}
+
+/** Children of an open node, fetched once (forgotten by loadLibrary after a write). */
+async function loadNodeValues(path: TagStep[]) {
+  const key = pathKey(path)
+  const field = (state.browsePaths[path[0].field] ?? [])[path.length - 1]
+  if (!field || state.nodeValues.has(key)) return
+  try {
+    state.nodeValues.set(key, await api.library.tagValues(field, key, (state.browsePaths[path[0].field] ?? [])[path.length]))
+  } catch (e) {
+    toast(`Failed to load ${fieldLabel(field)} values: ${e}`, 'error')
+  }
+}
+
+/** Open the tree down to `path` (its tag, then each node above it) and load what that shows. */
+async function openPath(path: TagStep[]) {
+  if (!path.length) return
+  const top = path[0].field
+  state.expandedTags.add(top)
+  if (!state.tagValues.has(top)) await loadTagValues(top)
+  const chain = state.browsePaths[top] ?? []
+  for (let i = 1; i < path.length && chain[i - 1] === path[i].field; i++) {
+    state.expandedNodes.add(pathKey(path.slice(0, i)))
+    await loadNodeValues(path.slice(0, i))
+  }
+}
+
+async function saveBrowsePath(top: string, chain: string[]) {
+  const before = state.browsePaths
+  state.browsePaths = { ...before, [top]: chain }
+  // Nodes under this tag now open to other tags.
+  for (const k of [...state.expandedNodes]) if (parsePath(k)[0].field === top) state.expandedNodes.delete(k)
+  for (const k of [...state.nodeValues.keys()]) if (parsePath(k)[0].field === top) state.nodeValues.delete(k)
+  state.tagValues.delete(top)   // its counts are of the old next tag
+  if (state.expandedTags.has(top)) await loadTagValues(top)
+  renderTagsPanel()
+  try {
+    state.browsePaths = (await api.settings.update({ browse_paths: state.browsePaths })).browse_paths
+  } catch (e) {
+    state.browsePaths = before
+    renderTagsPanel()
+    toast(`Couldn't save the browse path: ${e}`, 'error')
   }
 }
 
 async function loadTagValues(field: string) {
   try {
-    state.tagValues.set(field, await api.library.tagValues(field))
+    state.tagValues.set(field, await api.library.tagValues(field, undefined, state.browsePaths[field]?.[0]))
   } catch (e) {
     toast(`Failed to load ${field} values: ${e}`, 'error')
   }
@@ -341,12 +417,33 @@ async function renderQualityPanel() {
 // ─── Album grid ───────────────────────────────────────────────────────────────
 
 function getVisibleAlbums(): Album[] {
-  if (state.sidebarMode === 'tags' && state.selectedArtist) {
-    return state.albumsByArtist.get(state.selectedArtist) ?? []
-  }
+  const artist = state.tagPath[0]?.field === 'artist' ? state.tagPath[0].value : ''
+  if (state.sidebarMode === 'tags' && artist) return state.albumsByArtist.get(artist) ?? []
+  // Across artists, an album with an album artist is one tile, not one per track artist (compilations).
   const all: Album[] = []
-  for (const albs of state.albumsByArtist.values()) all.push(...albs)
-  return all
+  const byAlbumArtist = new Map<string, Album>()
+  for (const albs of state.albumsByArtist.values()) for (const a of albs) {
+    const key = JSON.stringify([a.album_artist, a.album])
+    const m = a.album_artist ? byAlbumArtist.get(key) : undefined
+    if (!m) {
+      const copy = { ...a }
+      if (a.album_artist) byAlbumArtist.set(key, copy)
+      all.push(copy)
+      continue
+    }
+    m.artist = null   // several track artists: the tile is the album artist's
+    m.track_count += a.track_count
+    m.cover_track_id = Math.min(m.cover_track_id, a.cover_track_id)
+  }
+  const name = (a: Album) => (a.album_artist || a.artist || '').toLowerCase()
+  return all.sort((a, b) => name(a).localeCompare(name(b)) || a.album.toLowerCase().localeCompare(b.album.toLowerCase()))
+}
+
+/** The track filter for a tile: its artist's tracks, or the album artist's for a merged one. */
+function albumParams(a: Album): Record<string, string> {
+  return a.artist === null
+    ? { tag: 'album_artist', value: a.album_artist ?? '', album: a.album }
+    : { artist: a.artist, album: a.album }
 }
 
 // Album views multi-select: Ctrl/⌘-click picks an album, Shift-click a range;
@@ -375,7 +472,7 @@ function markAlbumPicks() {
     el.classList.toggle('album-picked', albumPicks.has(el.dataset.albumKey!)))
 }
 
-const tileKey = (a: Album) => JSON.stringify([a.artist ?? '', a.album])
+const tileKey = (a: Album) => JSON.stringify(a.artist === null ? ['aa', a.album_artist, a.album] : [a.artist, a.album])
 
 function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
   const card = document.createElement('div')
@@ -402,13 +499,14 @@ function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
   card.addEventListener('click', (e) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey) {
       pickAlbum(e, i, j => tileKey(albums[j]), async j => albums[j].album
-        ? (await api.library.trackIds({ artist: albums[j].artist ?? '', album: albums[j].album })).ids : [])
+        ? (await api.library.trackIds(albumParams(albums[j]))).ids : [])
       return
     }
     albumPicks.clear()
     state.viewMode = 'list'
     renderViewMode()
-    navigateTo(alb.artist ?? '', alb.album)
+    if (alb.artist === null) navigateToAlbumArtist(alb.album_artist ?? '', alb.album)
+    else navigateTo(alb.artist, alb.album)
   })
   return card
 }
@@ -503,7 +601,7 @@ async function renderAlbumList() {
     // track view filters by folder only in Files mode.)
     state.viewMode = 'list'
     state.sidebarMode = 'files'
-    state.selectedArtist = null; state.selectedAlbum = null; state.selectedTag = null; state.query = ''; searchEl.value = ''
+    state.tagPath = []; state.query = ''; searchEl.value = ''
     state.selectedDirectory = r.directory
     state.selectedIds.clear(); state.offset = 0
     if (!state.rootNode) await loadTree()
@@ -767,7 +865,7 @@ function renderTracks() {
 
   if (!state.tracks.length) {
     const pristine = state.total === 0 && !state.query && !state.artists.length
-      && state.selectedArtist === null && state.selectedAlbum === null && !state.selectedTag
+      && !state.tagPath.length
       && state.selectedDirectory === null && !state.selectedIssue
     trackEmpty.innerHTML = pristine
       ? 'Your library is empty. Click <strong>Scan Library</strong> to index your music.'
@@ -878,7 +976,6 @@ function updateBulkBar() {
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
-const paginationEl = document.getElementById('pagination')!
 
 const paged = () => state.total > state.pageSize || state.offset > 0
 
@@ -887,25 +984,49 @@ async function movePage(dir: -1 | 1) {
   await loadTracks()
 }
 
+const pageNav     = document.getElementById('page-nav')!
+const pageTop     = document.getElementById('page-top') as HTMLInputElement
+const pageEnd     = document.getElementById('page-end')!
+const pageTotal   = document.getElementById('page-total')!
+const pageNum     = document.getElementById('page-num')!
+const pageCount   = document.getElementById('page-count')!
+const pagePrev    = document.getElementById('page-prev') as HTMLButtonElement
+const pageNext    = document.getElementById('page-next') as HTMLButtonElement
+const pageSizeWrap = document.getElementById('page-size-wrap')!
+const pageSize    = document.getElementById('page-size') as HTMLSelectElement
+pageSize.innerHTML = PAGE_SIZES.map(n => `<option value="${n}">${n}</option>`).join('')
+
+/** The bar under the list: where you are, the pager (when there's paging to do), the selection. */
 function renderPagination() {
-  if (!paged()) { paginationEl.hidden = true; return }
-  paginationEl.hidden = false
-  const start = state.offset + 1
-  const end   = Math.min(state.offset + state.pageSize, state.total)
-  paginationEl.innerHTML = `
-    <button class="btn btn-ghost btn-sm" id="page-prev" ${state.offset === 0 ? 'disabled' : ''}>← Prev</button>
-    <span class="page-info">${start.toLocaleString()}–${end.toLocaleString()} of ${state.total.toLocaleString()}</span>
-    <button class="btn btn-ghost btn-sm" id="page-next" ${end >= state.total ? 'disabled' : ''}>Next →</button>
-  `
-  document.getElementById('page-prev')!.addEventListener('click', async () => {
-    await movePage(-1)
-    paginationEl.scrollIntoView({ block: 'nearest' })
-  })
-  document.getElementById('page-next')!.addEventListener('click', async () => {
-    await movePage(1)
-    paginationEl.scrollIntoView({ block: 'nearest' })
-  })
+  const p = paged()
+  const sizable = state.total > PAGE_SIZES[0]
+  pageNav.hidden = !p
+  pageSizeWrap.hidden = !sizable
+  pageSize.value = String(state.pageSize)
+  if (!p) return
+  if (document.activeElement !== pageTop) pageTop.value = String(state.offset + 1)
+  pageTop.max = String(state.total)
+  pageEnd.textContent = (state.offset + state.tracks.length).toLocaleString()
+  pageTotal.textContent = state.total.toLocaleString()
+  pageNum.textContent = (Math.floor(state.offset / state.pageSize) + 1).toLocaleString()
+  pageCount.textContent = Math.ceil(state.total / state.pageSize).toLocaleString()
+  pagePrev.disabled = state.offset === 0
+  pageNext.disabled = state.offset + state.pageSize >= state.total
 }
+
+pagePrev.addEventListener('click', () => movePage(-1))
+pageNext.addEventListener('click', () => movePage(1))
+pageTop.addEventListener('change', () => {
+  const row = parseInt(pageTop.value, 10)
+  if (!(row >= 1)) { pageTop.value = String(state.offset + 1); return }
+  state.offset = Math.min(row, Math.max(1, state.total)) - 1
+  loadTracks()
+})
+pageSize.addEventListener('change', () => {
+  state.pageSize = Number(pageSize.value)
+  savePageSize(state.pageSize)
+  loadTracks()
+})
 
 // ─── Tag editor ───────────────────────────────────────────────────────────────
 
@@ -1101,22 +1222,24 @@ async function fillEditorForm() {
   }
 }
 
-/** Several tracks: genre is edited as chips; one track: as plain text. */
+/** Several tracks: the chip fields are edited as chips; one track: as plain text. */
 let chipsToken = 0
-function setGenreMode() {
+function setChipMode() {
   const multi = state.selectedIds.size > 1
-  genreInput.hidden = multi
-  genreChips.el.hidden = !multi
-  if (!multi) return
   const ids = [...state.selectedIds]
   const token = ++chipsToken
-  genreChips.load(ids.length, [], state.tagValues.get('genre') ?? [])
-  Promise.all([
-    api.library.valueCounts(ids, 'genre'),
-    state.tagValues.has('genre') ? Promise.resolve() : loadTagValues('genre'),
-  ]).then(([counts]) => {
-    if (token === chipsToken) genreChips.load(counts.count, counts.values, state.tagValues.get('genre') ?? [])
-  }).catch(e => toast(`Failed to load genres: ${e}`, 'error'))
+  for (const [field, chips] of valueChips) {
+    (tagForm.elements.namedItem(field) as HTMLInputElement).hidden = multi
+    chips.el.hidden = !multi
+    if (!multi) continue
+    chips.load(ids.length, [], state.tagValues.get(field) ?? [])
+    Promise.all([
+      api.library.valueCounts(ids, field),
+      state.tagValues.has(field) ? Promise.resolve() : loadTagValues(field),
+    ]).then(([counts]) => {
+      if (token === chipsToken) chips.load(counts.count, counts.values, state.tagValues.get(field) ?? [])
+    }).catch(e => toast(`Failed to load ${CHIP_FIELDS[field]}: ${e}`, 'error'))
+  }
 }
 
 function populateForm(tracks: Track[]) {
@@ -1133,7 +1256,7 @@ function populateForm(tracks: Track[]) {
     el.closest('.field-label')?.classList.toggle('field-staged', tracks.some(t => t._orig && field in t._orig))
     delete (el as HTMLElement).dataset.dirty
   }
-  setGenreMode()
+  setChipMode()
   // compilation: boolean checkbox; indeterminate = mixed across the selection.
   const comp = tracks.map(t => t.compilation === '1')
   const compSame = comp.every(v => v === comp[0])
@@ -1702,7 +1825,9 @@ async function loadLibrary() {
     // Values change with every write: refetch the open tags, forget the rest.
     const open = [...state.expandedTags]
     state.tagValues = new Map()
+    state.nodeValues = new Map()
     await Promise.all(open.map(loadTagValues))
+    await Promise.all([...state.expandedNodes].map(k => loadNodeValues(parsePath(k))))
     renderTagsPanel()
   } catch (e) {
     toast(`Failed to load library: ${e}`, 'error')
@@ -1890,8 +2015,8 @@ async function saveTags(e: Event) {
     if (r.mb_album_artist_id) update.mb_album_artist_id = r.mb_album_artist_id
   }
 
-  const chips = state.selectedIds.size > 1 && genreChips.dirty
-  if (Object.keys(update).length === 0 && !chips) { toast('No changes to save', 'info'); return }
+  const chips = state.selectedIds.size > 1 ? [...valueChips].filter(([, c]) => c.dirty) : []
+  if (Object.keys(update).length === 0 && !chips.length) { toast('No changes to save', 'info'); return }
 
   const ids = [...state.selectedIds]
   try {
@@ -1901,10 +2026,10 @@ async function saveTags(e: Event) {
         ? await api.tags.update(ids[0], update)
         : await api.tags.bulk(ids, update)
     }
-    if (chips) {
-      const r = await api.tags.editValues(ids, 'genre', genreChips.add, genreChips.remove)
+    for (const [field, c] of chips) {
+      const r = await api.tags.editValues(ids, field, c.add, c.remove)
       if (r.changed || !res) res = r
-      state.tagValues.delete('genre')
+      state.tagValues.delete(field)
     }
     const what = ids.length === 1 ? 'tags' : `tags on ${ids.length} tracks`
 
@@ -2340,9 +2465,7 @@ function currentViewParams(): Record<string, string | number> {
       : {}
   }
   const params: Record<string, string | number> = {}
-  if (state.selectedTag) { params.tag = state.selectedTag.field; params.value = state.selectedTag.value }
-  if (state.selectedArtist !== null) params.artist = state.selectedArtist
-  if (state.selectedAlbum !== null) params.album = state.selectedAlbum
+  if (state.tagPath.length) params.path = pathKey(state.tagPath)
   return params
 }
 
@@ -2592,9 +2715,7 @@ document.querySelector('.sidebar-tabs')!.addEventListener('click', async (e) => 
     state.selectedDirectory = null
     if (!state.artists.length) await loadLibrary()
   } else if (mode === 'files') {
-    state.selectedArtist = null
-    state.selectedAlbum  = null
-    state.selectedTag    = null
+    state.tagPath = []
     if (!state.rootNode) await loadTree()
   } else {
     state.selectedIssue = null
@@ -2616,11 +2737,8 @@ document.querySelector('.sidebar-tabs')!.addEventListener('click', async (e) => 
 })
 
 // Tags panel: tag headers open/close; values and albums filter the tracks.
-async function selectInTags(apply: () => void) {
-  state.selectedArtist = null
-  state.selectedAlbum  = null
-  state.selectedTag    = null
-  apply()
+async function selectInTags(path: TagStep[]) {
+  state.tagPath = path
   state.selectedIds.clear()
   state.offset = 0
   renderTagsPanel()
@@ -2630,46 +2748,100 @@ async function selectInTags(apply: () => void) {
 
 artistListEl.addEventListener('click', async (e) => {
   const target = e.target as HTMLElement
+  const editor = target.closest<HTMLElement>('.path-editor')
+  if (editor) {
+    const top = editor.dataset.top!, chain = state.browsePaths[top] ?? []
+    const remove = target.closest<HTMLElement>('[data-remove]')
+    const add = target.closest<HTMLElement>('.path-chip-free')
+    if (remove) await saveBrowsePath(top, chain.filter(f => f !== remove.dataset.remove))
+    else if (add) await saveBrowsePath(top, [...chain, add.dataset.field!])
+    return
+  }
   const li = target.closest<HTMLElement>('.nav-item')
   if (!li) return
-  const onArrow = target.dataset.toggle === '1'
 
   if (li.dataset.all === '1') {
-    await selectInTags(() => {})
+    await selectInTags([])
     return
   }
 
-  // Album under an artist
-  if (li.dataset.album !== undefined) {
-    await selectInTags(() => {
-      state.selectedArtist = li.dataset.artist ?? ''
-      state.selectedAlbum  = li.dataset.album ?? ''
-    })
+  // A value at any depth: the arrow opens it, the label selects it.
+  if (li.dataset.path) {
+    const path = parsePath(li.dataset.path)
+    const key = li.dataset.path
+    if (target.dataset.toggle === '1' && (state.browsePaths[path[0].field] ?? []).length >= path.length) {
+      if (state.expandedNodes.has(key)) state.expandedNodes.delete(key)
+      else { state.expandedNodes.add(key); await loadNodeValues(path) }
+      renderTagsPanel()
+      return
+    }
+    await selectInTags(path)
     return
   }
 
   const field = li.dataset.tag!
-  // Tag header: open/close, loading its values the first time
-  if (li.dataset.value === undefined) {
-    if (state.expandedTags.has(field)) {
-      state.expandedTags.delete(field)
-    } else {
-      state.expandedTags.add(field)
-      if (!state.tagValues.has(field)) await loadTagValues(field)
-    }
+  if (target.closest('[data-edit-path]')) {
+    editingPath = editingPath === field ? null : field
     renderTagsPanel()
     return
   }
-
-  const value = li.dataset.value
-  if (field === 'artist') {
-    const toggle = () => state.expandedArtists.has(value)
-      ? state.expandedArtists.delete(value) : state.expandedArtists.add(value)
-    if (onArrow) { toggle(); renderTagsPanel(); return }
-    await selectInTags(() => { state.selectedArtist = value })
-    return
+  // Tag header: open/close, loading its values the first time
+  if (state.expandedTags.has(field)) {
+    state.expandedTags.delete(field)
+  } else {
+    state.expandedTags.add(field)
+    if (!state.tagValues.has(field)) await loadTagValues(field)
   }
-  await selectInTags(() => { state.selectedTag = { field, value } })
+  renderTagsPanel()
+})
+
+// Browse-path editor: drag a tag into the path or along it; drag one out to remove it.
+let dragField: string | null = null
+const clearDropMarks = () => artistListEl.querySelectorAll('.drop-before, .drop-end, .drop-target')
+  .forEach(el => el.classList.remove('drop-before', 'drop-end', 'drop-target'))
+
+/** Where in the path a drop at (x, y) lands: before the chip it's left of, across wrapped rows. */
+function dropIndex(zone: HTMLElement, x: number, y: number): { i: number; chips: HTMLElement[] } {
+  const chips = [...zone.querySelectorAll<HTMLElement>('.path-chip')].filter(c => c.dataset.field !== dragField)
+  const i = chips.findIndex(c => {
+    const r = c.getBoundingClientRect()
+    return y < r.top || (y <= r.bottom && x < r.left + r.width / 2)
+  })
+  return { i: i < 0 ? chips.length : i, chips }
+}
+
+artistListEl.addEventListener('dragstart', (e) => {
+  const chip = (e.target as HTMLElement).closest<HTMLElement>('.path-editor .path-chip')
+  if (!chip) return
+  dragField = chip.dataset.field!
+  e.dataTransfer!.effectAllowed = 'move'
+  e.dataTransfer!.setData('text/plain', dragField)
+  chip.classList.add('dragging')
+})
+artistListEl.addEventListener('dragend', (e) => {
+  dragField = null
+  clearDropMarks();
+  (e.target as HTMLElement).classList?.remove('dragging')
+})
+artistListEl.addEventListener('dragover', (e) => {
+  const zone = dragField && (e.target as HTMLElement).closest<HTMLElement>('.path-editor [data-zone]')
+  if (!zone) return
+  e.preventDefault()
+  clearDropMarks()
+  if (zone.dataset.zone === 'free') { zone.classList.add('drop-target'); return }
+  const { i, chips } = dropIndex(zone, e.clientX, e.clientY)
+  if (i < chips.length) chips[i].classList.add('drop-before')
+  else zone.classList.add('drop-end')
+})
+artistListEl.addEventListener('drop', async (e) => {
+  const zone = dragField && (e.target as HTMLElement).closest<HTMLElement>('.path-editor [data-zone]')
+  if (!zone || !dragField) return
+  e.preventDefault()
+  const top = zone.closest<HTMLElement>('.path-editor')!.dataset.top!
+  const chain = (state.browsePaths[top] ?? []).filter(f => f !== dragField)
+  if (zone.dataset.zone === 'chain') chain.splice(dropIndex(zone, e.clientX, e.clientY).i, 0, dragField)
+  dragField = null
+  await saveBrowsePath(top, chain)
 })
 
 // Tags panel: expand/collapse all
@@ -2681,7 +2853,7 @@ document.getElementById('expand-all-btn')!.addEventListener('click', async () =>
 
 document.getElementById('collapse-all-btn')!.addEventListener('click', () => {
   state.expandedTags.clear()
-  state.expandedArtists.clear()
+  state.expandedNodes.clear()
   renderTagsPanel()
 })
 
@@ -2717,15 +2889,23 @@ function findDirNode(path: string | null): DirNode | null {
 
 // Tag-link navigation
 async function navigateTo(artist: string, album?: string) {
-  state.sidebarMode     = 'tags'
-  state.selectedArtist  = artist || null
-  state.selectedAlbum   = album  || null
-  state.selectedTag     = null
-  state.expandedTags.add('artist')
-  if (!state.tagValues.has('artist')) await loadTagValues('artist')
+  const path: TagStep[] = []
+  if (artist) path.push({ field: 'artist', value: artist })
+  if (album) path.push({ field: 'album', value: album })
+  await revealPath(path)
+}
+
+/** A merged tile: the album under its album artist, whoever the track artists are. */
+async function navigateToAlbumArtist(albumArtist: string, album: string) {
+  await revealPath([{ field: 'album_artist', value: albumArtist }, { field: 'album', value: album }])
+}
+
+async function revealPath(path: TagStep[]) {
+  state.sidebarMode = 'tags'
+  state.tagPath     = path
+  await openPath(path)
   state.selectedIds.clear()
   state.offset = 0
-  if (artist) state.expandedArtists.add(artist)
   renderSidebarTabs()
   renderTagsPanel()
   await loadTracks()
@@ -3083,7 +3263,11 @@ document.getElementById('pane-settings')!.addEventListener('click', async (e) =>
     t.disabled = true
     out.hidden = false; out.className = 'source-test-result'; out.textContent = 'Testing…'
     try {
-      const r = await api.settings.testSource(src, typed, src === 'lrclib' ? lrclibAppIdInput.value.trim() : undefined)
+      const sect = t.closest('.settings-section')!
+      const urlIn = sect.querySelector<HTMLInputElement>('[data-integ-url]')
+      const userIn = sect.querySelector<HTMLInputElement>('[data-integ-user]')
+      const extra = urlIn ? { url: urlIn.value.trim(), ...(userIn ? { user: userIn.value.trim() } : {}) } : undefined
+      const r = await api.settings.testSource(src, typed, src === 'lrclib' ? lrclibAppIdInput.value.trim() : undefined, extra)
       out.className = `source-test-result ${r.ok ? 'status-ok' : 'status-warn'}`
       out.textContent = `${r.ok ? '✓' : '⚠'} ${r.message}`
     } catch (err) {
@@ -3102,6 +3286,92 @@ const autoScanInput     = document.getElementById('setting-auto-scan') as HTMLIn
 const renameOnSaveInput = document.getElementById('setting-rename-on-save') as HTMLInputElement
 const stageChangesInput = document.getElementById('setting-stage-changes') as HTMLInputElement
 const coverTargetInput  = document.getElementById('setting-cover-target') as HTMLSelectElement
+const namingIllegalInput = document.getElementById('setting-naming-illegal') as HTMLSelectElement
+const namingColonInput   = document.getElementById('setting-naming-colon') as HTMLSelectElement
+const namingPreviewEl    = document.getElementById('naming-preview')!
+const integInputs = {
+  lidarr_url:     document.getElementById('setting-lidarr-url') as HTMLInputElement,
+  navidrome_url:  document.getElementById('setting-navidrome-url') as HTMLInputElement,
+  navidrome_user: document.getElementById('setting-navidrome-user') as HTMLInputElement,
+  ma_url:         document.getElementById('setting-ma-url') as HTMLInputElement,
+}
+const maProvidersInput = document.getElementById('setting-ma-providers') as HTMLInputElement
+const navidromeFoldersInput = document.getElementById('setting-navidrome-folders') as HTMLTextAreaElement
+const maFoldersInput   = document.getElementById('setting-ma-folders') as HTMLTextAreaElement
+// "Tagger folder = value" lines <-> {folder: value}; split on the first " = ".
+const mapToLines = (m: Record<string, string> | undefined) => Object.entries(m ?? {}).map(([k, v]) => `${k} = ${v}`).join('\n')
+const linesToMap = (t: string) => Object.fromEntries(t.split('\n').map(l => {
+  const i = l.indexOf('=')
+  return i < 0 ? ['', ''] : [l.slice(0, i).trim(), l.slice(i + 1).trim()]
+}).filter(([k, v]) => k && v))
+const rescanModeInput  = document.getElementById('setting-rescan-mode') as HTMLSelectElement
+const rescanWaitInput  = document.getElementById('setting-rescan-wait') as HTMLInputElement
+// The wait box holds seconds (delay) or minutes (quiet); each mode keeps its own number.
+const rescanWaits = { delay: 30, quiet: 5 }
+function showRescanMode() {
+  const m = rescanModeInput.value as 'off' | 'delay' | 'quiet'
+  document.getElementById('rescan-wait-wrap')!.hidden = m === 'off'
+  if (m !== 'off') {
+    rescanWaitInput.value = String(rescanWaits[m])
+    document.getElementById('rescan-wait-unit')!.textContent = m === 'delay' ? 'seconds' : 'minutes'
+  }
+}
+rescanModeInput.addEventListener('change', showRescanMode)
+rescanWaitInput.addEventListener('input', () => {
+  const m = rescanModeInput.value
+  const n = parseInt(rescanWaitInput.value, 10)
+  if ((m === 'delay' || m === 'quiet') && n >= 1) rescanWaits[m] = Math.min(n, 1440)
+})
+function showRescanPending(p: AppSettings['rescan_pending']) {
+  document.getElementById('rescan-pending')!.textContent =
+    p ? `Rescan due ${new Date(p.due * 1000).toLocaleTimeString()}: ${p.folders} folder${p.folders === 1 ? '' : 's'} changed since ${new Date(p.since * 1000).toLocaleTimeString()}` : ''
+}
+
+function showRescans(r: Record<string, RescanResult> | undefined) {
+  document.querySelectorAll<HTMLElement>('[data-rescan-status]').forEach(el => {
+    const x = r?.[el.dataset.rescanStatus!]
+    el.textContent = x ? `Last rescan ${new Date(x.at * 1000).toLocaleString()}: ${x.ok ? '✓' : '⚠'} ${x.message}` : ''
+    el.classList.toggle('status-warn', !!x && !x.ok)
+  })
+}
+document.getElementById('rescan-now')!.addEventListener('click', async (e) => {
+  const b = e.currentTarget as HTMLButtonElement
+  b.disabled = true
+  try { showRescans(await api.settings.rescan()); showRescanPending(null) }
+  catch (err) { toast(`Rescan failed: ${errText(err)}`, 'error') }
+  finally { b.disabled = false }
+})
+document.getElementById('naming-from-lidarr')!.addEventListener('click', async (e) => {
+  const b = e.currentTarget as HTMLButtonElement
+  const formats = document.getElementById('lidarr-formats')!
+  b.disabled = true
+  try {
+    const n = await api.settings.lidarrNaming()
+    namingIllegalInput.value = n.replace_illegal ? 'replace' : 'remove'
+    namingColonInput.value = n.colon
+    updateNamingPreview(); updateRenamePreview()
+    formats.hidden = false
+    formats.textContent = `Copied — Save to keep. Lidarr's folders: ${n.artist_folder_format || '?'} · tracks: ${n.track_format || '?'}` +
+      (n.multi_disc_track_format ? ` · multi-disc: ${n.multi_disc_track_format}` : '')
+  } catch (err) {
+    formats.hidden = false; formats.textContent = `⚠ ${errText(err)}`
+  } finally { b.disabled = false }
+})
+function namingChoice() {
+  return { replace_illegal: namingIllegalInput.value === 'replace', colon: namingColonInput.value }
+}
+
+// The sample track has nothing to clean, so show the rules on a value that does.
+const NAMING_SAMPLE = { album_artist: 'AC/DC', album: 'Live: At Donington?', title: 'Who Made Who', track_number: '1' }
+const updateNamingPreview = debounce(async () => {
+  try {
+    const res = await api.settings.renamePreview('{album_artist}/{album}/{track_number:02d} {title}',
+      NAMING_SAMPLE, '.flac', undefined, namingChoice())
+    namingPreviewEl.textContent = res.ok ? `AC/DC · Live: At Donington? → ${res.preview}` : ''
+  } catch {
+    namingPreviewEl.textContent = ''
+  }
+}, 150)
 const coverSizeInput    = document.getElementById('setting-cover-size') as HTMLSelectElement
 const coverFolderSizeInput = document.getElementById('setting-cover-folder-size') as HTMLSelectElement
 const libraryRootsInput = document.getElementById('setting-library-roots') as HTMLTextAreaElement
@@ -3211,6 +3481,19 @@ async function openSettings() {
     renameOnSaveInput.checked = s.rename_on_save
     stageChangesInput.checked = s.stage_changes ?? true
     coverTargetInput.value    = s.cover_target ?? 'folder'
+    namingIllegalInput.value  = (s.naming_replace_illegal ?? true) ? 'replace' : 'remove'
+    namingColonInput.value    = s.naming_colon ?? 'smart'
+    for (const [k, el] of Object.entries(integInputs)) el.value = (s as unknown as Record<string, string>)[k] ?? ''
+    maProvidersInput.value    = (s.ma_providers ?? []).join(', ')
+    navidromeFoldersInput.value = mapToLines(s.navidrome_folders)
+    maFoldersInput.value      = mapToLines(s.ma_folders)
+    showRescans(s.rescans)
+    rescanWaits.delay = s.rescan_delay_seconds ?? 30
+    rescanWaits.quiet = s.rescan_quiet_minutes ?? 5
+    rescanModeInput.value = s.rescan_mode ?? 'quiet'
+    showRescanMode()
+    showRescanPending(s.rescan_pending)
+    updateNamingPreview()
     coverSizeInput.value      = String(s.cover_embed_size ?? 500)
     coverFolderSizeInput.value = String(s.cover_folder_size ?? 1200)
     libraryRootsInput.value   = (s.library_roots ?? []).join('\n')
@@ -3283,7 +3566,7 @@ const updateRenamePreview = debounce(async () => {
   const tpl = renameTemplateInput.value.trim()
   if (!tpl) { renamePreviewEl.textContent = ''; return }
   try {
-    const res = await api.settings.renamePreview(tpl)
+    const res = await api.settings.renamePreview(tpl, undefined, undefined, undefined, namingChoice())
     if (res.ok) {
       renamePreviewEl.textContent = 'Preview: ' + res.preview
       renamePreviewEl.classList.remove('rename-preview-error')
@@ -3364,6 +3647,9 @@ logoutBtn.addEventListener('click', async () => {
   }
 })
 
+namingIllegalInput.addEventListener('change', () => { updateNamingPreview(); updateRenamePreview() })
+namingColonInput.addEventListener('change', () => { updateNamingPreview(); updateRenamePreview() })
+
 renameTemplateInput.addEventListener('input', () => {
   updateRenamePreview()
   // libraries following the standard layout show it as you type
@@ -3411,6 +3697,15 @@ document.getElementById('settings-save')!.addEventListener('click', async () => 
     rename_on_save:    renameOnSaveInput.checked,
     stage_changes:     stageChangesInput.checked,
     cover_target:      coverTargetInput.value as AppSettings['cover_target'],
+    naming_replace_illegal: namingIllegalInput.value === 'replace',
+    naming_colon:      namingColonInput.value as AppSettings['naming_colon'],
+    ...Object.fromEntries(Object.entries(integInputs).map(([k, el]) => [k, el.value.trim()])),
+    ma_providers:      maProvidersInput.value.split(/[\s,]+/).filter(Boolean),
+    navidrome_folders: linesToMap(navidromeFoldersInput.value),
+    ma_folders:        linesToMap(maFoldersInput.value),
+    rescan_mode:       rescanModeInput.value as AppSettings['rescan_mode'],
+    rescan_delay_seconds: rescanWaits.delay,
+    rescan_quiet_minutes: rescanWaits.quiet,
     cover_embed_size:  parseInt(coverSizeInput.value, 10),
     cover_folder_size: parseInt(coverFolderSizeInput.value, 10),
     library_roots:     libraryRootsInput.value.split('\n').map(x => x.trim()).filter(Boolean),
@@ -3504,18 +3799,6 @@ function showLogin() {
 // ─── Status bar ───────────────────────────────────────────────────────────────
 
 const statusWhere = document.getElementById('status-where')!
-const statusCount   = document.getElementById('status-count')!
-const statusPaging  = document.getElementById('status-paging')!
-const statusTop     = document.getElementById('status-top') as HTMLInputElement
-const statusEnd     = document.getElementById('status-end')!
-const statusTotal   = document.getElementById('status-total')!
-const statusPage    = document.getElementById('status-page')!
-const statusPages   = document.getElementById('status-pages')!
-const statusPrev    = document.getElementById('status-prev') as HTMLButtonElement
-const statusNext    = document.getElementById('status-next') as HTMLButtonElement
-const statusSizeWrap = document.getElementById('status-size-wrap')!
-const statusSize    = document.getElementById('status-size') as HTMLSelectElement
-statusSize.innerHTML = PAGE_SIZES.map(n => `<option value="${n}">${n}</option>`).join('')
 const statusSel   = document.getElementById('status-sel')!
 const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`
 
@@ -3525,12 +3808,8 @@ function updateStatusBar() {
     where.push('Files', state.selectedDirectory ? shortPath(state.selectedDirectory) : 'All tracks')
   } else if (state.sidebarMode === 'quality') {
     where.push('Quality', QUALITY_ISSUES.find(i => i.key === state.selectedIssue)?.label ?? 'pick an issue')
-  } else if (state.selectedArtist !== null) {
-    where.push(state.selectedArtist || '(no artist)')
-    if (state.selectedAlbum !== null) where.push(state.selectedAlbum || '(no album)')
-  } else if (state.selectedTag) {
-    where.push(BROWSE_TAGS.find(t => t.field === state.selectedTag!.field)?.label ?? state.selectedTag.field,
-               state.selectedTag.value || '(none)')
+  } else if (state.tagPath.length) {
+    where.push(fieldLabel(state.tagPath[0].field), ...state.tagPath.map(s => s.value || '(none)'))
   } else {
     where.push('All tracks')
   }
@@ -3538,21 +3817,6 @@ function updateStatusBar() {
   statusWhere.textContent = where.join(' › ')
   statusWhere.title = statusWhere.textContent
 
-  const p = paged()
-  statusCount.textContent = p ? '' : plural(state.total, 'track')
-  statusPaging.hidden = !p
-  statusSizeWrap.hidden = state.total <= PAGE_SIZES[0]
-  statusSize.value = String(state.pageSize)
-  if (p) {
-    if (document.activeElement !== statusTop) statusTop.value = String(state.offset + 1)
-    statusTop.max = String(state.total)
-    statusEnd.textContent = (state.offset + state.tracks.length).toLocaleString()
-    statusTotal.textContent = plural(state.total, 'track')
-    statusPage.textContent = (Math.floor(state.offset / state.pageSize) + 1).toLocaleString()
-    statusPages.textContent = Math.ceil(state.total / state.pageSize).toLocaleString()
-    statusPrev.disabled = state.offset === 0
-    statusNext.disabled = state.offset + state.pageSize >= state.total
-  }
 
   // Albums: the picked ones, else the folders of the selected tracks when they're all loaded.
   const n = state.selectedIds.size
@@ -3563,19 +3827,6 @@ function updateStatusBar() {
     : ''
 }
 
-statusPrev.addEventListener('click', () => movePage(-1))
-statusNext.addEventListener('click', () => movePage(1))
-statusTop.addEventListener('change', () => {
-  const row = parseInt(statusTop.value, 10)
-  if (!(row >= 1)) { statusTop.value = String(state.offset + 1); return }
-  state.offset = Math.min(row, Math.max(1, state.total)) - 1
-  loadTracks()
-})
-statusSize.addEventListener('change', () => {
-  state.pageSize = Number(statusSize.value)
-  savePageSize(state.pageSize)
-  loadTracks()
-})
 
 statusSel.addEventListener('click', (e) => {
   if (!(e.target as HTMLElement).closest('#status-clear')) return
@@ -3586,7 +3837,7 @@ statusSel.addEventListener('click', (e) => {
 // The logo: home (all tracks, nothing selected, no search).
 document.getElementById('logo')!.addEventListener('click', async (e) => {
   e.preventDefault()
-  await restoreView({ mode: 'tags', view: 'list', offset: 0, q: '', qm: '', artist: null, album: null, tag: null, dir: null, issue: null })
+  await restoreView({ mode: 'tags', view: 'list', offset: 0, q: '', qm: '', path: [], dir: null, issue: null })
   recordView()
 })
 
@@ -3596,8 +3847,7 @@ document.getElementById('logo')!.addEventListener('click', async (e) => {
 
 interface View {
   mode: State['sidebarMode']; view: State['viewMode']; offset: number; q: string; qm: State['queryMode']
-  artist: string | null; album: string | null; tag: { field: string; value: string } | null
-  dir: string | null; issue: string | null
+  path: TagStep[]; dir: string | null; issue: string | null
 }
 
 let restoring = false
@@ -3607,8 +3857,7 @@ function currentView(): View {
   const m = state.sidebarMode
   return {
     mode: m, view: state.viewMode, offset: state.offset, q: state.query, qm: state.query ? state.queryMode : '',
-    artist: m === 'tags' ? state.selectedArtist : null, album: m === 'tags' ? state.selectedAlbum : null,
-    tag: m === 'tags' ? state.selectedTag : null,
+    path: m === 'tags' ? state.tagPath : [],
     dir: m === 'files' ? state.selectedDirectory : null, issue: m === 'quality' ? state.selectedIssue : null,
   }
 }
@@ -3619,9 +3868,7 @@ function viewHash(v: View): string {
   if (v.offset) p.set('row', String(v.offset + 1))
   if (v.q) p.set('q', v.q)
   if (v.q && v.qm) p.set('qm', v.qm)
-  if (v.artist !== null) p.set('artist', v.artist)
-  if (v.album !== null) p.set('album', v.album)
-  if (v.tag) { p.set('tag', v.tag.field); p.set('value', v.tag.value) }
+  if (v.path.length) p.set('path', pathKey(v.path))
   if (v.dir) p.set('dir', v.dir)
   if (v.issue) p.set('issue', v.issue)
   return '#' + p.toString()
@@ -3633,6 +3880,16 @@ function hashOffset(p: URLSearchParams): number {
   return Math.max(0, (parseInt(p.get('page') ?? '1', 10) || 1) - 1) * state.pageSize
 }
 
+/** The tree node from the hash; older links name an artist/album or a tag instead. */
+function hashPath(p: URLSearchParams): TagStep[] {
+  try { if (p.has('path')) return parsePath(p.get('path')!) } catch { return [] }
+  const path: TagStep[] = []
+  if (p.has('tag')) path.push({ field: p.get('tag')!, value: p.get('value') ?? '' })
+  if (p.has('artist')) path.push({ field: 'artist', value: p.get('artist')! })
+  if (p.has('album')) path.push({ field: 'album', value: p.get('album')! })
+  return path
+}
+
 function parseHash(): View | null {
   const p = new URLSearchParams(location.hash.slice(1))
   const mode = p.get('mode')
@@ -3641,9 +3898,7 @@ function parseHash(): View | null {
     mode, view: p.get('view') === 'albums' ? 'albums' : 'list',
     offset: hashOffset(p), q: p.get('q') ?? '',
     qm: p.get('qm') === 'glob' || p.get('qm') === 'regex' ? p.get('qm') as State['queryMode'] : '',
-    artist: p.get('artist'), album: p.get('album'),
-    tag: p.has('tag') ? { field: p.get('tag')!, value: p.get('value') ?? '' } : null,
-    dir: p.get('dir'), issue: p.get('issue'),
+    path: hashPath(p), dir: p.get('dir'), issue: p.get('issue'),
   }
 }
 
@@ -3675,12 +3930,11 @@ async function restoreView(v: View) {
     state.sidebarMode = v.mode; state.viewMode = v.view; state.offset = v.offset
     state.query = v.q; searchEl.value = v.q
     if (v.q) { state.queryMode = v.qm; renderSearchMode() }
-    state.selectedArtist = v.artist; state.selectedAlbum = v.album; state.selectedTag = v.tag
+    state.tagPath = v.path
     state.selectedDirectory = v.dir; state.selectedIssue = v.issue
     state.selectedIds.clear(); albumPicks.clear()
     if (v.mode === 'tags') {
-      if (v.artist !== null) { state.expandedTags.add('artist'); state.expandedArtists.add(v.artist) }
-      if (v.tag) state.expandedTags.add(v.tag.field)
+      await openPath(v.path)
       await Promise.all([...state.expandedTags].filter(f => !state.tagValues.has(f)).map(loadTagValues))
       renderTagsPanel()
     } else if (v.mode === 'files') {
@@ -3728,7 +3982,8 @@ async function startApp() {
     }
   }).catch(() => {})
   renderFormatOptions()
-  api.settings.get().then(s => {
+  const settingsLoaded = api.settings.get()
+  settingsLoaded.then(s => {
     state.libraryRoots = s.effective_library_roots ?? []
     state.musicDirs = [s.default_music_dir ?? '', ...s.music_dirs].filter(Boolean)
     renameOnSave = s.rename_on_save
@@ -3741,6 +3996,7 @@ async function startApp() {
   }).catch(() => {})
   api.spectrogram.status().then(s => { spectrogramAvailable = s.available }).catch(() => {})
   await refreshUndoButton()
+  await settingsLoaded.then(s => { if (s.browse_paths) state.browsePaths = s.browse_paths }).catch(() => {})
   await loadLibrary()
   const v = parseHash()
   if (v) await restoreView(v)

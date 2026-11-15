@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 
 API = "https://lrclib.net/api"
-_UA = "tagger/0.2.0 (https://github.com/beartums/tagger)"
+_UA = "tagger/0.3.0 (https://github.com/beartums/tagger)"
 
 # LRCLIB's limits (lrclib.net/docs, "Rate Limiting"): ~90 requests/min for a
 # client named in its User-Agent, ~6,000/min app-wide with a registered app's

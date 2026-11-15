@@ -62,7 +62,8 @@ export const TAG_FIELDS: TagField[] = [
   'track_number', 'disc_number', 'genre', 'comment', 'composer', 'bpm', 'lyrics',
 ]
 
-// Tags the Tags panel browses by, in order. Artist values open to their albums.
+// Tags the Tags panel browses by, in order. Each one's values open to the
+// tags in its browse path (Settings: browse_paths), one level per tag.
 export const BROWSE_TAGS: { field: string; label: string }[] = [
   { field: 'artist',       label: 'Artist' },
   { field: 'album_artist', label: 'Album Artist' },
@@ -71,6 +72,9 @@ export const BROWSE_TAGS: { field: string; label: string }[] = [
   { field: 'year',         label: 'Year' },
   { field: 'composer',     label: 'Composer' },
 ]
+
+export interface TagStep { field: string; value: string }
+export const pathKey = (path: TagStep[]) => JSON.stringify(path.map(s => [s.field, s.value]))
 
 export interface DirNode {
   name:     string
@@ -87,14 +91,15 @@ export interface State {
   // tags panel
   artists:           Artist[]
   albumsByArtist:    Map<string, Album[]>
-  selectedArtist:    string | null
-  selectedAlbum:     string | null
-  expandedArtists:   Set<string>
-  // tag tree: which tags are open, their values (loaded on open), and a
-  // selected value for any tag other than artist (artist uses selectedArtist)
+  // tag tree: which tags are open and their values (loaded on open); the
+  // selected node as its path from the top tag (empty = all tracks); open
+  // nodes and their children's values, keyed by pathKey()
   expandedTags:      Set<string>
   tagValues:         Map<string, TagValue[]>
-  selectedTag:       { field: string; value: string } | null
+  tagPath:           TagStep[]
+  expandedNodes:     Set<string>
+  nodeValues:        Map<string, TagValue[]>
+  browsePaths:       Record<string, string[]>
   // files panel
   rootNode:          DirNode | null
   selectedDirectory: string | null
@@ -139,12 +144,12 @@ export const state: State = {
   sidebarMode:       'tags',
   artists:           [],
   albumsByArtist:    new Map(),
-  selectedArtist:    null,
-  selectedAlbum:     null,
-  expandedArtists:   new Set(),
   expandedTags:      new Set(['artist']),
   tagValues:         new Map(),
-  selectedTag:       null,
+  tagPath:           [],
+  expandedNodes:     new Set(),
+  nodeValues:        new Map(),
+  browsePaths:       { artist: ['album'], album_artist: ['album'] },
   rootNode:          null,
   selectedDirectory: null,
   tracks:            [],

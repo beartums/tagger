@@ -82,6 +82,26 @@ export const APP_HTML = `
         </label>
       </div>
       <div class="settings-section">
+        <div class="settings-section-title">Characters in names</div>
+        <p class="settings-hint">How a tag value's characters become a folder or file name — set these like Lidarr's <em>Media Management</em> so Lidarr's folders count as in layout. Each value is cleaned on its own, so a "/" in a tag never makes a folder.</p>
+        <label class="field-label">Illegal characters
+          <select id="setting-naming-illegal">
+            <option value="replace">Replace: / \ → +, ? → !, * → -, others removed (Lidarr on)</option>
+            <option value="remove">Remove (Lidarr off)</option>
+          </select></label>
+        <label class="field-label">Colons
+          <select id="setting-naming-colon">
+            <option value="smart">Smart: "a: b" → "a - b", "10:30" → "10-30"</option>
+            <option value="dash">Dash: "-"</option>
+            <option value="space_dash">Space dash: " -"</option>
+            <option value="space_dash_space">Space dash space: " - "</option>
+            <option value="delete">Delete</option>
+          </select></label>
+        <div id="naming-preview" class="rename-preview"></div>
+        <button type="button" id="naming-from-lidarr" class="btn btn-ghost btn-sm" title="Set both from Lidarr (Settings → Sources → Lidarr); Save to keep">Copy from Lidarr</button>
+        <div id="lidarr-formats" class="settings-hint" hidden></div>
+      </div>
+      <div class="settings-section">
         <div class="settings-section-title">Library layouts</div>
         <table class="settings-table layouts-table"><thead><tr><th>Check</th><th>Library</th><th>Layout <span class="ma-dim">(blank: standard)</span></th></tr></thead>
           <tbody id="library-layouts-list"></tbody></table>
@@ -170,6 +190,62 @@ export const APP_HTML = `
         <div class="settings-section-title">ReplayGain</div>
         <p class="settings-hint">Scan volume levels and write ReplayGain tags, so players that read them play tracks at an even volume. Run it from the selection toolbar.</p>
         <div id="replaygain-status" class="acoustid-status"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Lidarr</div>
+        <p class="settings-hint">Optional. Lets Settings → Layouts → <em>Characters in names</em> copy Lidarr's naming choices. API key: Lidarr → Settings → General.</p>
+        <label class="field-label">URL
+          <input id="setting-lidarr-url" data-integ-url type="text" spellcheck="false" placeholder="http://lidarr:8686" /></label>
+        <label class="field-label">API key
+          <span class="secret-row"><input id="setting-lidarr-key" data-secret="lidarr_api_key" type="password" autocomplete="off" placeholder="Paste Lidarr's API key…" data-placeholder="Paste Lidarr's API key…" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="lidarr" title="Check the connection (what you typed, else the saved values)">Test</button></span>
+        </label>
+        <div class="source-test-result" data-test-result="lidarr" hidden></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Navidrome</div>
+        <p class="settings-hint">Optional. Navidrome rescans 30 s after Tagger last changes a file. Needs an <strong>admin</strong> user (rescans are admin-only).</p>
+        <label class="field-label">URL
+          <input id="setting-navidrome-url" data-integ-url type="text" spellcheck="false" placeholder="http://navidrome:4533" /></label>
+        <label class="field-label">User
+          <input id="setting-navidrome-user" data-integ-user type="text" spellcheck="false" autocomplete="off" /></label>
+        <label class="field-label">Password
+          <span class="secret-row"><input id="setting-navidrome-password" data-secret="navidrome_password" type="password" autocomplete="off" placeholder="Navidrome password…" data-placeholder="Navidrome password…" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="navidrome" title="Check the connection (what you typed, else the saved values)">Test</button></span>
+        </label>
+        <div class="source-test-result" data-test-result="navidrome" hidden></div>
+        <label class="field-label">Scan just the changed folders <span class="ma-dim">(one per line: Tagger folder = library id:folder in it; blank: full scans)</span>
+          <textarea id="setting-navidrome-folders" rows="2" spellcheck="false" placeholder="/music = 1:"></textarea></label>
+        <p class="settings-hint">Test lists the library ids. <code>/music = 1:</code> means Tagger's <code>/music</code> is the root of library 1. A change outside these folders, or more than 50 folders at once, scans everything.</p>
+        <div class="settings-hint" data-rescan-status="navidrome"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Music Assistant</div>
+        <p class="settings-hint">Optional. Music Assistant syncs 30 s after Tagger last changes a file. Token: an <strong>admin</strong>'s long-lived token (Settings → Profile). Test lists the file providers to sync.</p>
+        <label class="field-label">URL
+          <input id="setting-ma-url" data-integ-url type="text" spellcheck="false" placeholder="http://music-assistant:8095" /></label>
+        <label class="field-label">Token
+          <span class="secret-row"><input id="setting-ma-token" data-secret="ma_token" type="password" autocomplete="off" placeholder="Paste a long-lived token…" data-placeholder="Paste a long-lived token…" /><button type="button" class="btn btn-ghost btn-sm" data-secret-remove hidden>Remove</button><button type="button" class="btn btn-ghost btn-sm" data-source-test="music_assistant" title="Check the connection (what you typed, else the saved values)">Test</button></span>
+        </label>
+        <div class="source-test-result" data-test-result="music_assistant" hidden></div>
+        <label class="field-label">Providers to sync <span class="ma-dim">(instance ids, comma-separated; blank: all)</span>
+          <input id="setting-ma-providers" type="text" spellcheck="false" placeholder="filesystem_local--ab12cd34" /></label>
+        <label class="field-label">Sync just the changed providers <span class="ma-dim">(one per line: Tagger folder = provider instance id; blank: the list above)</span>
+          <textarea id="setting-ma-folders" rows="2" spellcheck="false" placeholder="/music/Shared = filesystem_local--ab12cd34"></textarea></label>
+        <p class="settings-hint">Music Assistant can't sync a single folder, only whole providers — this helps once each library is its own provider. A change outside these folders syncs the list above.</p>
+        <div class="settings-hint" data-rescan-status="music_assistant"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Player rescans</div>
+        <p class="settings-hint">When Navidrome and Music Assistant are asked to rescan after Tagger changes files (tags, moves, covers, ReplayGain). A big write is always one rescan.</p>
+        <label class="field-label">Rescan
+          <select id="setting-rescan-mode">
+            <option value="quiet">After the last change — each change restarts the wait</option>
+            <option value="delay">After a change — later changes don't push it back</option>
+            <option value="off">Off — only "Rescan now"</option>
+          </select></label>
+        <label class="field-label" id="rescan-wait-wrap">Wait
+          <span class="secret-row"><input id="setting-rescan-wait" type="number" min="1" max="1440" step="1" /> <span id="rescan-wait-unit">minutes</span></span></label>
+        <div id="rescan-pending" class="settings-hint"></div>
+        <button type="button" id="rescan-now" class="btn btn-ghost btn-sm" title="Ask Navidrome and Music Assistant to rescan now (saved settings)">Rescan now</button>
       </div>
       </div>
       <div class="settings-sect" data-sect="search" hidden>
@@ -336,7 +412,20 @@ export const APP_HTML = `
       </div>
       <div id="album-grid" class="album-grid" style="display:none"></div>
       <div id="album-list" class="album-list" style="display:none"></div>
-      <div id="pagination" class="pagination" hidden></div>
+      <div id="pagination" class="pagination">
+        <span id="status-where" class="status-where"></span>
+        <span class="page-controls">
+        <span id="page-nav" class="page-nav">
+          <button type="button" id="page-prev" class="btn btn-ghost btn-sm" title="Previous page">‹</button>
+          rows <input id="page-top" class="page-top" type="number" min="1" title="The top row: type a row number to start the page there">–<span id="page-end"></span>
+          of <span id="page-total"></span>
+          <button type="button" id="page-next" class="btn btn-ghost btn-sm" title="Next page">›</button>
+          <span class="page-of">page <span id="page-num"></span> of <span id="page-count"></span></span>
+        </span>
+        <span id="page-size-wrap" class="page-size-wrap"><select id="page-size" class="page-size" title="Rows per page"></select> per page</span>
+        </span>
+        <span id="status-sel" class="status-sel"></span>
+      </div>
     </main>
 
     <div class="pane-resizer" id="editor-resizer" data-resize="editor" role="separator" aria-orientation="vertical"
@@ -401,19 +490,4 @@ export const APP_HTML = `
     </aside>
   </div>
 
-  <footer id="statusbar" class="statusbar">
-    <span id="status-where" class="status-where"></span>
-    <span id="status-view" class="status-view">
-      <span id="status-count"></span>
-      <span id="status-paging" hidden>
-        <button type="button" id="status-prev" class="btn btn-link" title="Previous page">‹</button>
-        rows <input id="status-top" class="status-top" type="number" min="1" title="The top row: type a row number to start the page there">–<span id="status-end"></span>
-        of <span id="status-total"></span>
-        <button type="button" id="status-next" class="btn btn-link" title="Next page">›</button>
-        · page <span id="status-page"></span> of <span id="status-pages"></span>
-      </span>
-      <span id="status-size-wrap" hidden>· <select id="status-size" class="status-size" title="Rows per page"></select> per page</span>
-    </span>
-    <span id="status-sel" class="status-sel"></span>
-  </footer>
 `
