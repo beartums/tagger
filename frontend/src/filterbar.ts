@@ -46,6 +46,24 @@ export function filterParams(p: Record<string, string | number>) {
   if (f.qualities.length) p.quality = f.qualities.join(',')
 }
 
+const KINDS: Kind[] = ['issues', 'formats', 'qualities', 'has']
+
+/** The filters for the page address: "issues:a,b;formats:flac" ("" = none). */
+export function filtersKey(): string {
+  return KINDS.filter(k => state.filters[k].length).map(k => `${k}:${state.filters[k].join(',')}`).join(';')
+}
+
+/** Set the filters from an address's key and redraw the bar (no reload: the caller loads). */
+export function setFiltersFromKey(key: string) {
+  const f = { issues: [] as string[], formats: [] as string[], qualities: [] as string[], has: [] as string[] }
+  for (const part of key.split(';')) {
+    const [k, v] = part.split(':')
+    if ((KINDS as string[]).includes(k) && v) f[k as Kind] = v.split(',').filter(Boolean)
+  }
+  state.filters = f
+  if (document.getElementById('filter-chips')) { renderChips(); syncMenu() }
+}
+
 function toggle(kind: Kind, key: string) {
   const list = state.filters[kind]
   state.filters[kind] = list.includes(key) ? list.filter(k => k !== key) : [...list, key]

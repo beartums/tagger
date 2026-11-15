@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Filters survive a refresh.** They're part of the page address now, so
+  refresh, Back/Forward and copied links keep them. The album view's count no
+  longer shows a stale number before its list loads.
 - **Add to MusicBrainz comes back to your tab.** MusicBrainz opens in one tab
   of its own; when you submit, that tab hands the new release to the tggr tab
   you started from (still on the same view) and closes.

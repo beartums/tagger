@@ -28,7 +28,7 @@ import { shapeSettings, setPill, snapshotSettings, changedSections, sectionName 
 import { openAssignGroup, renderLyricsGroups, groupLayoutChoices, addGroupLayout, wireLyricsGroups, readLyricsGroups, libraryGroupSelect, renderGroupLayouts } from './lyricsgroups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
-import { initFilterBar, filterParams, filtersActive, refreshFormats } from './filterbar'
+import { initFilterBar, filterParams, filtersActive, refreshFormats, filtersKey, setFiltersFromKey } from './filterbar'
 import { ICON } from './icons'
 import { initGridEdit, gridView, gridCell, gridBeforeRender, gridAfterRender, gridActive, gridCommit, gridConfirmLeave } from './gridedit'
 
@@ -641,6 +641,7 @@ function albumPageFor(sig: string, total: number) {
   albumPage.total = total
   if (albumPage.offset >= total) albumPage.offset = Math.max(0, Math.floor((total - 1) / state.pageSize) * state.pageSize)
   renderPagination()
+  setTopCount()          // the album count is known only now
 }
 let redrawAlbumList: (() => void) | null = null
 /** Redraw the album view at the current page, without fetching again. */
@@ -3564,7 +3565,7 @@ reviewBtn.addEventListener('click', () => openReview(refreshAfterWrite))
 document.getElementById('history-btn')!.addEventListener('click', () => openHistory(refreshAfterWrite))
 
 // Filter selects
-initFilterBar(() => { state.offset = 0; loadTracks() })
+initFilterBar(() => { state.offset = 0; loadTracks(); recordView() })
 
 
 // Keyboard shortcuts
@@ -4571,6 +4572,7 @@ document.getElementById('logo')!.addEventListener('click', async (e) => {
 interface View {
   mode: State['sidebarMode']; view: State['viewMode']; offset: number; q: string; qm: State['queryMode']
   path: TagStep[]; dir: string | null; issue: string | null
+  f?: string              // the filter bar (filterbar.ts filtersKey); none when missing
 }
 
 let restoring = false
@@ -4582,6 +4584,7 @@ function currentView(): View {
     mode: m, view: state.viewMode, offset: state.offset, q: state.query, qm: state.query ? state.queryMode : '',
     path: m === 'tags' ? state.tagPath : [],
     dir: m === 'files' ? state.selectedDirectory : null, issue: m === 'quality' ? state.selectedIssue : null,
+    f: filtersKey(),
   }
 }
 
@@ -4594,6 +4597,7 @@ function viewHash(v: View): string {
   if (v.path.length) p.set('path', pathKey(v.path))
   if (v.dir) p.set('dir', v.dir)
   if (v.issue) p.set('issue', v.issue)
+  if (v.f) p.set('f', v.f)
   return '#' + p.toString()
 }
 
@@ -4621,7 +4625,7 @@ function parseHash(): View | null {
     mode, view: p.get('view') === 'albums' ? 'albums' : 'list',
     offset: hashOffset(p), q: p.get('q') ?? '',
     qm: p.get('qm') === 'glob' || p.get('qm') === 'regex' ? p.get('qm') as State['queryMode'] : '',
-    path: hashPath(p), dir: p.get('dir'), issue: p.get('issue'),
+    path: hashPath(p), dir: p.get('dir'), issue: p.get('issue'), f: p.get('f') ?? '',
   }
 }
 
@@ -4655,6 +4659,7 @@ async function restoreView(v: View) {
     if (v.q) { state.queryMode = v.qm; renderSearchMode() }
     state.tagPath = v.path
     state.selectedDirectory = v.dir; state.selectedIssue = v.issue
+    setFiltersFromKey(v.f ?? '')
     state.selectedIds.clear(); albumPicks.clear()
     if (v.mode === 'tags') {
       await openPath(v.path)
