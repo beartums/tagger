@@ -266,3 +266,14 @@ def test_pick_release_prefers_the_files_album_then_official_albums():
     assert mbp.pick_release(rels, None)["id"] == "a1"
     assert mbp.pick_release(rels, "Not On Any")["id"] == "a1"
     assert mbp.pick_release([], None) == {}
+
+
+def test_rows_flag_a_folder_cover_and_album_artist_is_a_check(client, lib):
+    from core.database import db
+    _insert(lib / "Shared" / "a" / "1.mp3", album_artist="X")
+    _insert(lib / "Shared" / "b" / "1.mp3")
+    with db() as conn:
+        conn.execute("INSERT INTO folder_covers (directory, name) VALUES (?, 'cover.jpg')", (str(lib / "Shared" / "a"),))
+    rows = {t["directory"].rsplit("/", 1)[1]: t for t in client.get("/api/library/tracks").json()["tracks"]}
+    assert rows["a"]["folder_cover"] is True and rows["b"]["folder_cover"] is False
+    assert client.get("/api/library/issues").json()["missing_album_artist"]["tracks"] == 1

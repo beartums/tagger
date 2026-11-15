@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **The list's quality dot checks more**: red when a track has no title,
+  artist or album; yellow for no album artist, year, track #, genre, cover art
+  (in the file or the folder) or MusicBrainz album ID, or incomplete
+  MusicBrainz release group / track IDs. The tooltip names everything
+  missing. Checks turned off in Settings → Quality are skipped by the dot
+  too. New Quality check: *Missing album artist*.
 - **Settings → Quality**: turn any Quality check off (struck through) so the
   Quality panel stops running it -- Missing files, duplicates and Not in
   layout are slow on a big library. **Check** runs one on demand and keeps its

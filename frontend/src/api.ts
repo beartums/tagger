@@ -40,6 +40,7 @@ export interface Track {
   mb_album_artist_id: string | null
   mb_release_group_id: string | null
   mb_release_track_id: string | null
+  folder_cover?: boolean          // the folder has a cover image
   scanned_at: number
   tagged_at: number | null
   // Edits held for review (null when none). The UI overlays these on the
@@ -284,7 +285,7 @@ export interface MbRelease {
 }
 
 export type IssueKey =
-  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album'
+  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'missing_album_artist' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album'
 /** One Quality check: its last count (null: never run), when, and whether it's turned off. */
 export interface IssueEntry { tracks: number | null; albums: number | null; at: number | null; off: boolean }
 export type IssueCount = Record<IssueKey, IssueEntry>
