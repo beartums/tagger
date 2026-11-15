@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Add to MusicBrainz: disc ID afterwards.** MusicBrainz's release editor has
+  no disc ID field, so tggr no longer sends one; when MusicBrainz sends you
+  back, a next-steps box links to its Attach CD TOC page with the disc's ID
+  filled in, then Match album.
 - **CD rips: what the ripper recorded.** tggr reads the disc ID, table of
   contents, barcode, ISRCs, how the ripper named the disc (exact / near /
   none) and cdparanoia's per-track trouble. One album selected shows them in a

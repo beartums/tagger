@@ -581,6 +581,8 @@ def mb_seed(req: Seed):
     The fields that open MusicBrainz's Add release page filled in from one
     album (https://musicbrainz.org/doc/Development/Release_Editor_Seeding):
     the browser POSTs them to /release/add, the user reviews and submits.
+    Seeding has no disc ID field: it's attached once the release exists
+    (disc-info's attach_url; the app offers it when MusicBrainz sends you back).
     """
     with db() as conn:
         groups = _discs(conn, req.track_ids)
@@ -598,16 +600,11 @@ def mb_seed(req: Seed):
     barcode = _common(tracks, "barcode")
     if barcode:
         f.append(("barcode", barcode))
-    has_toc = False
     for m, key in enumerate(sorted(groups, key=lambda k: int(k[2]) if k[2].isdigit() else 0)):
         g = sorted(groups[key], key=lambda t: int(str(t["track_number"] or 0).split("/")[0] or 0)
                    if str(t["track_number"] or "0").split("/")[0].isdigit() else 0)
         p = f"mediums.{m}."
         f += [(p + "format", "CD"), (p + "position", str(m + 1))]
-        toc = _common(g, "cd_toc")
-        if toc:
-            f.append((p + "toc", toc))
-            has_toc = True
         for i, t in enumerate(g):
             tp = f"{p}track.{i}."
             f.append((tp + "name", t["title"] or t["filename"].rsplit(".", 1)[0]))
@@ -618,8 +615,7 @@ def mb_seed(req: Seed):
                 f += _credit(tp, t["artist"])
             if t.get("mb_track_id"):
                 f.append((tp + "recording", t["mb_track_id"]))
-    f.append(("edit_note", "Added with tggr from a CD rip (FLAC): titles and order from the tags, lengths from the files"
-              + (", disc ID from the CD's table of contents." if has_toc else ".")))
+    f.append(("edit_note", "Added with tggr from a CD rip (FLAC): titles and order from the tags, lengths from the files."))
     if req.redirect_uri:
         f.append(("redirect_uri", req.redirect_uri))
     return {"action": "https://musicbrainz.org/release/add", "album": album, "fields": f}

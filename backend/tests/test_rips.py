@@ -47,7 +47,7 @@ def test_mb_seed_fills_the_add_release_form(client):
     assert s["action"] == "https://musicbrainz.org/release/add"
     assert f["name"] == "Album" and f["artist_credit.names.0.name"] == "Artist"
     assert f["events.0.date.year"] == "1999" and f["barcode"] == "0123456789012"
-    assert f["mediums.0.format"] == "CD" and f["mediums.0.toc"] == TOC
+    assert f["mediums.0.format"] == "CD" and not any(k.endswith(".toc") for k in f)   # not a seeding field
     assert f["mediums.0.track.2.name"] == "Song 3" and f["mediums.0.track.2.length"] == str(round(10000 * 588 / 44.1))
     assert f["mediums.0.track.0.recording"] == "11111111-1111-1111-1111-111111111111"
     assert "mediums.0.track.0.artist_credit.names.0.name" not in f      # same as the album artist
