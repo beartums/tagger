@@ -27,7 +27,9 @@ import { shapeSettings, setPill, snapshotSettings, changedSections, sectionName 
 import { openAssignGroup, renderLyricsGroups, groupLayoutChoices, addGroupLayout, wireLyricsGroups, readLyricsGroups, libraryGroupSelect, renderGroupLayouts } from './lyricsgroups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
-import { initGridEdit, gridView, gridCell, gridBeforeRender, gridAfterRender, gridActive, gridCommit } from './gridedit'
+import { initFilterBar, filterParams, filtersActive, refreshFormats } from './filterbar'
+import { ICON } from './icons'
+import { initGridEdit, gridView, gridCell, gridBeforeRender, gridAfterRender, gridActive, gridCommit, gridConfirmLeave } from './gridedit'
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
@@ -132,8 +134,8 @@ const findReplaceBtn    = document.getElementById('find-replace-btn') as HTMLBut
 const removeTracksBtn   = document.getElementById('remove-tracks-btn') as HTMLButtonElement
 const deleteFilesBtn    = document.getElementById('delete-files-btn') as HTMLButtonElement
 const replaygainBtn     = document.getElementById('replaygain-btn') as HTMLButtonElement
-const filterQualityEl  = document.getElementById('filter-quality') as HTMLSelectElement
-const filterFormatEl   = document.getElementById('filter-format') as HTMLSelectElement
+const selectionBar     = document.getElementById('selection-bar')!
+const mbAlbumBtn       = document.getElementById('mb-album-btn')!
 const inferBtn         = document.getElementById('infer-btn') as HTMLButtonElement
 const exportM3uBtn     = document.getElementById('export-m3u-btn') as HTMLButtonElement
 const undoBtn          = document.getElementById('undo-btn') as HTMLButtonElement
@@ -772,6 +774,9 @@ function renderViewMode() {
   if (state.sidebarMode === 'tags') renderTagsPanel()
   else if (state.sidebarMode === 'quality' && state.qualityIssues) renderQualityPanel()
   albumStyleEl.hidden = !albums
+  // Sheet edit is for the track list only.
+  document.getElementById('grid-edit-btn')!.hidden = albums
+  setTopCount()
   albumStyleEl.querySelectorAll<HTMLElement>('[data-style]').forEach(b => b.classList.toggle('active', b.dataset.style === albumStyle))
   viewListBtn.classList.toggle('active',   state.viewMode === 'list')
   viewAlbumsBtn.classList.toggle('active', state.viewMode === 'albums')
@@ -806,24 +811,9 @@ function getSortedFilteredTracks(): Track[] {
 /** Filters + sort for the current view, for /tracks, select-all and export. */
 function viewParams(): Record<string, string | number> {
   const p = currentViewParams()
-  if (state.filterFormat)  p.format = state.filterFormat
-  if (state.filterQuality) p.quality = state.filterQuality
+  filterParams(p)
   if (state.sortKey) { p.sort = state.sortKey; p.sort_dir = state.sortDir }
   return p
-}
-
-async function renderFormatOptions() {
-  let formats: string[] = []
-  try { formats = await api.library.formats() } catch { return }
-  const current = filterFormatEl.value
-  filterFormatEl.innerHTML = '<option value="">Format</option>'
-  for (const fmt of formats) {
-    const opt = document.createElement('option')
-    opt.value = fmt
-    opt.textContent = fmt.toUpperCase()
-    filterFormatEl.appendChild(opt)
-  }
-  if (formats.includes(current)) filterFormatEl.value = current
 }
 
 // ─── Keyboard navigation ──────────────────────────────────────────────────────
@@ -1017,7 +1007,7 @@ function renderTracks() {
       : 'No tracks found.'
     trackEmpty.hidden = false
     trackLoading.hidden = true
-    trackCount.textContent = '0 tracks'
+    setTopCount()
     updateBulkBar()
     return
   }
@@ -1026,8 +1016,7 @@ function renderTracks() {
   trackLoading.hidden = true
 
   const displayedTracks = getSortedFilteredTracks()
-  trackCount.textContent = `${state.total.toLocaleString()} track${state.total !== 1 ? 's' : ''}`
-    + (state.filterFormat || state.filterQuality ? ' (filtered)' : '')
+  setTopCount()
 
   const visibleCols = orderedCols().filter(c => state.visibleCols.has(c.key))
   // The Quality view's own column(s), right after Title (else last), so
@@ -1099,20 +1088,40 @@ function renderTracks() {
   updateBulkBar()
 }
 
+/** The top line's count: albums in the album view, else tracks. */
+function setTopCount() {
+  const albums = state.viewMode === 'albums'
+  const total = albums ? albumPage.total : state.total
+  trackCount.textContent = plural(total, albums ? 'album' : 'track') + (filtersActive() ? ' (filtered)' : '')
+}
+
+// Albums picked in the album view: the selection is those albums.
+const albumSelection = () => state.viewMode === 'albums' && albumPicks.size > 0
+
 function updateBulkBar() {
   const n = state.selectedIds.size
   // A read-only track is only ever selected alone, to view: no bulk actions.
   bulkActions.hidden = n === 0 || state.tracks.some(t => t.read_only && state.selectedIds.has(t.id))
+  selectionBar.hidden = n === 0
+  trackCount.hidden = n > 0
+  setTopCount()
+  const albums = albumSelection()
   const offPage = n - state.tracks.filter(t => state.selectedIds.has(t.id)).length
-  selectionCount.textContent = offPage > 0
-    ? `${n.toLocaleString()} selected (${offPage.toLocaleString()} on other pages)`
-    : `${n.toLocaleString()} selected`
+  selectionCount.textContent = albums
+    ? `${plural(albumPicks.size, 'album')} selected (${plural(n, 'track')})`
+    : offPage > 0
+      ? `${n.toLocaleString()} selected (${offPage.toLocaleString()} on other pages)`
+      : `${n.toLocaleString()} selected`
+  // Track-only actions leave the menus when albums are selected.
+  autonumberBtn.hidden = albums
+  ;(document.getElementById('parse-names-btn') as HTMLElement).hidden = albums
+  const matchTitle = albums && albumPicks.size > 1 ? 'Match albums on MusicBrainz…' : 'Match album on MusicBrainz…'
+  mbAlbumBtn.title = matchTitle; mbAlbumBtn.setAttribute('aria-label', matchTitle)
   // Whole page selected but the view is bigger: offer the rest.
   const pageAll = state.tracks.some(t => !t.read_only)
     && state.tracks.every(t => t.read_only || state.selectedIds.has(t.id))
   selectViewBtn.hidden = !(pageAll && state.total > n)
   selectViewBtn.textContent = `Select all ${state.total.toLocaleString()} in this view`
-  removeTracksBtn.style.display = n > 0 ? '' : 'none'
   replaygainBtn.hidden = !(n > 0 && replaygainAvailable)
   markAlbumPicks()
   updateStatusBar()
@@ -1241,7 +1250,8 @@ function renderEditor() {
       return
     } else clearEditorDirty()
   }
-  if (state.selectedIds.size === 0) { tagEditor.hidden = true; editorResizer.hidden = true; lookupPanel.hidden = true; state.pendingCoverAlbumId = null; state.pendingLookupResult = null; playerEl.pause(); playerEl.hidden = true; editorRenamePreviewEl.hidden = true; return }
+  // Several albums: no editor; the selection's actions do the work.
+  if (state.selectedIds.size === 0 || (albumSelection() && albumPicks.size > 1)) { tagEditor.hidden = true; editorResizer.hidden = true; lookupPanel.hidden = true; state.pendingCoverAlbumId = null; state.pendingLookupResult = null; playerEl.pause(); playerEl.hidden = true; editorRenamePreviewEl.hidden = true; return }
   tagEditor.hidden = false
   editorResizer.hidden = false
   // Only show lookup/infer for single selection; hide panel when selection changes
@@ -1252,7 +1262,8 @@ function renderEditor() {
   if (state.selectedIds.size !== 1) lookupPanel.hidden = true
   const sel = state.tracks.filter(t => state.selectedIds.has(t.id))
   const n = state.selectedIds.size
-  editorTitle.textContent = n === 1 && sel.length === 1 ? (sel[0].title || sel[0].filename) : `${n.toLocaleString()} tracks`
+  editorTitle.textContent = albumSelection() ? (sel[0]?.album || '1 album')
+    : n === 1 && sel.length === 1 ? (sel[0].title || sel[0].filename) : `${n.toLocaleString()} tracks`
   renderEditorFile(n === 1 && sel.length === 1 ? sel[0] : null)
   if (!keep) fillEditorForm()
   updateCoverPreview()
@@ -1462,7 +1473,71 @@ function populateForm(tracks: Track[]) {
   cb.checked = compSame ? comp[0] : false
   delete cb.dataset.dirty
   cb.dataset.filled = cb.indeterminate ? 'mixed' : String(cb.checked)
+  applyEditorRules()
 }
+
+// ─── Editor rules: one album, and locked fields ──────────────────────────────
+
+// Fields that belong to each track, not the album: left out when an album is selected.
+const TRACK_ONLY = new Set(['title', 'track_number', 'disc_number', 'bpm', 'comment', 'lyrics'])
+// On an album these hold per-track values, so they start locked even when all the same.
+const ALBUM_LOCKED = new Set(['artist', 'composer'])
+const fieldName = (f: string) => ({ track_number: 'track number', disc_number: 'disc number', album_artist: 'album artist', bpm: 'BPM' } as Record<string, string>)[f] ?? f
+
+/**
+ * One album selected: album fields only. Several tracks (or an album): a field
+ * that would overwrite different values on each is locked until its lock is clicked.
+ */
+function applyEditorRules() {
+  const n = state.selectedIds.size
+  const album = albumSelection()
+  for (const field of TAG_FIELDS) {
+    const el = tagForm.elements.namedItem(field) as HTMLInputElement | HTMLTextAreaElement | null
+    const label = el?.closest<HTMLElement>('.field-label')
+    if (!el || !label) continue
+    const trackOnly = album && TRACK_ONLY.has(field)
+    label.hidden = trackOnly
+    const chips = valueChips.get(field as ChipField)
+    const lock = n > 1 && !trackOnly && (el.dataset.mixed === '1' || (album && ALBUM_LOCKED.has(field)))
+    setFieldLock(label, el, chips, lock, `Locked: anything you enter here replaces the ${fieldName(field)} on all ${plural(n, 'track')}. Click the lock to edit.`)
+  }
+  albumNote.hidden = !album
+}
+
+function setFieldLock(label: HTMLElement, el: HTMLInputElement | HTMLTextAreaElement, chips: ValueChips | undefined, on: boolean, tip: string) {
+  let btn = label.querySelector<HTMLButtonElement>(':scope .field-lock')
+  label.classList.toggle('field-locked', on)
+  el.readOnly = on
+  chips?.el.classList.toggle('chips-locked', on)
+  if (!on) { btn?.remove(); return }
+  if (!btn) {
+    btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'field-lock'
+    btn.innerHTML = ICON.lock
+    label.prepend(btn)
+  }
+  btn.title = tip
+  btn.setAttribute('aria-label', tip)
+}
+
+const albumNote = document.createElement('div')
+albumNote.className = 'editor-album-note'
+albumNote.hidden = true
+albumNote.textContent = 'Title, track #, disc #, BPM, comment and lyrics differ by track. Open the album or switch to the track list to edit them.'
+compilationCheckbox().closest('label')!.after(albumNote)
+
+tagForm.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('.field-lock')
+  if (!btn) return
+  e.preventDefault()
+  const label = btn.closest<HTMLElement>('.field-label')!
+  const el = label.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea')!
+  const chips = valueChips.get(el.name as ChipField)
+  setFieldLock(label, el, chips, false, '')
+  if (chips && !chips.el.hidden) chips.el.querySelector<HTMLInputElement>('input')?.focus()
+  else el.focus()
+})
 
 // ─── MusicBrainz lookup ───────────────────────────────────────────────────────
 
@@ -2668,15 +2743,19 @@ function currentViewParams(): Record<string, string | number> {
   return params
 }
 
-function exportM3u() {
-  if (!state.total) { toast('Nothing to export', 'info'); return }
-  const url = api.library.exportM3uUrl(viewParams())
+/** The selection as an .m3u playlist, in the view's order. */
+async function exportM3u() {
+  const ids = [...state.selectedIds]
+  if (!ids.length) return
+  let body: string
+  try { body = await api.library.exportM3u(ids, viewParams()) } catch (e) { toast(`Export: ${errText(e)}`, 'error'); return }
   const a = document.createElement('a')
-  a.href = url
+  a.href = URL.createObjectURL(new Blob([body], { type: 'audio/x-mpegurl' }))
   a.download = 'tagger-export.m3u'
   document.body.appendChild(a)
   a.click()
   a.remove()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
 }
 
 // ─── ReplayGain scan ────────────────────────────────────────────────────────────
@@ -3198,7 +3277,7 @@ viewListBtn.addEventListener('click', () => {
 })
 
 viewAlbumsBtn.addEventListener('click', () => {
-  if (state.viewMode === 'albums') return
+  if (state.viewMode === 'albums' || !gridConfirmLeave()) return
   state.viewMode = 'albums'
   renderViewMode()
   recordView()
@@ -3248,11 +3327,32 @@ colPickerEl.addEventListener('change', (e) => {
 })
 
 document.addEventListener('click', (e) => {
-  if (state.colPickerOpen && !colPickerEl.contains(e.target as Node) && e.target !== colPickerBtn) {
+  if (state.colPickerOpen && !colPickerEl.contains(e.target as Node) && !colPickerBtn.contains(e.target as Node)) {
     state.colPickerOpen = false
     colPickerEl.hidden  = true
   }
 })
+
+// The selection's icon bar: Tags and Files open menus; picking an item closes them.
+function closeIbMenus(except?: Element) {
+  document.querySelectorAll<HTMLElement>('[data-ib-menu]').forEach(b => {
+    const m = document.getElementById(b.dataset.ibMenu!)!
+    if (m === except) return
+    m.hidden = true; b.setAttribute('aria-expanded', 'false'); b.classList.remove('open')
+  })
+}
+bulkActions.addEventListener('click', (e) => {
+  const t = e.target as HTMLElement
+  const b = t.closest<HTMLElement>('[data-ib-menu]')
+  if (b) {
+    const m = document.getElementById(b.dataset.ibMenu!)!
+    closeIbMenus(m)
+    m.hidden = !m.hidden
+    b.setAttribute('aria-expanded', String(!m.hidden)); b.classList.toggle('open', !m.hidden)
+  } else if (t.closest('.ib-mi')) closeIbMenus()
+})
+document.addEventListener('click', (e) => { if (!(e.target as HTMLElement).closest('#bulk-actions')) closeIbMenus() })
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeIbMenus() })
 
 document.getElementById('clear-selection')!.addEventListener('click', () => {
   state.selectedIds.clear(); renderTracks(); renderEditor()
@@ -3275,8 +3375,7 @@ reviewBtn.addEventListener('click', () => openReview(refreshAfterWrite))
 document.getElementById('history-btn')!.addEventListener('click', () => openHistory(refreshAfterWrite))
 
 // Filter selects
-filterQualityEl.addEventListener('change', () => { state.filterQuality = filterQualityEl.value; state.offset = 0; loadTracks() })
-filterFormatEl.addEventListener('change',  () => { state.filterFormat  = filterFormatEl.value;  state.offset = 0; loadTracks() })
+initFilterBar(() => { state.offset = 0; loadTracks() })
 
 
 // Keyboard shortcuts
@@ -4212,7 +4311,7 @@ function updateStatusBar() {
   if (state.query) where.push(state.queryMode === 'regex' ? `/${state.query}/` : state.queryMode === 'glob' ? `glob “${state.query}”` : `“${state.query}”`)
   statusWhere.textContent = where.join(' › ')
   statusWhere.title = statusWhere.textContent
-  statusCount.textContent = state.total ? plural(state.total, 'track') + (state.filterFormat || state.filterQuality ? ' (filtered)' : '') : ''
+  statusCount.textContent = state.total ? plural(state.total, 'track') + (filtersActive() ? ' (filtered)' : '') : ''
 
 
   // Albums: the picked ones, else the folders of the selected tracks when they're all loaded.
@@ -4380,7 +4479,7 @@ async function startApp() {
       lookupBtn.title += ' (AcoustID key set but fpcalc not found — install libchromaprint-tools)'
     }
   }).catch(() => {})
-  renderFormatOptions()
+  refreshFormats()
   const settingsLoaded = api.settings.get()
   settingsLoaded.then(s => {
     state.libraryRoots = s.effective_library_roots ?? []

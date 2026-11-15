@@ -1,4 +1,5 @@
 import { LOGO_MARK } from './logo'
+import { ICON } from './icons'
 
 export const APP_HTML = `
   <header class="topbar">
@@ -356,61 +357,62 @@ export const APP_HTML = `
 
     <main class="track-pane">
       <div class="track-pane-toolbar">
-        <div class="toolbar-left">
+        <div class="toolbar-line">
           <span id="track-count" class="track-count"></span>
+          <span id="selection-bar" class="selection-bar" hidden>
+            <span id="selection-count" class="selection-count"></span>
+            <button id="select-view-btn" class="btn btn-link btn-sm" hidden></button>
+            <button id="clear-selection" class="btn btn-ghost btn-sm" title="Deselect" aria-label="Deselect">✕</button>
+          </span>
+          <span class="toolbar-spacer"></span>
+          <div id="bulk-actions" class="ibar" role="toolbar" aria-label="Selection actions" hidden>
+            <button id="mb-album-btn" class="ib ib-prim" type="button">${ICON.match}</button>
+            <div class="ib-wrap">
+              <button class="ib" type="button" data-ib-menu="tags-menu" title="Tags" aria-haspopup="menu" aria-expanded="false">${ICON.tag}${ICON.caret}</button>
+              <div id="tags-menu" class="ib-menu" role="menu" hidden>
+                <button id="normalize-case-btn" class="ib-mi" type="button" role="menuitem">Normalize case</button>
+                <button id="autonumber-btn" class="ib-mi" type="button" role="menuitem" title="Number selected tracks 1…N in filename order">Auto-number</button>
+                <button id="find-replace-btn" class="ib-mi" type="button" role="menuitem" title="Find and replace in one tag across the selection — plain text or regex with capture groups, previewed">Find / replace…</button>
+                <button id="parse-names-btn" class="ib-mi" type="button" role="menuitem" title="Read tags from the file and folder names with a pattern like %artist%/%album%/%track% - %title% — previewed, then staged">Tags from names…</button>
+                <hr>
+                <button id="lyrics-btn" class="ib-mi" type="button" role="menuitem" title="Fetch lyrics (synced when available) from LRCLIB — reviewed, then staged">Lyrics…</button>
+                <button id="replaygain-btn" class="ib-mi" type="button" role="menuitem" title="Scan ReplayGain for the selection" hidden>ReplayGain</button>
+              </div>
+            </div>
+            <div class="ib-wrap">
+              <button class="ib" type="button" data-ib-menu="files-menu" title="Files" aria-haspopup="menu" aria-expanded="false">${ICON.folder}${ICON.caret}</button>
+              <div id="files-menu" class="ib-menu" role="menu" hidden>
+                <button id="covers-btn" class="ib-mi" type="button" role="menuitem" title="Move, copy or delete cover art between the album folder (cover.jpg) and the tracks">Covers…</button>
+                <button id="merge-albums-btn" class="ib-mi" type="button" role="menuitem" title="Make the selected tracks one album: tags, disc numbers, optionally one folder — previewed, then staged">Merge albums…</button>
+                <button id="bulk-rename-btn" class="ib-mi" type="button" role="menuitem" title="Rename the selected files with search &amp; replace (regex, captures, counters) — previewed, then staged">Rename files…</button>
+                <button id="lyrics-group-btn" class="ib-mi" type="button" role="menuitem" title="Put the selection in a group: how its lyrics are looked up (or No lyrics), and its layout">Group…</button>
+                <hr>
+                <button id="remove-tracks-btn" class="ib-mi ib-danger" type="button" role="menuitem" title="Remove from the library index (leaves files on disk)">Remove from library</button>
+                <button id="delete-files-btn" class="ib-mi ib-danger" type="button" role="menuitem" title="Move the selected files to trash (undoable)">Delete files…</button>
+              </div>
+            </div>
+            <button id="export-m3u-btn" class="ib" type="button" title="Export the selection as an .m3u playlist" aria-label="Export M3U">${ICON.export}</button>
+          </div>
+          <div class="seg" role="group" aria-label="Tracks or albums">
+            <button id="view-list-btn" class="seg-b active" type="button" title="Tracks" aria-label="Tracks">${ICON.track}</button>
+            <button id="view-albums-btn" class="seg-b" type="button" title="Albums" aria-label="Albums">${ICON.album}</button>
+          </div>
+          <span id="album-style" class="seg" role="group" aria-label="List or tiles" hidden><button class="seg-b" type="button" data-style="list" title="Album list" aria-label="Album list">${ICON.list}</button><button class="seg-b" type="button" data-style="tiles" title="Album tiles" aria-label="Album tiles">${ICON.tiles}</button></span>
           <button id="grid-edit-btn" class="btn btn-ghost btn-sm grid-edit-btn" aria-pressed="false">✎</button>
           <button id="grid-discard-btn" class="btn btn-ghost btn-sm" hidden>✕</button>
-        </div>
-        <div class="toolbar-right">
-          <div class="filter-group">
-            <span class="filter-label">Filter</span>
-            <select id="filter-quality" class="filter-select">
-              <option value="">Quality</option>
-              <option value="good">Good</option>
-              <option value="fair">Fair</option>
-              <option value="poor">Poor</option>
-            </select>
-            <select id="filter-format" class="filter-select">
-              <option value="">Format</option>
-            </select>
-          </div>
-          <div class="toolbar-divider"></div>
-          <button id="export-m3u-btn" class="btn btn-ghost btn-sm" title="Export the current view as an .m3u playlist">Export M3U</button>
           <div class="col-picker-wrap">
-            <button id="col-picker-btn" class="btn btn-ghost btn-sm">Columns ▾</button>
+            <button id="col-picker-btn" class="ib-solo" type="button" title="Columns" aria-label="Columns">${ICON.cols}</button>
             <div id="col-picker" class="col-picker" hidden></div>
           </div>
-          <div class="view-toggle">
-            <button id="view-list-btn" class="btn btn-ghost btn-sm active" title="Track list">Tracks</button>
-            <button id="view-albums-btn" class="btn btn-ghost btn-sm" title="Albums in the current view">Albums</button>
-            <span id="album-style" class="album-style" hidden><button class="btn btn-ghost btn-sm" data-style="list" title="Album list">☰</button><button class="btn btn-ghost btn-sm" data-style="tiles" title="Album tiles">▦</button></span>
-          </div>
         </div>
-      </div>
-      <div id="bulk-actions" class="bulk-actions" hidden>
-        <span id="selection-count" class="selection-count"></span>
-        <button id="select-view-btn" class="btn btn-link btn-sm" hidden></button>
-        <span class="bulk-group"><span class="bulk-group-label">Tags</span>
-          <button id="normalize-case-btn" class="btn btn-ghost btn-sm">Normalize Case</button>
-          <button id="autonumber-btn" class="btn btn-ghost btn-sm" title="Number selected tracks 1…N in filename order">Auto-number</button>
-          <button id="find-replace-btn" class="btn btn-ghost btn-sm" title="Find and replace in one tag across the selection — plain text or regex with capture groups, previewed">Find/Replace</button>
-          <button id="parse-names-btn" class="btn btn-ghost btn-sm" title="Read tags from the file and folder names with a pattern like %artist%/%album%/%track% - %title% — previewed, then staged">Tags from names…</button>
-        </span>
-        <span class="bulk-group"><span class="bulk-group-label">Look up</span>
-          <button id="mb-album-btn" class="btn btn-ghost btn-sm" title="Match the selected tracks to a MusicBrainz release, track by track — reviewed, then staged">Match album…</button>
-          <button id="lyrics-btn" class="btn btn-ghost btn-sm" title="Fetch lyrics (synced when available) from LRCLIB — reviewed, then staged">Lyrics…</button>
-          <button id="replaygain-btn" class="btn btn-ghost btn-sm" title="Scan ReplayGain for the selection" hidden>ReplayGain</button>
-        </span>
-        <span class="bulk-group"><span class="bulk-group-label">Files</span>
-          <button id="lyrics-group-btn" class="btn btn-ghost btn-sm" title="Put the selection in a group: how its lyrics are looked up (or No lyrics), and its layout">Group…</button>
-          <button id="covers-btn" class="btn btn-ghost btn-sm" title="Move, copy or delete cover art between the album folder (cover.jpg) and the tracks">Covers…</button>
-          <button id="merge-albums-btn" class="btn btn-ghost btn-sm" title="Make the selected tracks one album: tags, disc numbers, optionally one folder — previewed, then staged">Merge albums…</button>
-          <button id="bulk-rename-btn" class="btn btn-ghost btn-sm" title="Rename the selected files with search &amp; replace (regex, captures, counters) — previewed, then staged">Rename files…</button>
-        </span>
-        <span class="bulk-group bulk-danger"><button id="remove-tracks-btn" class="btn btn-danger btn-sm" title="Remove from the library index (leaves files on disk)">Remove from library</button>
-          <button id="delete-files-btn" class="btn btn-danger btn-sm" title="Move the selected files to trash (undoable)">Delete files</button>
-        </span>
-        <button id="clear-selection" class="btn btn-ghost btn-sm">✕ Deselect</button>
+        <div class="toolbar-line filter-line">
+          <div class="filter-wrap">
+            <button id="filter-btn" class="ib-solo" type="button" title="Add a filter" aria-label="Add a filter" aria-haspopup="menu" aria-expanded="false">${ICON.funnel}</button>
+            <div id="filter-menu" class="filter-menu" role="menu" hidden></div>
+          </div>
+          <span id="filter-chips" class="filter-chips"><span class="filter-none">No filters</span></span>
+          <button id="filter-clear" class="btn btn-link btn-sm" type="button" hidden>Clear</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table class="track-table">

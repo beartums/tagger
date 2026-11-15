@@ -130,8 +130,8 @@ export interface State {
   sortKey:           string | null
   sortDir:           'asc' | 'desc'
   // filters
-  filterFormat:      string
-  filterQuality:     string
+  // The filter bar (filterbar.ts): checks and has-filters AND, formats and qualities OR.
+  filters:           { issues: string[]; formats: string[]; qualities: string[]; has: string[] }
   // configured music dirs (for source column) and library roots (folder moves)
   musicDirs:         string[]
   libraryRoots:      string[]
@@ -169,8 +169,7 @@ export const state: State = {
   coverBust: 0,
   sortKey:           null,
   sortDir:           'asc',
-  filterFormat:      '',
-  filterQuality:     '',
+  filters:           { issues: [], formats: [], qualities: [], has: [] },
   musicDirs:         [],
   libraryRoots:      [],
   offset:            0,

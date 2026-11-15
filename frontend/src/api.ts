@@ -472,9 +472,9 @@ export const api = {
     },
     albums: (artist?: string) =>
       request<Album[]>('GET', `/api/library/albums${artist ? '?artist=' + encodeURIComponent(artist) : ''}`),
-    exportM3uUrl: (params: Record<string, string | number> = {}) => {
+    exportM3u: (ids: number[], params: Record<string, string | number> = {}) => {
       const qs = new URLSearchParams(params as Record<string, string>).toString()
-      return `/api/library/export.m3u${qs ? '?' + qs : ''}`
+      return request<{ m3u: string }>('POST', `/api/library/export-m3u${qs ? '?' + qs : ''}`, ids).then(r => r.m3u)
     },
     history: (limit = 50) => request<ChangeLogEntry[]>('GET', `/api/library/history?limit=${limit}`),
     undo: (id: number) => request<{ restored: number; kind: string; errors: WriteError[] }>('POST', `/api/library/history/${id}/undo`),

@@ -179,11 +179,23 @@ class View:
         sort: Optional[str] = None,
         sort_dir: str = "asc",
         path: Optional[str] = None,
+        issues: Optional[str] = None,
+        has: Optional[str] = None,
     ):
         self.directory, self.artist, self.album, self.issue = directory, artist, album, issue
         self.tag, self.value, self.q, self.q_mode = tag, value, q, q_mode
         self.format, self.quality, self.sort, self.sort_dir = format, quality, sort, sort_dir
         self.path = path
+        # The filter bar: comma-separated, each issue/has ANDed, formats and qualities ORed.
+        self.issues = [k for k in (issues or "").split(",") if k in _ISSUE_CLAUSES]
+        self.has = [k for k in (has or "").split(",") if k in _HAS]
+
+
+# "Has" filters.
+_HAS = {
+    "lyrics": f"NOT {_blank('lyrics')}",
+    "staged": "id IN (SELECT track_id FROM staged)",
+}
 
 
 def _track_filters(v: View) -> tuple[str, list, str]:
@@ -231,11 +243,19 @@ def _track_filters(v: View) -> tuple[str, list, str]:
             with db() as conn:
                 duplicates.refresh(conn)
         clauses.append(_issue_clause(v.issue))
-    if v.format:
-        clauses.append("format = ?")
-        params.append(v.format)
-    if v.quality in _QUALITY:
-        clauses.append(_QUALITY[v.quality])
+    for key in v.issues:
+        if key.startswith("duplicate_"):
+            with db() as conn:
+                duplicates.refresh(conn)
+        clauses.append(_issue_clause(key))
+    clauses += [_HAS[k] for k in v.has]
+    formats = [f for f in (v.format or "").split(",") if f]
+    if formats:
+        clauses.append(f"format IN ({', '.join('?' * len(formats))})")
+        params.extend(formats)
+    qualities = [_QUALITY[q] for q in (v.quality or "").split(",") if q in _QUALITY]
+    if qualities:
+        clauses.append("(" + " OR ".join(qualities) + ")")
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
 
     if v.sort in _SORT:
@@ -585,6 +605,16 @@ def export_m3u(view: View = Depends(), limit: int = Query(10000, le=100000)):
         media_type="audio/x-mpegurl",
         headers={"Content-Disposition": 'attachment; filename="tagger-export.m3u"'},
     )
+
+
+@router.post("/export-m3u")
+def export_m3u_selection(track_ids: list[int], view: View = Depends()):
+    """The selected tracks as .m3u, in the view's order (its filters aside)."""
+    _, _, order = _track_filters(view)
+    with db() as conn:
+        rows = conn.execute(f"SELECT * FROM tracks WHERE id IN (SELECT value FROM json_each(?)) {order}",
+                            [json.dumps(track_ids)]).fetchall()
+    return {"m3u": _m3u([_row(r) for r in rows])}
 
 
 def _fts_query(q: str, fields: list[str] | None = None) -> str:
