@@ -391,6 +391,84 @@ def discard(conn, ids: list[int] | None = None, dirs: list[str] | None = None) -
     return n
 
 
+def discard_part(conn, tid: int, field: str) -> bool:
+    """
+    Drop one staged field (or the move, field "path") from one track, whichever
+    action staged it. It also leaves every action's record, so undoing an
+    action later can't bring it back.
+    """
+    entry = load(conn, [tid]).get(tid)
+    if not entry:
+        return False
+    tags, new_path = dict(entry["tags"]), entry["new_path"]
+    if field == "path":
+        if new_path is None:
+            return False
+        new_path = None
+    elif field in tags:
+        del tags[field]
+    else:
+        return False
+    _save(conn, tid, tags, new_path)
+    key = str(tid)
+    for r in conn.execute("SELECT id, data, after FROM staged_steps").fetchall():
+        data = json.loads(r["data"])
+        if key not in data:
+            continue
+        after = json.loads(r["after"]) if r["after"] else None
+
+        def drop(e):
+            if e is None:
+                return None
+            e = {"tags": {k: v for k, v in e["tags"].items() if k != field}, "new_path": e["new_path"]}
+            if field == "path":
+                e["new_path"] = None
+            return e
+        data[key] = drop(data[key])
+        if after is not None and key in after:
+            after[key] = drop(after[key])
+        empty = {"tags": {}, "new_path": None}
+        if (data[key] or empty) == ((after or {}).get(key) or empty):       # nothing left of it in this action
+            data.pop(key)
+            if after is not None:
+                after.pop(key, None)
+        if data:
+            conn.execute("UPDATE staged_steps SET data = ?, after = ? WHERE id = ?",
+                         (json.dumps(data), json.dumps(after) if after is not None else None, r["id"]))
+        else:
+            conn.execute("DELETE FROM staged_steps WHERE id = ?", (r["id"],))
+    return True
+
+
+def discard_step(conn, step_id: int) -> int:
+    """
+    Drop what one action staged, in any order: each field or move it set that
+    is still staged as it left it. Later actions' changes stay.
+    """
+    r = conn.execute("SELECT * FROM staged_steps WHERE id = ?", (step_id,)).fetchone()
+    if not r:
+        raise ValueError("No such staged action")
+    if not r["after"]:
+        raise ValueError("This action was staged before details were recorded: use Discard all")
+    after, dirs, n = json.loads(r["after"]), load_dirs(conn), 0
+    for key, a in after.items():
+        if key.startswith(DIR_KEY):
+            src = key[len(DIR_KEY):]
+            if a is not None and dirs.get(src) == a:
+                discard(conn, [], [src]); n += 1
+            continue
+        cur = load(conn, [int(key)]).get(int(key))
+        if not cur or not a:
+            continue
+        for f, v in a["tags"].items():
+            if cur["tags"].get(f) == v and discard_part(conn, int(key), f):
+                n += 1
+        if a["new_path"] and cur["new_path"] == a["new_path"] and discard_part(conn, int(key), "path"):
+            n += 1
+    conn.execute("DELETE FROM staged_steps WHERE id = ?", (step_id,))
+    return n
+
+
 def apply(conn, ids: list[int] | None = None, summary: str | None = None,
           dirs: list[str] | None = None, progress=None) -> dict:
     """
@@ -438,6 +516,7 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
 
     errors: list[dict] = []
     snaps: dict[int, dict] = {}   # first (pre-change) snapshot per track
+    changed: dict[int, dict] = {}  # what was set on each track, for per-field undo
     vacated: list[Path] = []
     went: dict[Path, set[Path]] = {}   # folder a track left -> where its tracks went
     created: set[Path] = set()         # destination folders this write made
@@ -488,6 +567,8 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
             sets.update(path=moved_to, filename=dest.name, directory=str(dest.parent))
             vacated.append(Path(row["path"]).parent)
             went.setdefault(Path(row["path"]).parent, set()).add(dest.parent)
+        if tags or moved_to:
+            changed[tid] = {**tags, **({"path": moved_to} if moved_to else {})}
         if sets:
             sets["tagged_at"] = time.time()
             conn.execute(
@@ -545,7 +626,7 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
         summary = f"Wrote changes to {n} track{'s' if n != 1 else ''}"
         if moved_dirs:
             summary += f" ({len(moved_dirs)} folder{'s' if len(moved_dirs) != 1 else ''} moved)"
-    change_id = log_change(conn, "tag_edit", summary, list(snaps.values()), moved_dirs, moved_files)
+    change_id = log_change(conn, "tag_edit", summary, list(snaps.values()), moved_dirs, moved_files, changed)
     return {"applied": n, "folders": len(moved_dirs), "errors": errors, "change_id": change_id}
 
 

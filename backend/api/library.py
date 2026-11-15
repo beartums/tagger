@@ -497,6 +497,32 @@ def get_history(limit: int = Query(50, le=200)):
         return list_changes(conn, limit)
 
 
+@router.get("/history/{change_id}")
+def history_parts(change_id: int):
+    """What a change set, field by field, and which pieces can be undone on their own."""
+    from core.history import parts
+    with db() as conn:
+        try:
+            return parts(conn, change_id)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc))
+
+
+class UndoPart(BaseModel):
+    track_id: int
+    field: str
+
+
+@router.post("/history/{change_id}/undo-part")
+def undo_part(change_id: int, p: UndoPart):
+    from core.history import undo_part as _undo_part
+    with db() as conn:
+        try:
+            return _undo_part(conn, change_id, p.track_id, p.field)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+
+
 @router.post("/history/{change_id}/undo")
 def undo(change_id: int):
     with db() as conn:

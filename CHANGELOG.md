@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Undo one piece at a time, in any order.** In Review, ✕ on any line drops
+  that one staged field (or move) and **Discard** on any action drops what it
+  staged, oldest or newest. In History, open a change (▸) to undo one field or
+  one move on one track. The only limit: a field a later change set again on
+  the same track can't be undone until that later piece is (it says which).
 - **Add to MusicBrainz: disc ID afterwards.** MusicBrainz's release editor has
   no disc ID field, so tggr no longer sends one; when MusicBrainz sends you
   back, a next-steps box links to its Attach CD TOC page with the disc's ID

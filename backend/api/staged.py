@@ -127,6 +127,26 @@ def apply_status(wid: str):
     return w
 
 
+class Part(BaseModel):
+    track_id: int
+    field: str        # a tag, or "path" for the move/rename
+
+
+@router.post("/discard-part")
+def discard_part(p: Part):
+    with db() as conn:
+        return {"discarded": int(staging.discard_part(conn, p.track_id, p.field))}
+
+
+@router.post("/steps/{step_id}/discard")
+def discard_step(step_id: int):
+    with db() as conn:
+        try:
+            return {"discarded": staging.discard_step(conn, step_id)}
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+
+
 @router.post("/discard")
 def discard_staged(sel: Selection):
     with db() as conn:
