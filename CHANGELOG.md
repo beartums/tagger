@@ -17,6 +17,16 @@
 - **Settings: Cancel** shows once you change something; leaving Settings with
   unsaved changes asks first.
 - **The Tagger logo on Settings** returns to the screen you were on.
+- **The status bar is back** at the bottom of the window: where you are, the
+  view's track count, and the selection (with Clear). The bar under the list
+  is just the pager now, shown only when there's paging to do, and hidden in
+  the album view (it pages tracks).
+- **Albums select like tracks**: a box on each album list row (and a
+  select-all in the header) and in the corner of each tile; Shift-click a box
+  for a range. Clicking the album itself still opens it.
+- **Match albums** ticks a release only when at least 90% of the album's
+  tracks pair with it (was 80%), taking the first candidate that fits that
+  well; Review… opens the track-by-track match for any album.
 - **Fixed: staging during a scan failed with "database is locked".** The scan
   held the database's write lock while it read the next 200 files (seconds on
   a NAS), longer than other writes waited (5 s). It now reads with no lock
