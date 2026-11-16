@@ -29,7 +29,7 @@ import { renderHome } from './home'
 import { openGroupMembership, renderGroups, wireGroups, readGroups } from './groups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
-import { initFilterBar, filterParams, filtersActive, refreshFormats, filtersKey, setFiltersFromKey } from './filterbar'
+import { initFilterBar, filterParams, filtersActive, refreshFormats, refreshGroups, filtersKey, setFiltersFromKey } from './filterbar'
 import { ICON } from './icons'
 import { initGridEdit, gridView, gridCell, gridBeforeRender, gridAfterRender, gridActive, gridCommit, gridConfirmLeave } from './gridedit'
 
@@ -168,7 +168,35 @@ function renderSidebarTabs() {
   document.getElementById('panel-tags')!.hidden    = state.sidebarMode !== 'tags'
   document.getElementById('panel-files')!.hidden   = state.sidebarMode !== 'files'
   document.getElementById('panel-quality')!.hidden = state.sidebarMode !== 'quality'
+  document.getElementById('panel-groups')!.hidden  = state.sidebarMode !== 'groups'
 }
+
+// ─── Groups panel ─────────────────────────────────────────────────────────────
+// Your groups (core/groups.py): tracks in any of them, each one, and those in none.
+const groupListEl = document.getElementById('group-list')!
+
+async function renderGroupsPanel() {
+  let groups, sum
+  try { [groups, sum] = await Promise.all([api.groups.list(), api.groups.summary()]) } catch (e) {
+    groupListEl.innerHTML = `<li class="nav-item">${esc(String(e))}</li>`; return
+  }
+  const row = (id: string, label: string, n: number, cls = '') =>
+    `<li class="nav-item group-item${cls}${(state.selectedGroup ?? '*') === id ? ' active' : ''}" data-group="${esc(id)}">
+       <span class="nav-label">${label}</span><span class="nav-count">${n.toLocaleString()}</span></li>`
+  groupListEl.innerHTML = groups.length
+    ? row('*', 'In any group', sum.any, ' group-all') + groups.map(g => row(g.id, esc(g.name), g.tracks)).join('') + row('-', '<span class="ma-dim">In no group</span>', sum.none, ' group-none-row')
+    : '<li class="nav-item ma-dim group-empty">No groups yet. Make one in Settings → Groups, then put tracks in with Files ▾ → Groups….</li>'
+}
+
+groupListEl.addEventListener('click', async (e) => {
+  const li = (e.target as HTMLElement).closest<HTMLElement>('[data-group]')
+  if (!li) return
+  state.selectedGroup = li.dataset.group === '*' ? null : li.dataset.group!
+  state.selectedIds.clear(); state.offset = 0
+  await renderGroupsPanel()
+  await loadTracks()
+  renderEditor()
+})
 
 // ─── Tags panel ───────────────────────────────────────────────────────────────
 
@@ -2821,7 +2849,11 @@ document.getElementById('lyrics-btn')!.addEventListener('click', () => {
 })
 document.getElementById('lyrics-group-btn')!.addEventListener('click', () => {
   const ids = [...state.selectedIds]
-  if (ids.length) openGroupMembership(ids, refreshAfterBulk)
+  if (ids.length) openGroupMembership(ids, async () => {
+    await refreshAfterBulk()
+    if (state.sidebarMode === 'groups') await renderGroupsPanel()
+    refreshGroups()
+  })
 })
 lyricsSearchBtn.addEventListener('click', () => {
   if (state.selectedIds.size !== 1) { toast('Select one track to search its lyrics', 'info'); return }
@@ -2997,6 +3029,7 @@ function currentViewParams(): Record<string, string | number> {
   if (state.sidebarMode === 'files') {
     return state.selectedDirectory !== null ? { directory: state.selectedDirectory } : {}
   }
+  if (state.sidebarMode === 'groups') return { group: state.selectedGroup ?? '*' }
   if (state.sidebarMode === 'quality') {
     return state.selectedIssue && state.selectedIssue !== 'missing_files'
       ? { issue: state.selectedIssue }
@@ -3250,7 +3283,7 @@ restorePaneWidths()
 document.querySelector('.sidebar-tabs')!.addEventListener('click', async (e) => {
   const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.stab')
   if (!btn?.dataset.mode) return
-  const mode = btn.dataset.mode as 'tags' | 'files' | 'quality'
+  const mode = btn.dataset.mode as 'tags' | 'files' | 'quality' | 'groups'
   if (mode === state.sidebarMode) return
   state.sidebarMode = mode
   updateScanBtns()
@@ -3260,6 +3293,9 @@ document.querySelector('.sidebar-tabs')!.addEventListener('click', async (e) => 
   } else if (mode === 'files') {
     state.tagPath = []
     if (!state.rootNode) await loadTree()
+  } else if (mode === 'groups') {
+    state.tagPath = []; state.selectedDirectory = null; state.selectedGroup = null
+    await renderGroupsPanel()
   } else {
     state.selectedIssue = null
     qualityToolbar.hidden = true
@@ -4613,6 +4649,10 @@ function updateStatusBar() {
     where.push('Files', state.selectedDirectory ? shortPath(state.selectedDirectory) : 'All tracks')
   } else if (state.sidebarMode === 'quality') {
     where.push('Quality', QUALITY_ISSUES.find(i => i.key === state.selectedIssue)?.label ?? 'pick an issue')
+  } else if (state.sidebarMode === 'groups') {
+    where.push('Groups', state.selectedGroup === '-' ? 'In no group' : state.selectedGroup
+      ? groupListEl.querySelector(`[data-group="${CSS.escape(state.selectedGroup)}"] .nav-label`)?.textContent ?? state.selectedGroup
+      : 'In any group')
   } else if (state.tagPath.length) {
     where.push(fieldLabel(state.tagPath[0].field), ...state.tagPath.map(s => s.value || '(none)'))
   } else {
@@ -4661,6 +4701,7 @@ async function goHome() {
 interface View {
   mode: State['sidebarMode']; view: State['viewMode']; offset: number; q: string; qm: State['queryMode']
   path: TagStep[]; dir: string | null; issue: string | null
+  group?: string | null   // the Groups tab's group
   f?: string              // the filter bar (filterbar.ts filtersKey); none when missing
   sel?: boolean           // only the selection ("N selected" clicked)
   depth?: number          // views back to the first one tggr recorded in this tab
@@ -4676,6 +4717,7 @@ function currentView(): View {
     mode: m, view: state.viewMode, offset: state.offset, q: state.query, qm: state.query ? state.queryMode : '',
     path: m === 'tags' ? state.tagPath : [],
     dir: m === 'files' ? state.selectedDirectory : null, issue: m === 'quality' ? state.selectedIssue : null,
+    ...(m === 'groups' && state.selectedGroup ? { group: state.selectedGroup } : {}),
     f: filtersKey(), ...(onHome ? { home: true } : {}), ...(selView ? { sel: true } : {}),
   }
 }
@@ -4733,6 +4775,7 @@ function viewHash(v: View): string {
   if (v.path.length) p.set('path', pathKey(v.path))
   if (v.dir) p.set('dir', v.dir)
   if (v.issue) p.set('issue', v.issue)
+  if (v.group) p.set('group', v.group)
   if (v.f) p.set('f', v.f)
   if (v.sel) p.set('sel', '1')
   return '#' + p.toString()
@@ -4758,12 +4801,12 @@ function parseHash(): View | null {
   if (location.hash === '#home') return { ...HOME_VIEW, home: true }
   const p = new URLSearchParams(location.hash.slice(1))
   const mode = p.get('mode')
-  if (mode !== 'tags' && mode !== 'files' && mode !== 'quality') return null
+  if (mode !== 'tags' && mode !== 'files' && mode !== 'quality' && mode !== 'groups') return null
   return {
     mode, view: p.get('view') === 'albums' ? 'albums' : 'list',
     offset: hashOffset(p), q: p.get('q') ?? '',
     qm: p.get('qm') === 'glob' || p.get('qm') === 'regex' ? p.get('qm') as State['queryMode'] : '',
-    path: hashPath(p), dir: p.get('dir'), issue: p.get('issue'), f: p.get('f') ?? '',
+    path: hashPath(p), dir: p.get('dir'), issue: p.get('issue'), group: p.get('group'), f: p.get('f') ?? '',
   }
 }
 
@@ -4820,7 +4863,7 @@ async function restoreView(v: View) {
     state.query = v.q; searchEl.value = v.q
     if (v.q) { state.queryMode = v.qm; renderSearchMode() }
     state.tagPath = v.path
-    state.selectedDirectory = v.dir; state.selectedIssue = v.issue
+    state.selectedDirectory = v.dir; state.selectedIssue = v.issue; state.selectedGroup = v.group ?? null
     setFiltersFromKey(v.f ?? '')
     // Back out of "Selected only" keeps the selection; any other view starts afresh.
     const keepSel = selView && !v.sel
@@ -4837,6 +4880,8 @@ async function restoreView(v: View) {
       if (!state.rootNode) await loadTree()
       if (v.dir) await revealDir(v.dir)
       renderFilesPanel()
+    } else if (v.mode === 'groups') {
+      await renderGroupsPanel()
     } else {
       showIssueToolbar()
       await renderQualityPanel()
@@ -4878,6 +4923,7 @@ async function startApp() {
     }
   }).catch(() => {})
   refreshFormats()
+  refreshGroups()
   handleMbReturn()
   const settingsLoaded = api.settings.get()
   settingsLoaded.then(s => {

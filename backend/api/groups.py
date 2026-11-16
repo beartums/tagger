@@ -16,6 +16,15 @@ def list_groups():
     return [{**g, "tracks": counts.get(g["id"], 0)} for g in groups.groups()]
 
 
+@router.get("/summary")
+def summary():
+    """Tracks in any group, and in none: the Groups tab's first and last rows."""
+    with db() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+        anyg = conn.execute("SELECT COUNT(DISTINCT track_id) FROM group_members").fetchone()[0]
+    return {"any": anyg, "none": total - anyg}
+
+
 class Members(BaseModel):
     track_ids: list[int]
     group_id: str

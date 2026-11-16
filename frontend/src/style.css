@@ -1872,3 +1872,8 @@ button.scan-status[hidden] { display: none; }
 .sel-chip[hidden] { display: none; }
 .sel-chip .fchip-x { color: var(--bg); }
 .filter-line:has(#sel-chip:not([hidden])) .filter-none { display: none; }
+/* Four tabs: tighter, and each keeps its own space */
+.stab { flex: 1 1 auto; min-width: 0; font-size: 11px; letter-spacing: .02em; padding: 8px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-item.active { background: var(--accent-dim); }
+.group-item.active .nav-label { color: var(--accent); }
+.group-empty { white-space: normal; line-height: 1.5; padding: 10px 12px; }

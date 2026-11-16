@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **A Groups tab** beside Tags, Files and Quality: tracks in any group, each
+  group (with its count), and those in no group.
+- **Groups in the filter bar**: pick one or more (tracks in any of them),
+  combined with the other filters.
 - **The editor opens for several albums too**: album-wide fields, differing
   values locked as for several tracks.
 - **See the selection**: click "N selected" to show only what's selected

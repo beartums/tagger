@@ -641,6 +641,7 @@ export const api = {
 
   groups: {
     list: () => request<(Group & { tracks: number })[]>('GET', '/api/groups'),
+    summary: () => request<{ any: number; none: number }>('GET', '/api/groups/summary'),
     of: (trackIds: number[]) => request<{ total: number; in: Record<string, number> }>('POST', '/api/groups/of', { track_ids: trackIds }),
     setMembers: (trackIds: number[], groupId: string, add: boolean) =>
       request<{ changed: number }>('POST', '/api/groups/members', { track_ids: trackIds, group_id: groupId, add }),

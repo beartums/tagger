@@ -87,7 +87,7 @@ export interface DirNode {
 
 export interface State {
   // sidebar
-  sidebarMode:       'tags' | 'files' | 'quality'
+  sidebarMode:       'tags' | 'files' | 'quality' | 'groups'
   // tags panel
   artists:           Artist[]
   albumsByArtist:    Map<string, Album[]>
@@ -120,6 +120,7 @@ export interface State {
   // quality panel
   qualityIssues:     IssueCount | null
   selectedIssue:     string | null
+  selectedGroup:     string | null   // the Groups tab: a group id, '-' = in none, null = in any
   // pending cover from lookup
   pendingCoverAlbumId: string | null
   // pending MB IDs from lookup result (written on save)
@@ -131,7 +132,7 @@ export interface State {
   sortDir:           'asc' | 'desc'
   // filters
   // The filter bar (filterbar.ts): checks and has-filters AND, formats and qualities OR.
-  filters:           { issues: string[]; formats: string[]; qualities: string[]; has: string[] }
+  filters:           { issues: string[]; formats: string[]; qualities: string[]; has: string[]; groups: string[] }
   // configured music dirs (for source column) and library roots (folder moves)
   musicDirs:         string[]
   libraryRoots:      string[]
@@ -164,12 +165,13 @@ export const state: State = {
   viewMode:          'list',
   qualityIssues:     null,
   selectedIssue:     null,
+  selectedGroup:     null,
   pendingCoverAlbumId: null,
   pendingLookupResult: null,
   coverBust: 0,
   sortKey:           null,
   sortDir:           'asc',
-  filters:           { issues: [], formats: [], qualities: [], has: [] },
+  filters:           { issues: [], formats: [], qualities: [], has: [], groups: [] },
   musicDirs:         [],
   libraryRoots:      [],
   offset:            0,

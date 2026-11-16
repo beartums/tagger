@@ -241,3 +241,14 @@ def test_background_lookup_upgrades_plain_to_synced_only(client, lib, monkeypatc
     assert client.get(f"/api/library/track/{up}").json()["staged"]["tags"]["lyrics"] == SYNCED
     assert client.get(f"/api/library/track/{keep}").json()["staged"] is None       # plain for plain: kept
     assert client.post("/api/lyrics/lookup", json={"track_ids": [keep]}).json()["tracks"] == 0   # recorded
+
+
+def test_group_views_and_filter(client, lib):
+    a, b, c = (_insert(lib / "Shared" / f"{n}.mp3") for n in "abc")
+    client.patch("/api/config", json={"groups": [{"name": "Cast"}, {"name": "Live"}]})
+    client.post("/api/groups/members", json={"track_ids": [a], "group_id": "cast"})
+    client.post("/api/groups/members", json={"track_ids": [a, b], "group_id": "live"})
+    ids = lambda q: sorted(t["id"] for t in client.get(f"/api/library/tracks?{q}").json()["tracks"])
+    assert ids("group=cast") == [a] and ids("group=*") == [a, b] and ids("group=-") == [c]
+    assert ids("in_groups=cast,live") == [a, b] and ids("group=live&in_groups=cast") == [a]
+    assert client.get("/api/groups/summary").json() == {"any": 2, "none": 1}

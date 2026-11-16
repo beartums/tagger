@@ -199,6 +199,8 @@ class View:
         path: Optional[str] = None,
         issues: Optional[str] = None,
         sel: Optional[str] = None,
+        group: Optional[str] = None,
+        in_groups: Optional[str] = None,
         has: Optional[str] = None,
     ):
         self.directory, self.artist, self.album, self.issue = directory, artist, album, issue
@@ -210,6 +212,10 @@ class View:
         self.has = [k for k in (has or "").split(",") if k in _HAS]
         # "Selected only": a selection the page handed over (POST /selection).
         self.sel = _SELECTIONS.get(sel, []) if sel else None    # unknown (a restart): nothing
+        # The Groups tab: one group's tracks, "*" any group's, "-" those in none.
+        self.group = group
+        # The filter bar: in any of these groups.
+        self.in_groups = [g for g in (in_groups or "").split(",") if g]
 
 
 # Selections handed over for a "Selected only" view: token -> track ids. Kept in
@@ -274,6 +280,16 @@ def _track_filters(v: View) -> tuple[str, list, str]:
             with db() as conn:
                 duplicates.refresh(conn)
         clauses.append(_issue_clause(v.issue))
+    if v.group == "*":
+        clauses.append("id IN (SELECT track_id FROM group_members)")
+    elif v.group == "-":
+        clauses.append("id NOT IN (SELECT track_id FROM group_members)")
+    elif v.group:
+        clauses.append("id IN (SELECT track_id FROM group_members WHERE group_id = ?)")
+        params.append(v.group)
+    if v.in_groups:
+        clauses.append(f"id IN (SELECT track_id FROM group_members WHERE group_id IN ({', '.join('?' * len(v.in_groups))}))")
+        params.extend(v.in_groups)
     if v.sel is not None:
         clauses.append("id IN (SELECT value FROM json_each(?))")
         params.append(json.dumps(v.sel))

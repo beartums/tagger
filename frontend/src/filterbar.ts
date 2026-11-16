@@ -6,17 +6,18 @@ import { QUALITY_ISSUES } from './quality'
 import { ICON } from './icons'
 import { esc } from './util'
 
-type Kind = 'issues' | 'formats' | 'qualities' | 'has'
+type Kind = 'issues' | 'formats' | 'qualities' | 'has' | 'groups'
 type Item = { kind: Kind; key: string; label: string; icon: string; group: string }
 
 const GROUP_ICON: Record<string, string> = {
   Tags: ICON.tag, Files: ICON.file, 'Cover art': ICON.image, MusicBrainz: ICON.brain,
-  'CD rips': ICON.album, Quality: ICON.star, Format: ICON.file, Has: ICON.check,
+  'CD rips': ICON.album, Quality: ICON.star, Format: ICON.file, Has: ICON.check, Groups: ICON.group,
 }
 // Quality checks without a group: the tag ones, then the file ones.
 const FILE_CHECKS = new Set(['duplicate_tracks', 'duplicate_albums', 'not_in_layout', 'group_layout_conflict', 'missing_lyrics'])
 
 let formats: string[] = []
+let groups: { id: string; name: string }[] = []
 let onChange = () => {}
 
 function items(): Item[] {
@@ -31,6 +32,7 @@ function items(): Item[] {
   for (const f of formats) out.push({ kind: 'formats', key: f, label: f, icon: ICON.file, group: 'Format' })
   out.push({ kind: 'has', key: 'lyrics', label: 'Has lyrics', icon: ICON.check, group: 'Has' })
   out.push({ kind: 'has', key: 'staged', label: 'Has staged changes', icon: ICON.check, group: 'Has' })
+  for (const g of groups) out.push({ kind: 'groups', key: g.id, label: g.name, icon: ICON.group, group: 'Groups' })
   return out
 }
 
@@ -44,9 +46,10 @@ export function filterParams(p: Record<string, string | number>) {
   if (f.has.length) p.has = f.has.join(',')
   if (f.formats.length) p.format = f.formats.join(',')
   if (f.qualities.length) p.quality = f.qualities.join(',')
+  if (f.groups.length) p.in_groups = f.groups.join(',')        // in any of them
 }
 
-const KINDS: Kind[] = ['issues', 'formats', 'qualities', 'has']
+const KINDS: Kind[] = ['issues', 'formats', 'qualities', 'has', 'groups']
 
 /** The filters for the page address: "issues:a,b;formats:flac" ("" = none). */
 export function filtersKey(): string {
@@ -55,7 +58,7 @@ export function filtersKey(): string {
 
 /** Set the filters from an address's key and redraw the bar (no reload: the caller loads). */
 export function setFiltersFromKey(key: string) {
-  const f = { issues: [] as string[], formats: [] as string[], qualities: [] as string[], has: [] as string[] }
+  const f = { issues: [] as string[], formats: [] as string[], qualities: [] as string[], has: [] as string[], groups: [] as string[] }
   for (const part of key.split(';')) {
     const [k, v] = part.split(':')
     if ((KINDS as string[]).includes(k) && v) f[k as Kind] = v.split(',').filter(Boolean)
@@ -77,7 +80,7 @@ function renderMenu() {
   const groups = new Map<string, Item[]>()
   for (const it of items()) groups.set(it.group, [...(groups.get(it.group) ?? []), it])
   // Three columns: tag and file checks | cover art, MusicBrainz, CD rips | the rest.
-  const cols = [['Tags', 'Files'], ['Cover art', 'MusicBrainz', 'CD rips'], ['Quality', 'Format', 'Has']]
+  const cols = [['Tags', 'Files'], ['Cover art', 'MusicBrainz', 'CD rips'], ['Quality', 'Format', 'Has', 'Groups']]
   menuEl().innerHTML = cols.map(names => `<div class="fm-col">${names.filter(n => groups.has(n)).map(n =>
     `<div class="fm-h">${GROUP_ICON[n]}${esc(n)}</div>` + groups.get(n)!.map(it =>
       `<button type="button" class="fm-i" role="menuitemcheckbox" aria-checked="${isOn(it)}" data-kind="${it.kind}" data-key="${esc(it.key)}">${esc(it.label)}</button>`).join('')
@@ -94,6 +97,7 @@ function renderChips() {
   const on = items().filter(isOn)
   // A filter whose format left the library still shows, so it can be removed.
   for (const f of state.filters.formats) if (!formats.includes(f)) on.push({ kind: 'formats', key: f, label: f, icon: ICON.file, group: 'Format' })
+  for (const g of state.filters.groups) if (!groups.some(x => x.id === g)) on.push({ kind: 'groups', key: g, label: g, icon: ICON.group, group: 'Groups' })
   const chips = document.getElementById('filter-chips')!
   chips.innerHTML = on.length ? on.map(it =>
     `<span class="fchip" title="${esc(it.group)}: ${esc(it.label)}">${it.icon}${esc(it.label)}<button type="button" class="fchip-x" data-kind="${it.kind}" data-key="${esc(it.key)}" aria-label="Remove filter ${esc(it.label)}">✕</button></span>`).join('')
@@ -106,7 +110,13 @@ function setOpen(open: boolean) {
   menuEl().hidden = !open
   btnEl().setAttribute('aria-expanded', String(open))
   btnEl().classList.toggle('open', open)
-  if (open) renderMenu()
+  if (open) { renderMenu(); refreshGroups().then(() => { if (!menuEl().hidden) renderMenu() }) }
+}
+
+/** The groups the menu offers (Settings → Groups); fetched when it opens. */
+export async function refreshGroups() {
+  try { groups = (await api.groups.list()).map(g => ({ id: g.id, name: g.name })) } catch { return }
+  renderChips()
 }
 
 export async function refreshFormats() {
@@ -127,7 +137,7 @@ export function initFilterBar(changed: () => void) {
     if (b) toggle(b.dataset.kind as Kind, b.dataset.key!)
   })
   document.getElementById('filter-clear')!.addEventListener('click', () => {
-    state.filters = { issues: [], formats: [], qualities: [], has: [] }
+    state.filters = { issues: [], formats: [], qualities: [], has: [], groups: [] }
     renderChips(); syncMenu(); onChange()
   })
   document.addEventListener('click', e => {
