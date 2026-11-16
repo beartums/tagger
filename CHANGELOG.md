@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **A landing page.** The logo (and a visit without an address) opens it: the
+  counts, what's waiting (staged changes, running jobs, Quality checks with
+  findings), libraries, recently added albums and recent changes, each a way
+  in; plus the version and how long since it was deployed.
+- **Backup by parts**: Data (database + trash), Settings, Interface and
+  Environment (a `tggr.env` of the `TGGR_*` settings; secrets only when asked).
+  Restore takes the parts you pick; an environment file is shown to set on the
+  container.
+- **About** adds how long ago it was deployed, the data folder and sizes,
+  changelog / releases / issues links, the license and the upstream credit.
 - **Groups are yours.** There are none until you make one (Settings → Groups),
   and a track can be in several (**Files ▾ → Groups…**, which also makes a new
   one). Each group can have a **Layout**, which wins over the library and

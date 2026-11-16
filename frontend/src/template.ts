@@ -4,7 +4,7 @@ import { ICON } from './icons'
 export const APP_HTML = `
   <header class="topbar">
     <button id="sidebar-toggle" class="btn btn-ghost btn-icon" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
-    <a id="logo" class="logo" href="#" title="Home: all tracks">${LOGO_MARK}tggr</a>
+    <a id="logo" class="logo" href="#" title="Home">${LOGO_MARK}tggr</a>
     <div class="search-wrap">
       <input id="search" class="search-input" type="search" placeholder="Search tracks…" aria-label="Search tracks" autocomplete="off" />
       <button type="button" class="search-mode" data-qmode="glob" aria-pressed="false" title="Glob: * any text, ? one character, [abc] one of; matches a whole tag (love* = starts with love); which tags: Settings → Search. Click again for plain search">*</button>
@@ -309,15 +309,30 @@ export const APP_HTML = `
       <div class="settings-sect" data-sect="backup" hidden>
       <div class="settings-section">
         <div class="settings-section-title">Back up</div>
-        <p class="settings-hint">One zip with everything tggr keeps: the library database (tracks, staged changes, history, groups, quality results), these settings, the trash that Undo restores from, and this browser's interface preferences (columns, widths, page size, views). API keys stay encrypted: a restore needs the same <code>TGGR_SECRET_KEY</code>.</p>
+        <p class="settings-hint">One zip with the parts you pick (struck: left out).</p>
+        <div class="tog-row backup-parts" id="backup-parts">
+          <button type="button" class="tog" data-part="data" aria-pressed="true" title="The library database (tracks, staged changes, history, groups, Quality results) and the trash Undo restores from">Data</button>
+          <button type="button" class="tog" data-part="settings" aria-pressed="true" title="Everything in Settings. API keys stay encrypted: restoring needs the same TGGR_SECRET_KEY">Settings</button>
+          <button type="button" class="tog" data-part="prefs" aria-pressed="true" title="This browser's columns, widths, page size and views">Interface</button>
+          <button type="button" class="tog" data-part="environment" aria-pressed="false" title="tggr.env: the TGGR_* settings the server runs with, to set on a new container">Environment</button>
+        </div>
+        <p class="settings-hint" id="backup-secrets-row" hidden><button type="button" class="tog" id="backup-secrets" aria-pressed="false">Include secrets</button>
+          Puts <code>TGGR_SECRET_KEY</code> (and a login password, if set) in the file as plain text: anyone with the file can read your API keys. Keep it somewhere safe.</p>
         <button id="backup-download-btn" class="btn btn-sm">Download backup</button>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Restore</div>
-        <p class="settings-hint">Replaces the database, settings, trash and interface preferences with a backup's. Use it to move tggr to a new config volume: back up, start tggr on the new volume, restore. Stop any running scan first.</p>
+        <p class="settings-hint">Replaces the parts you pick (struck: left as they are) with the backup's, when it has them. To move tggr to a new config volume: back up, start tggr on the new volume, restore. Restoring Data needs no scan running. An Environment file is shown, to set on the container yourself.</p>
+        <div class="tog-row backup-parts" id="restore-parts">
+          <button type="button" class="tog" data-part="data" aria-pressed="true">Data</button>
+          <button type="button" class="tog" data-part="settings" aria-pressed="true">Settings</button>
+          <button type="button" class="tog" data-part="prefs" aria-pressed="true">Interface</button>
+          <button type="button" class="tog" data-part="environment" aria-pressed="true">Environment</button>
+        </div>
         <input id="backup-file" type="file" accept=".zip,application/zip" hidden>
         <button id="backup-restore-btn" class="btn btn-sm btn-danger">Restore from a backup…</button>
         <div id="backup-status" class="acoustid-status"></div>
+        <pre id="restore-env" class="restore-env" hidden></pre>
       </div>
       </div>
     </div>
@@ -365,6 +380,7 @@ export const APP_HTML = `
          title="Drag to resize · double-click to reset"></div>
 
     <main class="track-pane">
+      <div id="home-pane" class="home-pane" hidden></div>
       <div class="track-pane-toolbar">
         <div class="toolbar-line">
           <span id="track-count" class="track-count"></span>

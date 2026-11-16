@@ -33,6 +33,7 @@ from api.spectrogram import router as spectrogram_router
 from api.staged import router as staged_router
 from api.backup import router as backup_router
 from api.groups import router as groups_router
+from api.home import router as home_router
 
 
 @asynccontextmanager
@@ -96,6 +97,13 @@ def health():
 _STARTED = time.time()
 
 
+def _size(p) -> int:
+    try:
+        return p.stat().st_size if p.is_file() else 0
+    except OSError:
+        return 0
+
+
 @app.get("/api/about")
 def about():
     """Version, build and runtime facts for the About page."""
@@ -118,6 +126,11 @@ def about():
         "tools": {t: bool(shutil.which(t)) for t in ("ffmpeg", "rsgain", "fpcalc")},
         "tracks": tracks, "staged": staged, "scan_dirs": get_scan_dirs(),
         "source": "https://github.com/beartums/tggr",
+        "license": "MIT",
+        "upstream": "https://github.com/rnhinson/tagger",
+        "config_dir": str(settings.config_dir),
+        "db_bytes": _size(settings.db_path) + _size(settings.db_path.with_name(settings.db_path.name + "-wal")),
+        "trash_bytes": sum(_size(f) for f in (settings.config_dir / "trash").glob("*")),
     }
 
 
@@ -141,6 +154,7 @@ app.include_router(spectrogram_router, prefix="/api/spectrogram", tags=["spectro
 app.include_router(staged_router, prefix="/api/staged", tags=["staged"])
 app.include_router(backup_router, prefix="/api/backup", tags=["backup"])
 app.include_router(groups_router, prefix="/api/groups", tags=["groups"])
+app.include_router(home_router, prefix="/api/home", tags=["home"])
 
 # Serve built frontend assets (production only — dev uses Vite's server)
 _static = os.path.join(os.path.dirname(__file__), "static")

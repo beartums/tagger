@@ -25,6 +25,7 @@ import { openDuplicates } from './duplicates'
 import { openLyricsSearch } from './lyricssearch'
 import { openFindReplace } from './findreplace'
 import { shapeSettings, setPill, snapshotSettings, changedSections, sectionName } from './settingslayout'
+import { renderHome } from './home'
 import { openGroupMembership, renderGroups, wireGroups, readGroups } from './groups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
@@ -2197,6 +2198,7 @@ async function expandDirNode(node: DirNode) {
 }
 
 async function loadTracks() {
+  leaveHome()
   gridCommit()
   recordView()
   trackLoading.hidden = false
@@ -4182,7 +4184,10 @@ document.getElementById('backup-download-btn')!.addEventListener('click', async 
   const btn = e.currentTarget as HTMLButtonElement
   btn.disabled = true; btn.textContent = 'Preparing…'
   try {
-    const { blob, name } = await api.backup.download(exportPrefs())
+    const parts = pressedParts('backup-parts')
+    if (!parts.length) { toast('Pick at least one part to back up', 'info'); return }
+    const secrets = document.getElementById('backup-secrets')!.getAttribute('aria-pressed') === 'true'
+    const { blob, name } = await api.backup.download(exportPrefs(), parts, secrets)
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob); a.download = name
     document.body.appendChild(a); a.click(); a.remove()
@@ -4193,19 +4198,39 @@ document.getElementById('backup-download-btn')!.addEventListener('click', async 
     btn.disabled = false; btn.textContent = 'Download backup'
   }
 })
+// Parts: pressed = in. Environment's "Include secrets" shows only with it.
+const pressedParts = (id: string) => [...document.querySelectorAll<HTMLElement>(`#${id} [data-part][aria-pressed="true"]`)].map(b => b.dataset.part!)
+for (const id of ['backup-parts', 'restore-parts', 'backup-secrets-row']) {
+  document.getElementById(id)!.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('.tog')
+    if (!b) return
+    b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'))
+    document.getElementById('backup-secrets-row')!.hidden = !pressedParts('backup-parts').includes('environment')
+  })
+}
 const backupFile = document.getElementById('backup-file') as HTMLInputElement
 document.getElementById('backup-restore-btn')!.addEventListener('click', () => { backupFile.value = ''; backupFile.click() })
 backupFile.addEventListener('change', async () => {
   const f = backupFile.files?.[0]
   if (!f) return
-  if (!confirm(`Replace tggr's database, settings, trash and interface preferences with ${f.name}? Everything since that backup is lost.`)) return
+  const parts = pressedParts('restore-parts')
+  const names: Record<string, string> = { data: 'database and trash', settings: 'settings', prefs: 'interface preferences' }
+  const replacing = parts.filter(p => p in names).map(p => names[p])
+  if (replacing.length && !confirm(`Replace tggr's ${replacing.join(', ')} with ${f.name}'s? What changed since that backup is lost.`)) return
   const status = document.getElementById('backup-status')!
+  const envEl = document.getElementById('restore-env')!
+  envEl.hidden = true
   status.textContent = 'Restoring…'
   try {
-    const r = await api.backup.restore(f)
-    importPrefs(r.prefs)
-    status.textContent = `Restored ${r.tracks.toLocaleString()} tracks from ${r.created ?? 'the backup'}. Reloading…`
-    setTimeout(() => location.reload(), 1200)
+    const r = await api.backup.restore(f, parts)
+    if (r.prefs) importPrefs(r.prefs)
+    if (r.environment) { envEl.textContent = r.environment; envEl.hidden = false }
+    const done = r.restored.map(p => names[p] ?? p)
+    status.textContent = done.length
+      ? `Restored ${done.join(', ')} from ${r.created ?? 'the backup'}${r.restored.includes('data') ? ` (${r.tracks.toLocaleString()} tracks)` : ''}.`
+        + (r.environment ? ' Set the environment below on the container yourself.' : ' Reloading…')
+      : 'Nothing restored: the environment is below, to set on the container.'
+    if (done.length && !r.environment) setTimeout(() => location.reload(), 1500)
   } catch (err) {
     status.textContent = ''
     toast(`Restore failed: ${errText(err)}`, 'error')
@@ -4548,7 +4573,7 @@ statusSel.addEventListener('click', (e) => {
 document.getElementById('logo')!.addEventListener('click', async (e) => {
   e.preventDefault()
   if (settingsModal.classList.contains('open')) { leaveSettings(); return }
-  await goHome()
+  showHome()
 })
 
 /** All tracks, nothing narrowing them. */
@@ -4566,6 +4591,7 @@ interface View {
   path: TagStep[]; dir: string | null; issue: string | null
   f?: string              // the filter bar (filterbar.ts filtersKey); none when missing
   depth?: number          // views back to the first one tggr recorded in this tab
+  home?: boolean          // the landing page (#home)
 }
 
 let restoring = false
@@ -4577,11 +4603,55 @@ function currentView(): View {
     mode: m, view: state.viewMode, offset: state.offset, q: state.query, qm: state.query ? state.queryMode : '',
     path: m === 'tags' ? state.tagPath : [],
     dir: m === 'files' ? state.selectedDirectory : null, issue: m === 'quality' ? state.selectedIssue : null,
-    f: filtersKey(),
+    f: filtersKey(), ...(onHome ? { home: true } : {}),
   }
 }
 
+// ─── Landing page (#home, home.ts) ───────────────────────────────────────────
+
+const HOME_VIEW: View = { mode: 'tags', view: 'list', offset: 0, q: '', qm: '', path: [], dir: null, issue: null }
+let onHome = false
+const trackPaneEl = document.querySelector<HTMLElement>('main.track-pane')!
+const homePaneEl = document.getElementById('home-pane')!
+
+/** Show the landing page; record=true makes it a history step (the logo). */
+function showHome(record = true) {
+  onHome = true
+  trackPaneEl.classList.add('on-home')
+  homePaneEl.hidden = false
+  state.selectedIds.clear(); albumPicks.clear()
+  renderEditor()
+  if (record) {
+    const prev = history.state as View | null
+    if (location.hash !== '#home') history.pushState({ ...currentView(), depth: (prev?.depth ?? 0) + 1 }, '', '#home')
+  }
+  renderHome(homePaneEl, {
+    allTracks: () => { goHome() },
+    albums: async () => { await restoreView({ ...HOME_VIEW, view: 'albums' }); recordView() },
+    library: async (path) => { await restoreView({ ...HOME_VIEW, mode: 'files', dir: path }); recordView() },
+    album: async (dir) => { await restoreView({ ...HOME_VIEW, mode: 'files', dir }); recordView() },
+    quality: async (key) => { await restoreView({ ...HOME_VIEW, mode: 'quality', issue: key || null }); recordView() },
+    review: () => reviewBtn.click(),
+    history: () => openHistory(refreshAfterWrite),
+    scanAll: () => scanBtn.click(),
+    settings: async (section) => {
+      await openSettings()
+      if (section === 'background' || section === 'about') showSettingsTab(section)
+      else { showSettingsTab('settings'); if (section) showSettingsSection(section) }
+    },
+    about: async () => { await openSettings(); showSettingsTab('about') },
+  })
+}
+
+function leaveHome() {
+  if (!onHome) return
+  onHome = false
+  trackPaneEl.classList.remove('on-home')
+  homePaneEl.hidden = true
+}
+
 function viewHash(v: View): string {
+  if (v.home) return '#home'
   const p = new URLSearchParams({ mode: v.mode })
   if (v.view !== 'list') p.set('view', v.view)
   if (v.offset) p.set('row', String(v.offset + 1))
@@ -4611,6 +4681,7 @@ function hashPath(p: URLSearchParams): TagStep[] {
 }
 
 function parseHash(): View | null {
+  if (location.hash === '#home') return { ...HOME_VIEW, home: true }
   const p = new URLSearchParams(location.hash.slice(1))
   const mode = p.get('mode')
   if (mode !== 'tags' && mode !== 'files' && mode !== 'quality') return null
@@ -4668,6 +4739,7 @@ async function revealDir(dir: string) {
 }
 
 async function restoreView(v: View) {
+  if (v.home) { showHome(false); return }
   restoring = true
   try {
     state.sidebarMode = v.mode; state.viewMode = v.view; state.offset = v.offset
@@ -4747,7 +4819,7 @@ async function startApp() {
   await loadLibrary()
   const v = parseHash()
   if (v) await restoreView(v)
-  else await loadTracks()
+  else showHome(false)                 // a visit without an address starts on the landing page
   history.replaceState(currentView(), '', viewHash(currentView()))
 }
 
