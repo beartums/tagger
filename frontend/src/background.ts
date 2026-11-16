@@ -1,5 +1,6 @@
 // Settings page panes: Background (the running scan, lyrics lookup and fingerprinting with
 // progress + Cancel, recent jobs) and About (version, build, deployed, environment).
+import { ago } from './home'
 import { api, ScanJob } from './api'
 import { toast } from './toast'
 import { esc } from './util'
@@ -127,6 +128,8 @@ export function wireBackground(el: HTMLElement, onCancel: () => void) {
   })
 }
 
+const mb = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${(n / 1e6).toFixed(1)} MB`
+
 export async function renderAbout(el: HTMLElement) {
   try {
     const a = await api.about()
@@ -141,12 +144,16 @@ export async function renderAbout(el: HTMLElement) {
           ${row('Image', a.image ? esc(a.image) : '<span class="ma-dim">not stamped (local build)</span>')}
           ${row('Commit', a.commit ? `<a href="${esc(a.source)}/commit/${esc(a.commit)}" target="_blank" rel="noopener">${esc(a.commit.slice(0, 7))}</a>` : '<span class="ma-dim">—</span>')}
           ${row('Built', esc(built))}
-          ${row('Deployed (running since)', esc(new Date(a.started * 1000).toLocaleString()))}
+          ${row('Deployed', `${esc(ago(a.started))} <span class="ma-dim">(${esc(new Date(a.started * 1000).toLocaleString())})</span>`)}
           ${row('Library', `${a.tracks.toLocaleString()} tracks · ${a.staged.toLocaleString()} with staged changes`)}
           ${row('Scans', a.scan_dirs.map(d => esc(shortPath(d) || d)).join('<br>') || '—')}
           ${row('Tools', Object.entries(a.tools).map(([t, ok]) => `${ok ? '✓' : '✗'} ${esc(t)}`).join(' · '))}
           ${row('Runtime', `Python ${esc(a.python)} · mutagen ${esc(a.mutagen)}`)}
+          ${row('Data', `${esc(a.config_dir)} · database ${mb(a.db_bytes)} · trash ${mb(a.trash_bytes)}`)}
           ${row('Source', `<a href="${esc(a.source)}" target="_blank" rel="noopener">${esc(a.source.replace('https://', ''))}</a>`)}
+          ${row('Changes', `<a href="${esc(a.source)}/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a> · <a href="${esc(a.source)}/releases" target="_blank" rel="noopener">Releases</a> · <a href="${esc(a.source)}/issues" target="_blank" rel="noopener">Report a problem</a>`)}
+          ${row('License', `<a href="${esc(a.source)}/blob/main/LICENSE" target="_blank" rel="noopener">${esc(a.license)}</a>`)}
+          ${row('Based on', `<a href="${esc(a.upstream)}" target="_blank" rel="noopener">${esc(a.upstream.replace('https://github.com/', ''))}</a> (MIT), developed separately since 2026-09`)}
         </table>
       </div>`
   } catch (e) { el.innerHTML = `<div class="review-error">${esc(errText(e))}</div>` }

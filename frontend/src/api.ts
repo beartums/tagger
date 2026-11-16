@@ -251,6 +251,7 @@ export interface About {
   version: string; image: string | null; commit: string | null; built: string | null; started: number
   python: string; mutagen: string; tools: Record<string, boolean>; tracks: number; staged: number
   scan_dirs: string[]; source: string
+  license: string; upstream: string; config_dir: string; db_bytes: number; trash_bytes: number
 }
 
 export interface TagUpdate {
@@ -452,18 +453,19 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 export const api = {
   backup: {
     /** The backup zip (with this browser's interface preferences). */
-    download: async (prefs: Record<string, string>): Promise<{ blob: Blob; name: string }> => {
-      const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefs }) })
+    download: async (prefs: Record<string, string>, parts: string[], secrets: boolean): Promise<{ blob: Blob; name: string }> => {
+      const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefs, parts, secrets }) })
       if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
       const name = /filename="?([^";]+)"?/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'tggr-backup.zip'
       return { blob: await res.blob(), name }
     },
-    restore: async (file: File) => {
-      const fd = new FormData(); fd.append('file', file)
+    restore: async (file: File, parts: string[]) => {
+      const fd = new FormData(); fd.append('file', file); fd.append('parts', parts.join(','))
       const res = await fetch('/api/backup/restore', { method: 'POST', body: fd })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.detail ?? `${res.status}`)
-      return body as { ok: boolean; tracks: number; created: string | null; version: string | null; prefs: Record<string, string> }
+      return body as { ok: boolean; restored: string[]; tracks: number; created: string | null; version: string | null
+        prefs: Record<string, string> | null; environment: string | null }
     },
   },
 
@@ -604,6 +606,14 @@ export const api = {
   },
 
   about: () => request<About>('GET', '/api/about'),
+  home: () => request<{
+    tracks: number; albums: number; staged: number
+    libraries: { path: string; name: string; active: boolean; writable: boolean; tracks: number }[]
+    quality: { key: string; tracks: number; albums: number; at: number }[]
+    recent_albums: { directory: string; album: string | null; artist: string | null; tracks: number; cover_track_id: number }[]
+    changes: ChangeLogEntry[]
+    jobs: { id: string; kind: string; status: string; scanned: number; total: number }[]
+  }>('GET', '/api/home'),
 
   fs: {
     tree: (path?: string) =>

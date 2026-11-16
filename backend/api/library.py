@@ -295,6 +295,8 @@ def _track_filters(v: View) -> tuple[str, list, str]:
 
 
 ISSUE_KEYS = [*_ISSUE_CLAUSES, "missing_files"]
+# For the landing page's "to do" list (the UI has the same labels, frontend quality.ts).
+QUALITY_ISSUE_LABELS = set(ISSUE_KEYS)
 
 # The per-track checks behind the quality dot (frontend quality.ts DOT_CHECKS, same keys).
 # Albums get, per check, how many of their tracks fail it -- the Quality panel's own SQL.
