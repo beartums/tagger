@@ -385,7 +385,7 @@ export const APP_HTML = `
         <div class="toolbar-line">
           <span id="track-count" class="track-count"></span>
           <span id="selection-bar" class="selection-bar" hidden>
-            <span id="selection-count" class="selection-count"></span>
+            <button type="button" id="selection-count" class="selection-count" title="Show only what's selected"></button>
             <button id="select-view-btn" class="btn btn-link btn-sm" hidden></button>
             <button id="clear-selection" class="btn btn-ghost btn-sm" title="Deselect" aria-label="Deselect">✕</button>
           </span>
@@ -432,12 +432,14 @@ export const APP_HTML = `
             <button id="col-picker-btn" class="ib-solo" type="button" title="Columns" aria-label="Columns">${ICON.cols}</button>
             <div id="col-picker" class="col-picker" hidden></div>
           </div>
+          <button id="editor-toggle" class="ib-solo" type="button" aria-pressed="true" hidden>${ICON.panel}</button>
         </div>
         <div class="toolbar-line filter-line">
           <div class="filter-wrap">
             <button id="filter-btn" class="ib-solo" type="button" title="Add a filter" aria-label="Add a filter" aria-haspopup="menu" aria-expanded="false">${ICON.funnel}</button>
             <div id="filter-menu" class="filter-menu" role="menu" hidden></div>
           </div>
+          <span id="sel-chip" class="fchip sel-chip" hidden>Selected only<button type="button" class="fchip-x" id="sel-chip-x" aria-label="Show everything again">✕</button></span>
           <span id="filter-chips" class="filter-chips"><span class="filter-none">No filters</span></span>
           <button id="filter-clear" class="btn btn-link btn-sm" type="button" hidden>Clear</button>
         </div>

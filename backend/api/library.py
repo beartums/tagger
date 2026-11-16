@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import uuid
+from collections import OrderedDict
 import os
 import re
 import shutil
@@ -196,6 +198,7 @@ class View:
         sort_dir: str = "asc",
         path: Optional[str] = None,
         issues: Optional[str] = None,
+        sel: Optional[str] = None,
         has: Optional[str] = None,
     ):
         self.directory, self.artist, self.album, self.issue = directory, artist, album, issue
@@ -205,6 +208,18 @@ class View:
         # The filter bar: comma-separated, each issue/has ANDed, formats and qualities ORed.
         self.issues = [k for k in (issues or "").split(",") if k in _ISSUE_CLAUSES]
         self.has = [k for k in (has or "").split(",") if k in _HAS]
+        # "Selected only": a selection the page handed over (POST /selection).
+        self.sel = _SELECTIONS.get(sel, []) if sel else None    # unknown (a restart): nothing
+
+
+# Selections handed over for a "Selected only" view: token -> track ids. Kept in
+# memory (newest few): a restart just ends the view.
+_SELECTIONS: "OrderedDict[str, list[int]]" = OrderedDict()
+_SELECTIONS_KEPT = 20
+
+
+class SelectionIds(BaseModel):
+    ids: list[int]
 
 
 # "Has" filters.
@@ -259,6 +274,9 @@ def _track_filters(v: View) -> tuple[str, list, str]:
             with db() as conn:
                 duplicates.refresh(conn)
         clauses.append(_issue_clause(v.issue))
+    if v.sel is not None:
+        clauses.append("id IN (SELECT value FROM json_each(?))")
+        params.append(json.dumps(v.sel))
     for key in v.issues:
         if key.startswith("duplicate_"):
             with db() as conn:
@@ -504,6 +522,16 @@ def empty_trash():
             f.unlink()
             removed += 1
     return {"removed": removed, "bytes": freed}
+
+
+@router.post("/selection")
+def hand_over_selection(req: SelectionIds):
+    """Keep a selection for a "Selected only" view (?sel=token)."""
+    token = uuid.uuid4().hex[:12]
+    _SELECTIONS[token] = list(dict.fromkeys(req.ids))
+    while len(_SELECTIONS) > _SELECTIONS_KEPT:
+        _SELECTIONS.popitem(last=False)
+    return {"token": token}
 
 
 @router.get("/history")

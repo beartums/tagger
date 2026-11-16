@@ -511,6 +511,7 @@ export const api = {
     },
     albums: (artist?: string) =>
       request<Album[]>('GET', `/api/library/albums${artist ? '?artist=' + encodeURIComponent(artist) : ''}`),
+    selection: (ids: number[]) => request<{ token: string }>('POST', '/api/library/selection', { ids }),
     exportM3u: (ids: number[], params: Record<string, string | number> = {}) => {
       const qs = new URLSearchParams(params as Record<string, string>).toString()
       return request<{ m3u: string }>('POST', `/api/library/export-m3u${qs ? '?' + qs : ''}`, ids).then(r => r.m3u)
