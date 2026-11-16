@@ -815,6 +815,7 @@ function getSortedFilteredTracks(): Track[] {
 function viewParams(): Record<string, string | number> {
   const p = currentViewParams()
   filterParams(p)
+  if (selView && selToken) p.sel = selToken
   if (state.sortKey) { p.sort = state.sortKey; p.sort_dir = state.sortDir }
   return p
 }
@@ -1091,6 +1092,57 @@ function renderTracks() {
   updateBulkBar()
 }
 
+// ─── "Selected only" ─────────────────────────────────────────────────────────
+// Clicking "N selected" narrows the view to the selection (the server keeps
+// the ids under a token: POST /api/library/selection). Unticking removes rows
+// as you go; when none are left the emptied-view rule goes back.
+// The list is the selection as it was when opened (selSnapshot): clicking a row
+// to look at it doesn't shrink it; unticking a box does.
+let selView = false
+let selToken = ''
+let selTokenKey = ''
+let selSnapshot = new Set<number>()
+const selKey = () => [...selSnapshot].sort((a, b) => a - b).join(',')
+
+async function syncSelToken() {
+  const key = selKey()
+  if (key === selTokenKey) return false
+  selTokenKey = key
+  selToken = (await api.library.selection([...selSnapshot])).token
+  return true
+}
+
+function renderSelChip() {
+  document.getElementById('sel-chip')!.hidden = !selView
+  document.getElementById('selection-count')!.classList.toggle('active', selView)
+}
+
+async function showSelected() {
+  if (selView || !state.selectedIds.size) return
+  selView = true
+  selSnapshot = new Set(state.selectedIds)
+  await syncSelToken()
+  renderSelChip()
+  state.offset = 0
+  await loadTracks()
+}
+
+document.getElementById('selection-count')!.addEventListener('click', () => {
+  if (selView) history.back()
+  else showSelected()
+})
+document.getElementById('sel-chip-x')!.addEventListener('click', () => history.back())
+
+// Ticking or unticking while showing the selection: follow it.
+const followSelection = debounce(async () => {
+  if (!selView) return
+  const gone = [...selSnapshot].filter(i => !state.selectedIds.has(i))
+  // A plain click on one row leaves just it selected: that's looking, not removing.
+  if (!gone.length || (state.selectedIds.size === 1 && gone.length > 1)) return
+  gone.forEach(i => selSnapshot.delete(i))
+  if (await syncSelToken()) await loadTracks()
+}, 250)
+
 /** The top line's count: albums in the album view, else tracks. */
 function setTopCount() {
   const albums = state.viewMode === 'albums'
@@ -1103,6 +1155,7 @@ const albumSelection = () => state.viewMode === 'albums' && albumPicks.size > 0
 
 function updateBulkBar() {
   const n = state.selectedIds.size
+  if (selView) followSelection()
   // A read-only track is only ever selected alone, to view: no bulk actions.
   bulkActions.hidden = n === 0 || state.tracks.some(t => t.read_only && state.selectedIds.has(t.id))
   selectionBar.hidden = n === 0
@@ -1239,6 +1292,24 @@ function clearEditorDirty() {
 window.addEventListener('beforeunload', (e) => { if (editorDirty()) { e.preventDefault(); e.returnValue = '' } })
 const sameSet = (a: Set<number>, b: Set<number>) => a.size === b.size && [...a].every(x => b.has(x))
 
+// The editor can be closed while something is selected (the panel icon on the
+// top line); remembered per browser.
+let editorClosed = (() => { try { return localStorage.getItem('tggr.editorClosed') === '1' } catch { return false } })()
+const editorToggle = document.getElementById('editor-toggle') as HTMLButtonElement
+function renderEditorToggle() {
+  editorToggle.hidden = state.selectedIds.size === 0
+  editorToggle.setAttribute('aria-pressed', String(!editorClosed))
+  editorToggle.title = editorClosed ? 'Show the tag editor' : 'Hide the tag editor'
+  editorToggle.setAttribute('aria-label', editorToggle.title)
+}
+editorToggle.addEventListener('click', () => {
+  if (!editorClosed && editorDirty() && !confirm('Discard your unsaved changes in the tag editor?')) return
+  if (!editorClosed) clearEditorDirty()
+  editorClosed = !editorClosed
+  try { localStorage.setItem('tggr.editorClosed', editorClosed ? '1' : '0') } catch { /* storage blocked */ }
+  renderEditor()
+})
+
 /**
  * Every selection change ends here. With unsaved editor changes for other tracks,
  * ask first; Cancel puts the selection back. Same tracks: keep the typed values.
@@ -1254,7 +1325,8 @@ function renderEditor() {
     } else clearEditorDirty()
   }
   // Several albums: no editor; the selection's actions do the work.
-  if (state.selectedIds.size === 0 || (albumSelection() && albumPicks.size > 1)) { tagEditor.hidden = true; editorResizer.hidden = true; lookupPanel.hidden = true; state.pendingCoverAlbumId = null; state.pendingLookupResult = null; playerEl.pause(); playerEl.hidden = true; editorRenamePreviewEl.hidden = true; return }
+  renderEditorToggle()
+  if (state.selectedIds.size === 0 || editorClosed) { tagEditor.hidden = true; editorResizer.hidden = true; lookupPanel.hidden = true; state.pendingCoverAlbumId = null; state.pendingLookupResult = null; playerEl.pause(); playerEl.hidden = true; editorRenamePreviewEl.hidden = true; return }
   tagEditor.hidden = false
   editorResizer.hidden = false
   // Only show lookup/infer for single selection; hide panel when selection changes
@@ -1265,7 +1337,7 @@ function renderEditor() {
   if (state.selectedIds.size !== 1) lookupPanel.hidden = true
   const sel = state.tracks.filter(t => state.selectedIds.has(t.id))
   const n = state.selectedIds.size
-  editorTitle.textContent = albumSelection() ? (sel[0]?.album || '1 album')
+  editorTitle.textContent = albumSelection() ? (albumPicks.size > 1 ? `${albumPicks.size.toLocaleString()} albums` : sel[0]?.album || '1 album')
     : n === 1 && sel.length === 1 ? (sel[0].title || sel[0].filename) : `${n.toLocaleString()} tracks`
   renderEditorFile(n === 1 && sel.length === 1 ? sel[0] : null)
   if (!keep) fillEditorForm()
@@ -4590,6 +4662,7 @@ interface View {
   mode: State['sidebarMode']; view: State['viewMode']; offset: number; q: string; qm: State['queryMode']
   path: TagStep[]; dir: string | null; issue: string | null
   f?: string              // the filter bar (filterbar.ts filtersKey); none when missing
+  sel?: boolean           // only the selection ("N selected" clicked)
   depth?: number          // views back to the first one tggr recorded in this tab
   home?: boolean          // the landing page (#home)
 }
@@ -4603,7 +4676,7 @@ function currentView(): View {
     mode: m, view: state.viewMode, offset: state.offset, q: state.query, qm: state.query ? state.queryMode : '',
     path: m === 'tags' ? state.tagPath : [],
     dir: m === 'files' ? state.selectedDirectory : null, issue: m === 'quality' ? state.selectedIssue : null,
-    f: filtersKey(), ...(onHome ? { home: true } : {}),
+    f: filtersKey(), ...(onHome ? { home: true } : {}), ...(selView ? { sel: true } : {}),
   }
 }
 
@@ -4661,6 +4734,7 @@ function viewHash(v: View): string {
   if (v.dir) p.set('dir', v.dir)
   if (v.issue) p.set('issue', v.issue)
   if (v.f) p.set('f', v.f)
+  if (v.sel) p.set('sel', '1')
   return '#' + p.toString()
 }
 
@@ -4748,7 +4822,13 @@ async function restoreView(v: View) {
     state.tagPath = v.path
     state.selectedDirectory = v.dir; state.selectedIssue = v.issue
     setFiltersFromKey(v.f ?? '')
-    state.selectedIds.clear(); albumPicks.clear()
+    // Back out of "Selected only" keeps the selection; any other view starts afresh.
+    const keepSel = selView && !v.sel
+    selView = !!v.sel && (selSnapshot.size > 0 || state.selectedIds.size > 0)
+    if (selView && !selSnapshot.size) selSnapshot = new Set(state.selectedIds)
+    if (!selView) { selToken = ''; selTokenKey = ''; selSnapshot = new Set() }
+    renderSelChip()
+    if (!keepSel && !selView) { state.selectedIds.clear(); albumPicks.clear() }
     if (v.mode === 'tags') {
       await openPath(v.path)
       await Promise.all([...state.expandedTags].filter(f => !state.tagValues.has(f)).map(loadTagValues))

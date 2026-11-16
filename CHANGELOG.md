@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The editor opens for several albums too**: album-wide fields, differing
+  values locked as for several tracks.
+- **See the selection**: click "N selected" to show only what's selected
+  (a *Selected only* chip; ✕ or Back returns with the selection kept). Unticking
+  takes rows out; when none are left it goes back.
+- **Hide or show the tag editor** with the panel icon on the top line, whenever
+  something is selected (remembered).
 - **A landing page.** The logo (and a visit without an address) opens it: the
   counts, what's waiting (staged changes, running jobs, Quality checks with
   findings), libraries, recently added albums and recent changes, each a way

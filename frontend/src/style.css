@@ -1864,3 +1864,11 @@ button.scan-status[hidden] { display: none; }
 .home-row:focus-visible, .home-album:focus-visible, .home-stat:focus-visible, .home-version:focus-visible { outline: 2px solid var(--accent); }
 .backup-parts { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .restore-env { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 12px; white-space: pre-wrap; user-select: all; }
+#editor-toggle[aria-pressed="true"] { color: var(--accent); background: var(--accent-dim); }
+.selection-count { all: unset; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; border-bottom: 1px dotted var(--text-muted); }
+.selection-count:hover, .selection-count.active { color: var(--accent); border-bottom-color: var(--accent); }
+.selection-count:focus-visible { outline: 2px solid var(--accent); }
+.sel-chip { background: var(--accent); color: var(--bg); }
+.sel-chip[hidden] { display: none; }
+.sel-chip .fchip-x { color: var(--bg); }
+.filter-line:has(#sel-chip:not([hidden])) .filter-none { display: none; }

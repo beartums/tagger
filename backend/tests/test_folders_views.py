@@ -229,3 +229,12 @@ def test_tracks_flag_missing_files(client, lib):
     gone = _insert(d / "gone.mp3")
     by = {t["id"]: t["missing"] for t in client.get("/api/library/tracks").json()["tracks"]}
     assert by[here] is False and by[gone] is True
+
+
+def test_selected_only_view(client, lib):
+    a, b, c, d = _rows(lib)
+    token = client.post("/api/library/selection", json={"ids": [d, a]}).json()["token"]
+    ids = lambda q: [x["id"] for x in client.get(f"/api/library/tracks?{q}").json()["tracks"]]
+    assert set(ids(f"sel={token}")) == {a, d}
+    assert ids(f"sel={token}&format=flac") == [a]                   # combines with the rest
+    assert ids("sel=unknown") == []                                 # gone (restart): nothing, so the view goes back
