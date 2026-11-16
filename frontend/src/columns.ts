@@ -48,7 +48,7 @@ export function lyricsKind(text: string | null | undefined): 'synced' | 'plain' 
 export function viewCols(): ColDef[] {
   if (state.selectedIssue === 'missing_lyrics') return [{ key: 'lookup', label: 'Lookup', cls: 'col-view', render: t => {
     const lk = t.lyrics_lookup
-    const text = `♪ ${t.lyrics_group ?? ''}${lk ? ` · ${LOOKUP_TEXT[lk.status] ?? lk.status} ${new Date(lk.at * 1000).toLocaleDateString()}` : ''}`
+    const text = lk ? `♪ ${LOOKUP_TEXT[lk.status] ?? lk.status} ${new Date(lk.at * 1000).toLocaleDateString()}` : '♪ not looked up'
     return `<div class="view-cell"><button type="button" class="btn btn-link btn-sm" data-lyrics-search="${t.id}" title="Search LRCLIB for this track by hand">Search…</button>
       <span class="view-text" title="${esc(text)}">${esc(text)}</span></div>`
   }}]

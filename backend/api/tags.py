@@ -223,7 +223,7 @@ class Reorganize(BaseModel):
 @router.post("/reorganize")
 def reorganize(req: Reorganize):
     """
-    Re-file: plan a move for each selected file to its layout (its group's,
+    Re-file: plan a move for each selected file to its layout (its groups',
     else its library's, else the rename template -- core/layout.py), relative to its own library root (core/fileops.py),
     and stage it -- nothing moves until the staged changes are written. Uses
     the tags as staged.
@@ -232,7 +232,7 @@ def reorganize(req: Reorganize):
     layout" view, for tracks chosen there. The old whole-selection Organize
     button was removed 2026-11-02: too easy to fire by accident.
     """
-    from core import lyricsgroups
+    from core import groups as grp
     from core.layout import Layouts
     if not req.track_ids:
         raise HTTPException(400, "No track IDs provided")
@@ -246,7 +246,7 @@ def reorganize(req: Reorganize):
         errors += [{"id": t, "error": "not found"} for t in req.track_ids if t not in found]
         pending = staging.load(conn, list(found))
         staged_dirs = staging.load_dirs(conn)
-        assigned = lyricsgroups.assigned(conn, list(found))
+        assigned = grp.members(conn, list(found))
         step = staging.Step(conn, f"Re-file {len(rows)} file{'s' if len(rows) != 1 else ''} to the library layout")
         for row in rows:
             if staged_dirs and staging.moved_path(row["path"], staged_dirs):
@@ -255,9 +255,9 @@ def reorganize(req: Reorganize):
             try:
                 dest = staging.plan_path(
                     row, staging.effective(row, pending.get(row["id"])),
-                    layouts.template(row["path"], assigned.get(row["id"])), roots, layouts.rules,
+                    layouts.template(row["path"], assigned.get(row["id"], [])), roots, layouts.rules,
                 )
-            except staging.PlanError as exc:
+            except (staging.PlanError, grp.LayoutConflict) as exc:
                 errors.append({"id": row["id"], "error": str(exc)})
                 continue
             if dest == row["path"]:

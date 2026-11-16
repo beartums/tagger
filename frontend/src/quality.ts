@@ -27,7 +27,8 @@ let dotOff = new Set<string>()
 export function setQualityOff(keys: string[] | undefined) { dotOff = new Set(keys ?? []) }
 
 function dotMissing(t: Track): DotCheck[] {
-  return DOT_CHECKS.filter(c => !dotOff.has(c.key) && c.missing(t))
+  // A check switched off, or off for one of the track's groups (core/groups.py), doesn't count.
+  return DOT_CHECKS.filter(c => !dotOff.has(c.key) && !t.quality_off?.includes(c.key) && c.missing(t))
 }
 
 export function trackQuality(t: Track): 'good' | 'fair' | 'poor' {
@@ -70,6 +71,7 @@ export const QUALITY_ISSUES: { key: IssueKey; label: string; warn?: boolean; gro
   { key: 'duplicate_albums',     label: 'Duplicate albums', warn: true },
   { key: 'missing_files',        label: 'Missing files',    warn: true },
   { key: 'not_in_layout',        label: 'Not in layout'    },
+  { key: 'group_layout_conflict', label: 'Groups\' layouts clash', warn: true },
   { key: 'missing_lyrics',       label: 'Missing lyrics'   },
   { key: 'covers_none',          label: 'No cover',               group: 'Cover art' },
   { key: 'covers_no_folder',     label: 'No folder cover',        group: 'Cover art' },

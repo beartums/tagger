@@ -14,7 +14,7 @@ const GROUP_ICON: Record<string, string> = {
   'CD rips': ICON.album, Quality: ICON.star, Format: ICON.file, Has: ICON.check,
 }
 // Quality checks without a group: the tag ones, then the file ones.
-const FILE_CHECKS = new Set(['duplicate_tracks', 'duplicate_albums', 'not_in_layout', 'missing_lyrics'])
+const FILE_CHECKS = new Set(['duplicate_tracks', 'duplicate_albums', 'not_in_layout', 'group_layout_conflict', 'missing_lyrics'])
 
 let formats: string[] = []
 let onChange = () => {}

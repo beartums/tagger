@@ -366,11 +366,12 @@ def stage_edit(conn, row, tags: dict, step: Step | None = None) -> None:
     if app.rename_on_save and not moved_path(row["path"], load_dirs(conn)):
         entry = load(conn, [row["id"]]).get(row["id"])
         roots = get_library_roots()
+        from core.groups import LayoutConflict
         try:
             dest = plan_path(row, effective(row, entry), template_for(conn, row), roots,
                              NamingRules.from_settings(app))
-        except PlanError:
-            return  # leave the file where it is
+        except (PlanError, LayoutConflict):
+            return  # leave the file where it is (a group conflict shows in Quality)
         stage(conn, row, new_path=dest, step=step)
 
 

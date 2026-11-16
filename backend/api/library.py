@@ -13,7 +13,7 @@ from fastapi.responses import PlainTextResponse
 
 from core.config import settings
 from core.database import db
-from core import duplicates, layout, lyricsgroups, lyricsjob, search, staging
+from core import duplicates, groups as grp, layout, lyricsgroups, lyricsjob, search, staging
 from core.multivalue import MULTI_FIELDS, split_values
 from core.history import STAGEABLE, log_change, snapshot, list_changes, undo_change
 
@@ -33,7 +33,7 @@ _ISSUE_CLAUSES: dict[str, str] = {
     "missing_genre":        "(genre IS NULL OR genre = '')",
     "missing_track_number": "(track_number IS NULL OR track_number = '')",
     "missing_album_artist": "(album_artist IS NULL OR album_artist = '')",
-    # No lyrics, and its lyrics group is looked up (core/lyricsgroups.py).
+    # No lyrics, and LRCLIB hasn't called it instrumental (core/lyricsjob.py).
     "missing_lyrics": lyricsjob.MISSING,
     # Path differs from where its layout puts it (core/layout.py).
     "not_in_layout": f"layout_path({layout.SQL_ARGS}) != path",
@@ -58,10 +58,19 @@ _ISSUE_CLAUSES: dict[str, str] = {
     # match on the table of contents (check it), or cdparanoia had trouble.
     "rip_near": "rip_match = 'near'",
     "rip_trouble": "COALESCE(rip_quality, '') NOT IN ('', 'clean')",
+    # In two groups whose layouts differ (core/groups.py): can't be re-filed.
+    "group_layout_conflict": f"group_layout_conflict({layout.GROUP_IDS_SQL})",
 }
 
 
-def _issue_clause(key: str) -> str:
+def _issue_clause(key: str, gs: list[dict] | None = None) -> str:
+    """The SQL for an issue, without the tracks a group turns the check off for (core/groups.py)."""
+    off = grp.excluded_sql(key, gs)
+    base = _base_clause(key)
+    return base if off == "0" else f"({base} AND NOT {off})"
+
+
+def _base_clause(key: str) -> str:
     """The SQL for an issue; oversized cover art depends on the size settings."""
     if key != "covers_oversized":
         return _ISSUE_CLAUSES[key]
@@ -90,8 +99,9 @@ def _tracks(conn, rows) -> list[dict]:
     dirs = staging.load_dirs(conn)
     layouts = layout.Layouts()
     ids = [r["id"] for r in rows]
-    assigned, looked = lyricsgroups.assigned(conn, ids), lyricsgroups.lookups(conn, ids)
-    group_for = lyricsgroups.resolver()
+    assigned, looked = grp.members(conn, ids), lyricsgroups.lookups(conn, ids)
+    gs = grp.groups()
+    names = {g["id"]: g["name"] for g in gs}
     # Folders with a cover image (the list's quality dot: cover art in the folder or the file).
     dirs_shown = list({r["directory"] for r in rows})
     with_cover = {r[0] for r in conn.execute(
@@ -112,13 +122,15 @@ def _tracks(conn, rows) -> list[dict]:
                 present[d] = set(os.listdir(d))
             except OSError:
                 present[d] = set()
-        where = layouts.expected(r, assigned.get(r["id"]))
+        where = layouts.expected(r, assigned.get(r["id"], []))
         out.append({**dict(r), "staged": e, "read_only": not writable[d],
                     "missing": r["filename"] not in present[d],
                     "folder_cover": d in with_cover,
                     # where its layout puts it, when that's elsewhere
                     "layout_path": where if where != r["path"] else None,
-                    "lyrics_group": group_for(r["path"], assigned.get(r["id"]))["name"],
+                    "groups": [names[g] for g in assigned.get(r["id"], []) if g in names],
+                    # Quality checks its groups turn off: the dot skips them (frontend quality.ts)
+                    "quality_off": grp.quality_off(gs, assigned.get(r["id"], [])),
                     "lyrics_lookup": looked.get(r["id"])})
     return out
 
@@ -292,7 +304,8 @@ DOT_KEYS = ("missing_title", "missing_artist", "missing_album", "missing_album_a
 
 
 def _dot_sums() -> str:
-    return ", ".join(f"SUM(CASE WHEN {_ISSUE_CLAUSES[k]} THEN 1 ELSE 0 END) AS q_{k}" for k in DOT_KEYS)
+    gs = grp.groups()
+    return ", ".join(f"SUM(CASE WHEN {_issue_clause(k, gs)} THEN 1 ELSE 0 END) AS q_{k}" for k in DOT_KEYS)
 
 
 def _dot_counts(r) -> dict[str, int]:

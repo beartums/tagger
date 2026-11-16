@@ -32,6 +32,7 @@ from api.stream import router as stream_router
 from api.spectrogram import router as spectrogram_router
 from api.staged import router as staged_router
 from api.backup import router as backup_router
+from api.groups import router as groups_router
 
 
 @asynccontextmanager
@@ -139,6 +140,7 @@ app.include_router(stream_router, prefix="/api/stream", tags=["stream"])
 app.include_router(spectrogram_router, prefix="/api/spectrogram", tags=["spectrogram"])
 app.include_router(staged_router, prefix="/api/staged", tags=["staged"])
 app.include_router(backup_router, prefix="/api/backup", tags=["backup"])
+app.include_router(groups_router, prefix="/api/groups", tags=["groups"])
 
 # Serve built frontend assets (production only — dev uses Vite's server)
 _static = os.path.join(os.path.dirname(__file__), "static")
