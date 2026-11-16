@@ -350,6 +350,7 @@ export const APP_HTML = `
         <button class="stab active" data-mode="tags">Tags</button>
         <button class="stab" data-mode="files">Files</button>
         <button class="stab" data-mode="quality">Quality</button>
+        <button class="stab" data-mode="groups">Groups</button>
       </div>
       <nav id="panel-tags" class="sidebar-panel">
         <div class="nav-toolbar">
@@ -364,6 +365,9 @@ export const APP_HTML = `
           <button id="rename-folder-btn" class="btn btn-ghost btn-sm" style="flex:1" title="Rename the selected folder — staged for review" disabled>Rename…</button>
         </div>
         <div id="dir-tree" class="dir-tree"></div>
+      </nav>
+      <nav id="panel-groups" class="sidebar-panel" hidden>
+        <ul id="group-list" class="nav-list"></ul>
       </nav>
       <nav id="panel-quality" class="sidebar-panel" hidden>
         <div class="nav-toolbar" id="quality-toolbar" hidden>
