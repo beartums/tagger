@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **An emptied view goes back.** When an opened album, a filter, a Quality
+  check or a search loses all its tracks to something you did (fixed, written,
+  moved, removed, deleted), tggr returns to the view before it and says so.
+  Going somewhere that happens to be empty stays put.
+- **Filters survive a refresh.** They're part of the page address now, so
+  refresh, Back/Forward and copied links keep them. The album view's count no
+  longer shows a stale number before its list loads.
 - **Add to MusicBrainz comes back to your tab.** MusicBrainz opens in one tab
   of its own; when you submit, that tab hands the new release to the tggr tab
   you started from (still on the same view) and closes.
