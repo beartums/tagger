@@ -5,7 +5,8 @@ export interface Track {
   read_only?: boolean
   missing?: boolean                  // the file isn't at its scanned path any more
   layout_path?: string | null        // where its library's layout puts it, when that's elsewhere
-  lyrics_group?: string              // its lyrics group's name
+  groups?: string[]                  // the groups it's in (names)
+  quality_off?: string[]             // Quality checks its groups turn off
   has_cover?: number | null          // embedded cover art (1/0; null = not scanned since covers were tracked)
   cover_width?: number | null
   cover_height?: number | null
@@ -185,8 +186,7 @@ export interface AppSettings {
   library_roots: string[]
   layout_libraries: string[]
   library_templates: Record<string, string>
-  lyrics_groups: LyricsGroup[]
-  library_lyrics_groups: Record<string, string>
+  groups: Group[]
   lrclib_api_key: string
   lrclib_app_id: string
   cover_target: 'folder' | 'tracks' | 'both'
@@ -311,7 +311,7 @@ export interface DiscInfo {
 }
 
 export type IssueKey =
-  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'missing_album_artist' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album' | 'rip_near' | 'rip_trouble'
+  'missing_title' | 'missing_artist' | 'missing_album' | 'missing_year' | 'missing_genre' | 'missing_track_number' | 'missing_album_artist' | 'duplicate_tracks' | 'duplicate_albums' | 'missing_files' | 'not_in_layout' | 'missing_lyrics' | 'covers_none' | 'covers_no_folder' | 'covers_no_tracks' | 'covers_both' | 'covers_oversized' | 'mb_no_album' | 'mb_no_release_group' | 'mb_track_ids' | 'mb_mixed_album' | 'rip_near' | 'rip_trouble' | 'group_layout_conflict'
 /** One Quality check: its last count (null: never run), when, and whether it's turned off. */
 export interface IssueEntry { tracks: number | null; albums: number | null; at: number | null; off: boolean }
 export type IssueCount = Record<IssueKey, IssueEntry>
@@ -357,7 +357,8 @@ export interface LyricsItem {
 }
 
 export interface LyricsQuery { title: string; artist: string; album: string }
-export interface LyricsGroup { id: string; name: string; skip: boolean; queries: LyricsQuery[]; layout?: string; assigned?: number }
+/** A group you made (core/groups.py): optional layout, and Quality checks that don't apply to its tracks. */
+export interface Group { id: string; name: string; layout: string; quality_off: string[] }
 export interface LyricsHit {
   id: number; title: string; artist: string; album: string | null; duration: number | null
   synced: string | null; plain: string | null; instrumental: boolean
@@ -384,7 +385,6 @@ export interface LibraryInfo {
   path: string; name: string; parent: string; active: boolean; writable: boolean; tracks: number
   layout: boolean                    // checked against a layout (Quality → Not in layout)
   template: string                   // its own layout ('' = the standard one)
-  lyrics_group: string               // its default lyrics group ('' = Standard)
 }
 
 export interface TagValue {
@@ -628,17 +628,19 @@ export const api = {
         'POST', '/api/config/rename-preview', { template, tags, ext, track_id: trackId, ...naming }),
   },
 
+  groups: {
+    list: () => request<(Group & { tracks: number })[]>('GET', '/api/groups'),
+    of: (trackIds: number[]) => request<{ total: number; in: Record<string, number> }>('POST', '/api/groups/of', { track_ids: trackIds }),
+    setMembers: (trackIds: number[], groupId: string, add: boolean) =>
+      request<{ changed: number }>('POST', '/api/groups/members', { track_ids: trackIds, group_id: groupId, add }),
+  },
   lyrics: {
     fetch: (trackIds: number[], prefer: string, overwrite: boolean, query: LyricsQuery | null = null) =>
       request<{ items: LyricsItem[]; common: Record<keyof LyricsQuery, string | null> }>(
         'POST', '/api/lyrics/fetch', { track_ids: trackIds, prefer, overwrite, query }),
     stage: (items: Record<number, string>) =>
       request<EditResult & { changed: number }>('POST', '/api/lyrics/stage', { items }),
-    groups: () => request<LyricsGroup[]>('GET', '/api/lyrics/groups'),
-    assign: (trackIds: number[], groupId: string | null) =>
-      request<{ assigned: number }>('POST', '/api/lyrics/assign', { track_ids: trackIds, group_id: groupId }),
-    assigned: (trackIds: number[]) =>
-      request<{ group_id: string | null }>('POST', '/api/lyrics/assigned', { track_ids: trackIds }),
+
     plan: (trackId: number) => request<LyricsPlan>('GET', `/api/lyrics/plan/${trackId}`),
     search: (q: { title?: string; artist?: string; album?: string; q?: string }) =>
       request<{ hits: LyricsHit[] }>('POST', '/api/lyrics/search', q),

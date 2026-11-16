@@ -1,43 +1,29 @@
 """
-Lyrics groups: how a track's lyrics are looked up, or that they aren't.
+How a track's lyrics are looked up on LRCLIB: one list of queries for every
+track, tried in order until LRCLIB has something.
 
-A group is a list of queries, tried in order until LRCLIB has something.
 Each query is a title / artist / album template over the track's tags (plus
-the cleaned-up variables below). A query with no artist searches by title +
-album -- what finds cast recordings, whose artist tag is rarely what LRCLIB
-files them under. A "skip" group is never looked up, and its tracks don't
-count as missing lyrics.
-
-A track's group: the one it was assigned (lyrics_members), else its
-library's default (Settings → Libraries), else Standard. Assignments live in
-tggr's DB, not the files.
+the cleaned-up variables below). The first ones are the plain ones; the
+rest are what cast albums and soundtracks need (no artist: title + album,
+the cast album's own name), tried only when the plain ones find nothing.
+Groups (core/groups.py) no longer change the lookup: a group that turns
+"Missing lyrics" off just stops its tracks being looked up or listed.
 """
 from __future__ import annotations
 
-import os
 import re
 import string
 
 from core.multivalue import split_values
 
-STANDARD, NONE = "standard", "none"
-
-DEFAULT_GROUPS = [
-    {"id": STANDARD, "name": "Standard", "skip": False, "queries": [
-        {"title": "{title}", "artist": "{artist}", "album": "{album}"},
-        {"title": "{title_base}", "artist": "{artist_first}", "album": ""},
-    ]},
-    {"id": "cast", "name": "Cast album", "skip": False, "queries": [
-        {"title": "{title_base}", "artist": "{artist_first}", "album": "{album}"},
-        {"title": "{title_base}", "artist": "{album_artist_first}", "album": ""},
-        {"title": "{title_base}", "artist": "", "album": "{album_base}"},
-    ]},
-    {"id": "soundtrack", "name": "Soundtrack", "skip": False, "queries": [
-        {"title": "{title_base}", "artist": "{artist_first}", "album": ""},
-        {"title": "{title_base}", "artist": "", "album": "{album_base}"},
-    ]},
-    {"id": NONE, "name": "No lyrics", "skip": True, "queries": []},
+QUERIES = [
+    {"title": "{title}", "artist": "{artist}", "album": "{album}"},
+    {"title": "{title_base}", "artist": "{artist_first}", "album": ""},
+    {"title": "{title_base}", "artist": "{artist_first}", "album": "{album}"},
+    {"title": "{title_base}", "artist": "{album_artist_first}", "album": ""},
+    {"title": "{title_base}", "artist": "", "album": "{album_base}"},
 ]
+LOOKUP = {"id": "lyrics", "name": "Lyrics", "skip": False, "queries": QUERIES}
 
 FIELDS = ("title", "artist", "album")
 VARIABLES = ("title", "artist", "album", "album_artist", "year", "title_base", "album_base",
@@ -116,41 +102,9 @@ def queries(group: dict, track) -> list[dict]:
     return out
 
 
-def groups() -> list[dict]:
-    """The configured groups; Standard and No lyrics always exist."""
-    from api.config import _load
-    have = [g.model_dump() for g in _load().lyrics_groups] or [dict(g) for g in DEFAULT_GROUPS]
-    ids = {g["id"] for g in have}
-    for g in DEFAULT_GROUPS:
-        if g["id"] in (STANDARD, NONE) and g["id"] not in ids:
-            have.append(dict(g))
-    return have
-
-
 def resolver():
-    """group_for(path, assigned_id) -> group, with settings read once."""
-    from api.config import _load, get_library_roots
-    from core.fileops import root_for
-    by_id = {g["id"]: g for g in groups()}
-    defaults = {os.path.normpath(k): v for k, v in _load().library_lyrics_groups.items() if v in by_id}
-    roots = get_library_roots() if defaults else []
-
-    def group_for(path: str, assigned: str | None) -> dict:
-        if assigned in by_id:
-            return by_id[assigned]
-        root = root_for(path, roots) if roots else None
-        return by_id[defaults.get(str(root), STANDARD)] if root else by_id[STANDARD]
-
-    return group_for
-
-
-def assigned(conn, ids: list[int]) -> dict[int, str]:
-    out = {}
-    for i in range(0, len(ids), 900):
-        chunk = ids[i:i + 900]
-        out.update(conn.execute(f"SELECT track_id, group_id FROM lyrics_members WHERE track_id IN "
-                                f"({','.join('?' * len(chunk))})", chunk).fetchall())
-    return out
+    """group_for(path, _) -> the one lookup (kept for callers that used to pick a group)."""
+    return lambda path, assigned=None: LOOKUP
 
 
 def lookups(conn, ids: list[int]) -> dict[int, dict]:
@@ -163,33 +117,10 @@ def lookups(conn, ids: list[int]) -> dict[int, dict]:
     return out
 
 
-def assign(conn, ids: list[int], group_id: str | None) -> int:
-    """Put tracks in a group; None = back to their library's default."""
-    for i in range(0, len(ids), 900):
-        chunk = ids[i:i + 900]
-        conn.execute(f"DELETE FROM lyrics_members WHERE track_id IN ({','.join('?' * len(chunk))})", chunk)
-    if group_id:
-        conn.executemany("INSERT INTO lyrics_members (track_id, group_id) VALUES (?, ?)",
-                         [(i, group_id) for i in ids])
-    return len(ids)
-
-
 def record(conn, track_id: int, status: str, at: float) -> None:
     conn.execute("INSERT INTO lyrics_lookups (track_id, status, at) VALUES (?, ?, ?) "
                  "ON CONFLICT(track_id) DO UPDATE SET status = excluded.status, at = excluded.at",
                  (track_id, status, at))
-
-
-def sql_function():
-    """lyrics_skip(path, assigned_id) for SQL: 1 when the track's group is never looked up."""
-    cache: dict = {}
-
-    def lyrics_skip(path, group_id):
-        if not cache:
-            cache["for"] = resolver()
-        return 1 if cache["for"](path, group_id)["skip"] else 0
-
-    return lyrics_skip
 
 
 def look_up(track, group: dict, prefer: str = "synced") -> dict:

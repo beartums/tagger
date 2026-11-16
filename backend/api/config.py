@@ -16,19 +16,12 @@ router = APIRouter()
 ALL_SCAN_TAGS = TAG_FIELDS
 
 
-class LyricsQuery(BaseModel):
-    title: str = "{title}"
-    artist: str = ""
-    album: str = ""
-
-
-class LyricsGroup(BaseModel):
-    """A group of tracks put together by hand: how their lyrics are looked up, and their layout."""
-    id: str
+class Group(BaseModel):
+    """Tracks you put together, with optional attributes (core/groups.py)."""
+    id: str = ""                       # "" = made from the name when saved
     name: str
-    skip: bool = False                 # never looked up; not "missing lyrics"
-    queries: list[LyricsQuery] = []
-    layout: str = ""                   # "" = the library's layout (core/layout.py)
+    layout: str = ""                   # overrides the library and default layouts; "" = none
+    quality_off: list[str] = []        # Quality checks that don't apply to its tracks
 
 
 class AppSettings(BaseModel):
@@ -53,9 +46,8 @@ class AppSettings(BaseModel):
     # (rename_template), or the library's own override below.
     layout_libraries: list[str] = []
     library_templates: dict[str, str] = {}
-    # How lyrics are looked up (core/lyricsgroups.py); [] = the defaults.
-    lyrics_groups: list[LyricsGroup] = []
-    library_lyrics_groups: dict[str, str] = {}     # library root -> its default group
+    # Groups you make (core/groups.py); there are none by default.
+    groups: list[Group] = []
     # Where new cover art goes (core/covers.py): folder (cover.jpg) | tracks (embedded) | both.
     cover_target: str = "folder"
     # Art written is shrunk to these (longest side, px; 0 = as is): never blow up a folder or every track.
@@ -199,8 +191,7 @@ def list_libraries():
             out.append({"path": p, "name": r.name, "parent": str(r.parent), "active": p not in off,
                         "writable": os.access(p, os.W_OK), "tracks": n,
                         "layout": p in {os.path.normpath(x) for x in s.layout_libraries},
-                        "template": s.library_templates.get(p, ""),
-                        "lyrics_group": s.library_lyrics_groups.get(p, "")})
+                        "template": s.library_templates.get(p, "")})
     return out
 
 
@@ -314,10 +305,8 @@ def update_settings(update: AppSettings):
         for root, template in layouts.items():
             _check_layout(template, f"Layout for {Path(root).name}")
         sent["library_templates"] = layouts
-    if "lyrics_groups" in sent:
-        sent["lyrics_groups"] = _check_lyrics_groups(update.lyrics_groups)
-    if "library_lyrics_groups" in sent:
-        sent["library_lyrics_groups"] = {os.path.normpath(k): v for k, v in sent["library_lyrics_groups"].items() if v}
+    if "groups" in sent:
+        sent["groups"] = _check_groups(update.groups)
     if "browse_paths" in sent:
         sent["browse_paths"] = _check_browse_paths(update.browse_paths)
     if "layout_libraries" in sent:
@@ -336,6 +325,11 @@ def update_settings(update: AppSettings):
             raise HTTPException(400, f"{k}: 1 to 1440")
     merged = _load().model_copy(update=sent)
     _save(merged)
+    if "groups" in sent:              # a deleted group takes its memberships with it
+        from core import groups
+        from core.database import db
+        with db() as conn:
+            groups.forget(conn, {g.id for g in sent["groups"]})
     from core import integrations
     integrations.settings_changed()
     return get_settings()
@@ -361,30 +355,26 @@ def _check_layout(template: str, what: str) -> None:
         raise HTTPException(400, f"{what}: invalid template ({exc})")
 
 
-def _check_lyrics_groups(groups: list[LyricsGroup]) -> list[LyricsGroup]:
-    """Ids unique and slug-like, names given, templates valid; Standard + No lyrics kept."""
-    import re
-    from core import lyricsgroups
-    seen, out = set(), []
+def _check_groups(groups: list[Group]) -> list[Group]:
+    """Names given and unique, ids slug-like (an existing id kept), layouts valid, Quality checks known."""
+    from api.library import ISSUE_KEYS
+    from core.groups import slug
+    names, ids, out = set(), set(), []
     for g in groups:
-        gid = re.sub(r"[^a-z0-9]+", "-", (g.id or g.name).lower()).strip("-")
-        if not gid or not g.name.strip():
+        name = g.name.strip()
+        if not name:
             raise HTTPException(400, "Group: a name is required")
-        if gid in seen:
-            raise HTTPException(400, f"Group {g.name}: duplicate name")
-        seen.add(gid)
-        for q in g.queries:
-            for f in lyricsgroups.FIELDS:
-                try:
-                    lyricsgroups.check(getattr(q, f))
-                except ValueError as exc:
-                    raise HTTPException(400, f"Group {g.name}, lyrics {f}: {exc}")
+        if name.casefold() in names:
+            raise HTTPException(400, f"Group {name}: two groups have this name")
+        names.add(name.casefold())
+        gid = g.id if g.id and g.id not in ids and g.id == slug(g.id, set()) else slug(name, ids)
+        ids.add(gid)
         if g.layout.strip():
-            _check_layout(g.layout.strip(), f"Layout for group {g.name}")
-        out.append(g.model_copy(update={"id": gid, "name": g.name.strip(), "layout": g.layout.strip()}))
-    for d in lyricsgroups.DEFAULT_GROUPS:
-        if d["id"] in (lyricsgroups.STANDARD, lyricsgroups.NONE) and d["id"] not in seen:
-            out.append(LyricsGroup(**d))
+            _check_layout(g.layout.strip(), f"Layout for group {name}")
+        bad = [k for k in g.quality_off if k not in ISSUE_KEYS]
+        if bad:
+            raise HTTPException(400, f"Group {name}: unknown Quality check {bad[0]}")
+        out.append(Group(id=gid, name=name, layout=g.layout.strip(), quality_off=sorted(set(g.quality_off))))
     return out
 
 

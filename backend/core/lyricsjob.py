@@ -21,26 +21,30 @@ logger = logging.getLogger("tggr.lyrics")
 BATCH = 100        # tracks per staging step
 PARALLEL = 4       # tracks at once; core/lyrics.py spaces out the requests
 
-MISSING = ("(lyrics IS NULL OR trim(lyrics) = '') AND NOT lyrics_skip(path, "
-           "(SELECT group_id FROM lyrics_members WHERE track_id = tracks.id))")
+# No lyrics, and LRCLIB hasn't said the track is instrumental. (Groups that
+# turn "Missing lyrics" off are left out by the Quality check's own clause,
+# and by targets() below.)
+MISSING = ("(lyrics IS NULL OR trim(lyrics) = '') AND tracks.id NOT IN "
+           "(SELECT track_id FROM lyrics_lookups WHERE status = 'instrumental')")
 
 
 def targets(conn, ids: list[int] | None, retry: bool) -> list[int]:
     """The tracks a run looks up: no lyrics or only plain ones (written or
     staged), not skipped, and -- unless retry -- not already looked up without
     success."""
+    from core.groups import excluded_sql
+    off = excluded_sql("missing_lyrics")
     if ids is None:
-        ids = [r[0] for r in conn.execute(f"SELECT id FROM tracks WHERE {MISSING} ORDER BY directory, filename")]
+        ids = [r[0] for r in conn.execute(f"SELECT id FROM tracks WHERE {MISSING} AND NOT {off} ORDER BY directory, filename")]
+    skip = {r[0] for r in conn.execute(f"SELECT id FROM tracks WHERE {off}")} if off != "0" else set()
     from api.tags import _rows
     rows = {r["id"]: r for r in _rows(conn, ids)}
     entries = staging.load(conn, list(rows))
-    assigned = lyricsgroups.assigned(conn, list(rows))
     done = {} if retry else lyricsgroups.lookups(conn, list(rows))
-    group_for = lyricsgroups.resolver()
     out = []
     for i in ids:
         r = rows.get(i)
-        if r is None or group_for(r["path"], assigned.get(i))["skip"]:
+        if r is None or i in skip:       # a group says lyrics don't apply
             continue
         # Plain lyrics can still get synced ones; synced is done.
         if lyricsgroups.kind(staging.effective(r, entries.get(i)).get("lyrics")) == "synced":
@@ -78,17 +82,15 @@ async def run(job_id: str, ids: list[int], prefer: str = "synced", instrumental_
             chunk = ids[start:start + BATCH]
             with db() as conn:
                 rows = _rows(conn, chunk)
-                assigned = lyricsgroups.assigned(conn, chunk)
-            results = await asyncio.gather(*(one(r, group_for(r["path"], assigned.get(r["id"]))) for r in rows))
+            results = await asyncio.gather(*(one(r, group_for(r["path"])) for r in rows))
             now = time.time()
             with db() as conn:
                 hits = [(r, res) for r, res in zip(rows, results) if res["lyrics"]]
                 for r, res in zip(rows, results):
                     if res["status"] == "later":
                         continue          # not looked up: next run tries it
+                    # "instrumental" is remembered here: it stops counting as missing lyrics.
                     lyricsgroups.record(conn, r["id"], res["status"], now)
-                    if res["status"] == "instrumental" and instrumental_to_none and not (r["lyrics"] or "").strip():
-                        lyricsgroups.assign(conn, [r["id"]], lyricsgroups.NONE)
                 if hits:
                     step = staging.Step(conn, f"Lyrics lookup: {len(hits)} track{'s' if len(hits) != 1 else ''}")
                     for r, res in hits:

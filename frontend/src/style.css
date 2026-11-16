@@ -1800,3 +1800,26 @@ button.scan-status[hidden] { display: none; }
 .history-blocked { font-size: 11px; color: var(--text-muted); cursor: help; border-bottom: 1px dotted var(--text-muted); }
 .rv-x { all: unset; cursor: pointer; width: 16px; text-align: center; color: var(--text-dim); font-size: 10px; border-radius: 3px; }
 .rv-x:hover { color: var(--danger); background: var(--surface3); }
+
+/* Settings → Groups */
+.groups-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.group-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.group-head { display: flex; align-items: center; gap: 10px; }
+.group-name { flex: 1; min-width: 0; font-weight: 600; }
+.group-attr { display: flex; flex-direction: column; gap: 6px; padding-left: 10px; border-left: 2px solid var(--border-subtle); }
+.group-attr-h { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+.group-attr-h .ma-dim { font-weight: 400; }
+.group-attr-h .btn-icon { margin-left: auto; }
+.group-attr .tog-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.group-add-attr { display: flex; gap: 8px; }
+.group-add-attr:empty { display: none; }
+
+/* Files ▾ → Groups… */
+.group-modal { min-width: min(460px, 92vw); }
+.group-members { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.group-members li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+.group-state { width: 14px; text-align: center; color: var(--accent); }
+.group-member-name { font-weight: 600; }
+.group-members .ma-dim { margin-right: auto; font-size: 12px; }
+.group-new { display: flex; gap: 6px; margin: 6px 0; }
+.group-new input { flex: 1; min-width: 0; }

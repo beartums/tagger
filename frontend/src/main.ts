@@ -25,7 +25,7 @@ import { openDuplicates } from './duplicates'
 import { openLyricsSearch } from './lyricssearch'
 import { openFindReplace } from './findreplace'
 import { shapeSettings, setPill, snapshotSettings, changedSections, sectionName } from './settingslayout'
-import { openAssignGroup, renderLyricsGroups, groupLayoutChoices, addGroupLayout, wireLyricsGroups, readLyricsGroups, libraryGroupSelect, renderGroupLayouts } from './lyricsgroups'
+import { openGroupMembership, renderGroups, wireGroups, readGroups } from './groups'
 import { renderBackground, renderAbout, wireBackground } from './background'
 import { wirePathDiff } from './pathdiff'
 import { initFilterBar, filterParams, filtersActive, refreshFormats, filtersKey, setFiltersFromKey } from './filterbar'
@@ -2747,7 +2747,7 @@ document.getElementById('lyrics-btn')!.addEventListener('click', () => {
 })
 document.getElementById('lyrics-group-btn')!.addEventListener('click', () => {
   const ids = [...state.selectedIds]
-  if (ids.length) openAssignGroup(ids, refreshAfterBulk)
+  if (ids.length) openGroupMembership(ids, refreshAfterBulk)
 })
 lyricsSearchBtn.addEventListener('click', () => {
   if (state.selectedIds.size !== 1) { toast('Select one track to search its lyrics', 'info'); return }
@@ -3988,14 +3988,13 @@ function getScanTagCheckboxes(): NodeListOf<HTMLInputElement> {
 
 const librariesListEl = document.getElementById('libraries-list') as HTMLElement
 const libraryLayoutsEl = document.getElementById('library-layouts-list') as HTMLElement
-const groupLayoutsEl = document.getElementById('group-layouts-list') as HTMLElement
 const layoutCheckEl = document.getElementById('layout-check-libs')!
 const libraryLayoutAdd = document.getElementById('library-layout-add') as HTMLSelectElement
-const groupLayoutAdd = document.getElementById('group-layout-add') as HTMLSelectElement
-const lyricsGroupsListEl = document.getElementById('lyrics-groups-list') as HTMLElement
-wireLyricsGroups(lyricsGroupsListEl, document.getElementById('lyrics-group-add')!, groupLayoutsEl)
+const groupsListEl = document.getElementById('groups-list') as HTMLElement
+wireGroups(groupsListEl, document.getElementById('group-add')!)
 
-// Layouts: the default, then a row only for each library or group that overrides it.
+// Layouts: the default, then a row only for each library that overrides it
+// (a group's own layout is set on the group, Settings → Groups).
 let layoutLibs: { path: string; name: string }[] = []
 let layoutsLoaded = false
 
@@ -4005,30 +4004,21 @@ function libraryLayoutRow(path: string, name: string, template: string): string 
     <td><button type="button" class="btn btn-ghost btn-sm btn-icon" data-layout-remove title="Remove: the default layout applies">✕</button></td></tr>`
 }
 
-/** The two "Add…" pickers offer only what has no layout row yet. */
+/** The "Add…" picker offers only libraries without a layout row yet. */
 function fillLayoutAdds() {
   const has = new Set([...libraryLayoutsEl.querySelectorAll<HTMLElement>('[data-layout-path]')].map(r => r.dataset.layoutPath!))
   const libs = layoutLibs.filter(l => !has.has(l.path))
   libraryLayoutAdd.innerHTML = `<option value="">${libs.length ? 'Add a library layout…' : 'Every library has its own layout'}</option>`
     + libs.map(l => `<option value="${esc(l.path)}">${esc(l.name)}</option>`).join('')
-  const groups = groupLayoutChoices(lyricsGroupsListEl, groupLayoutsEl)
-  groupLayoutAdd.innerHTML = `<option value="">${groups.length ? 'Add a group layout…' : 'No group without a layout (add groups under Groups)'}</option>`
-    + groups.map(g => `<option value="${esc(g.key)}">${esc(g.name)}</option>`).join('')
 }
-for (const sel of [libraryLayoutAdd, groupLayoutAdd]) {
-  sel.addEventListener('focus', fillLayoutAdds)
-  sel.addEventListener('mousedown', fillLayoutAdds)
-}
+libraryLayoutAdd.addEventListener('focus', fillLayoutAdds)
+libraryLayoutAdd.addEventListener('mousedown', fillLayoutAdds)
 libraryLayoutAdd.addEventListener('change', () => {
   const l = layoutLibs.find(x => x.path === libraryLayoutAdd.value)
   if (l) {
     libraryLayoutsEl.insertAdjacentHTML('beforeend', libraryLayoutRow(l.path, l.name, renameTemplateInput.value.trim()))
     libraryLayoutsEl.querySelector<HTMLInputElement>('tr:last-child [data-layout-input]')!.focus()
   }
-  fillLayoutAdds()
-})
-groupLayoutAdd.addEventListener('change', () => {
-  if (groupLayoutAdd.value) addGroupLayout(lyricsGroupsListEl, groupLayoutsEl, groupLayoutAdd.value)
   fillLayoutAdds()
 })
 libraryLayoutsEl.addEventListener('click', (e) => {
@@ -4058,27 +4048,26 @@ try { showSettingsSection(localStorage.getItem('tggr.settingsSection') ?? 'libra
 /** Libraries (and, opening Settings, the layout tables and group cards: those hold unsaved edits otherwise). */
 async function renderLibraries(all = true) {
   try {
-    const [libs, groups] = await Promise.all([api.settings.libraries(), api.lyrics.groups()])
+    const [libs, groups] = await Promise.all([api.settings.libraries(), api.groups.list()])
     const std = renameTemplateInput.value.trim()
     librariesListEl.innerHTML = libs.length ? libs.map(l => `
       <tr class="${l.active ? '' : 'library-off'}">
         <td><input type="checkbox" data-path="${esc(l.path)}" ${l.active ? 'checked' : ''} aria-label="Scan ${esc(l.name)}" /></td>
         <td title="${esc(l.path)}">${l.writable ? '' : '🔒 '}${esc(l.name)}</td>
         <td class="num">${l.active ? l.tracks.toLocaleString() : 'off'}</td>
-        <td>${libraryGroupSelect(groups, l.path, l.lyrics_group)}</td>
       </tr>`).join('')
-      : '<tr><td colspan="4" class="settings-hint">No library roots — every music directory is scanned.</td></tr>'
+      : '<tr><td colspan="3" class="settings-hint">No library roots — every music directory is scanned.</td></tr>'
     if (!all) return
     layoutLibs = libs.map(l => ({ path: l.path, name: l.name }))
     layoutCheckEl.innerHTML = libs.map(l => `<button type="button" class="tog" data-layout-check="${esc(l.path)}" aria-pressed="${!!l.layout}" title="${esc(l.path)}">${esc(l.name)}</button>`).join('')
       || '<span class="settings-hint">No libraries yet.</span>'
     libraryLayoutsEl.innerHTML = libs.filter(l => l.template && l.template !== std).map(l => libraryLayoutRow(l.path, l.name, l.template)).join('')
-    renderGroupLayouts(groupLayoutsEl, groups)
-    renderLyricsGroups(lyricsGroupsListEl, groups)
+    renderGroups(groupsListEl, groups)
+    groupsListEl.dataset.loaded = '1'
     layoutsLoaded = true
     fillLayoutAdds()
   } catch (e) {
-    librariesListEl.innerHTML = `<tr><td colspan="4" class="settings-hint">Failed to load libraries: ${esc(String(e))}</td></tr>`
+    librariesListEl.innerHTML = `<tr><td colspan="3" class="settings-hint">Failed to load libraries: ${esc(String(e))}</td></tr>`
   }
 }
 
@@ -4418,11 +4407,8 @@ function collectSettings(): Partial<AppSettings> {
       return [r.dataset.layoutPath!, v === std ? '' : v]
     }).filter(([, v]) => v))
   }
-  const groups = readLyricsGroups(lyricsGroupsListEl, groupLayoutsEl)
-  if (groups) update.lyrics_groups = groups
-  const groupSelects = [...librariesListEl.querySelectorAll<HTMLSelectElement>('[data-lyrics-path]')]
-  if (groupSelects.length) update.library_lyrics_groups = Object.fromEntries(
-    groupSelects.filter(s => s.value).map(s => [s.dataset.lyricsPath!, s.value]))
+  const groups = readGroups(groupsListEl)
+  if (groups) update.groups = groups
   return update
 }
 

@@ -1,7 +1,7 @@
 """
 Lyrics from LRCLIB: fetch for a selection and stage the chosen ones; search
 by hand for one track; look up in the background; lyrics groups (how a track
-is looked up, or that it isn't: core/lyricsgroups.py).
+is looked up: core/lyricsgroups.py).
 """
 from __future__ import annotations
 
@@ -56,13 +56,11 @@ async def fetch_lyrics(req: LyricsFetch):
         entries = staging.load(conn, [r["id"] for r in rows])
     tracks = sorted((staging.effective(r, entries.get(r["id"])) for r in rows),
                     key=lambda t: (t["directory"], _int(t.get("disc_number")), _int(t.get("track_number")), t["filename"]))
-    with db() as conn:
-        assigned = lyricsgroups.assigned(conn, [t["id"] for t in tracks])
     group_for = lyricsgroups.resolver()
     sem = asyncio.Semaphore(4)
 
     async def one(t: dict) -> dict:
-        group = custom or group_for(t["path"], assigned.get(t["id"]))
+        group = custom or group_for(t["path"])
         base = {"id": t["id"], "title": t.get("title") or t["filename"], "artist": t.get("artist"),
                 "group": group["name"]}
         # Plain lyrics are looked up again (synced can replace them) unless
@@ -107,42 +105,6 @@ def stage_lyrics(req: LyricsStage):
     return {"changed": len(rows), **res, "errors": res.get("errors", [])}
 
 
-class Assign(BaseModel):
-    track_ids: list[int]
-    group_id: str | None = None     # None: back to the library's default
-
-
-@router.get("/groups")
-def list_groups():
-    """The lyrics groups, with how many tracks were put in each."""
-    with db() as conn:
-        counts = dict(conn.execute("SELECT group_id, COUNT(*) FROM lyrics_members GROUP BY group_id").fetchall())
-    return [{**g, "assigned": counts.get(g["id"], 0)} for g in lyricsgroups.groups()]
-
-
-@router.post("/assign")
-def assign(req: Assign):
-    """Put tracks in a lyrics group (tggr's DB only; no file changes)."""
-    if req.group_id and req.group_id not in {g["id"] for g in lyricsgroups.groups()}:
-        raise HTTPException(400, "No such lyrics group")
-    with db() as conn:
-        n = lyricsgroups.assign(conn, req.track_ids, req.group_id)
-    return {"assigned": n}
-
-
-class Selection(BaseModel):
-    track_ids: list[int]
-
-
-@router.post("/assigned")
-def assigned(req: Selection):
-    """The group the tracks were all put in by hand ('' = all their library's), or null when they differ."""
-    with db() as conn:
-        got = lyricsgroups.assigned(conn, req.track_ids)
-    ids = {got.get(i, "") for i in req.track_ids}
-    return {"group_id": ids.pop() if len(ids) == 1 else None}
-
-
 @router.get("/plan/{track_id}")
 def plan(track_id: int):
     """A track's group, its queries rendered, and its last lookup -- for Search."""
@@ -151,7 +113,7 @@ def plan(track_id: int):
         if not row:
             raise HTTPException(404, "Track not found")
         t = staging.effective(row, staging.load(conn, [track_id]).get(track_id))
-        group = lyricsgroups.resolver()(row["path"], lyricsgroups.assigned(conn, [track_id]).get(track_id))
+        group = lyricsgroups.LOOKUP
         last = lyricsgroups.lookups(conn, [track_id]).get(track_id)
     return {"track": {k: t.get(k) for k in ("id", "title", "artist", "album", "album_artist", "duration", "lyrics")},
             "group": {"id": group["id"], "name": group["name"], "skip": group["skip"]},
@@ -182,7 +144,7 @@ class Lookup(BaseModel):
     track_ids: list[int] | None = None   # None: every track missing lyrics
     prefer: str = "synced"
     retry: bool = False                   # also tracks already looked up without success
-    instrumental_to_none: bool = True     # LRCLIB says instrumental -> the No lyrics group
+    instrumental_to_none: bool = True     # unused: an "instrumental" answer is always remembered (lyricsjob)
 
 
 @router.post("/lookup")

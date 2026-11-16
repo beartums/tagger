@@ -20,9 +20,9 @@ def get_conn() -> sqlite3.Connection:
     # layout_path(path, title, ...): where the library's layout puts a track.
     from core.layout import COLUMNS, sql_function
     conn.create_function("layout_path", len(COLUMNS), sql_function())
-    # lyrics_skip(path, assigned group): the track's lyrics group is never looked up.
-    from core import lyricsgroups
-    conn.create_function("lyrics_skip", 2, lyricsgroups.sql_function())
+    # group_layout_conflict(group ids): two of a track's groups have different layouts.
+    from core.layout import conflict_function
+    conn.create_function("group_layout_conflict", 1, conflict_function())
     # dup_rank(id) / dup_album(directory): duplicate groups (core/duplicates.py).
     from core import duplicates
     conn.create_function("dup_rank", 1, duplicates.dup_rank)
@@ -208,11 +208,12 @@ def init_db() -> None:
                 staged_at REAL NOT NULL
             );
 
-            -- Lyrics groups a track was put in (core/lyricsgroups.py); none = its
-            -- library's default.
-            CREATE TABLE IF NOT EXISTS lyrics_members (
-                track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
-                group_id TEXT NOT NULL
+            -- Groups a track is in (core/groups.py), any number of them.
+            -- (lyrics_members, one lyrics group per track, is no longer used.)
+            CREATE TABLE IF NOT EXISTS group_members (
+                track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+                group_id TEXT NOT NULL,
+                PRIMARY KEY (track_id, group_id)
             );
 
             -- The last lyrics lookup per track: synced | plain | instrumental | missing | ...

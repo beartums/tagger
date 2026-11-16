@@ -52,7 +52,7 @@ export const APP_HTML = `
       <div class="settings-section">
         <div class="settings-section-title">Libraries</div>
         <p class="settings-hint">A full scan covers the libraries switched on. Switching one off removes its tracks from tggr (files untouched); switching it on scans it. 🔒 = read-only: shown, never written. <strong>Group</strong>: the group its tracks are in unless put in another (Groups).</p>
-        <table class="settings-table libraries-table"><thead><tr><th>On</th><th>Library</th><th>Tracks</th><th>Group</th></tr></thead>
+        <table class="settings-table libraries-table"><thead><tr><th>On</th><th>Library</th><th>Tracks</th></tr></thead>
           <tbody id="libraries-list"></tbody></table>
       </div>
       <div class="settings-section">
@@ -93,15 +93,9 @@ export const APP_HTML = `
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Library layouts</div>
-        <p class="settings-hint">Only if a library's tracks belong somewhere else than the default.</p>
+        <p class="settings-hint">Only if a library's tracks belong somewhere else than the default. A group's layout (Settings → Groups) wins over both.</p>
         <table class="settings-table layouts-table"><tbody id="library-layouts-list"></tbody></table>
         <select id="library-layout-add" class="layout-add" aria-label="Add a library layout"></select>
-      </div>
-      <div class="settings-section">
-        <div class="settings-section-title">Group layouts</div>
-        <p class="settings-hint">For tracks put in a group by hand (<strong>Group…</strong> on a selection); wins over their library's.</p>
-        <table class="settings-table layouts-table"><tbody id="group-layouts-list"></tbody></table>
-        <select id="group-layout-add" class="layout-add" aria-label="Add a group layout"></select>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">Characters in names</div>
@@ -124,10 +118,9 @@ export const APP_HTML = `
       <div class="settings-sect" data-sect="groups" hidden>
       <div class="settings-section">
         <div class="settings-section-title">Groups</div>
-        <p class="settings-hint">A track's group: the one it was put in (<strong>Group…</strong> on a selection), else its library's (Libraries), else Standard. A group sets how lyrics are looked up on LRCLIB — queries tried in order until one finds them; a query with no artist searches by title + album (cast recordings) — and can set a layout (Layouts). <strong>Skip</strong>: never looked up, not counted as missing lyrics.</p>
-        <p class="settings-hint">Variables: {title} {artist} {album} {album_artist} {year}, {title_base} {album_base} (without trailing "(…)", "[…]", "- From …"), {artist_first} {album_artist_first} (the first of several).</p>
-        <div id="lyrics-groups-list" class="lyrics-groups-list"></div>
-        <button type="button" id="lyrics-group-add" class="btn btn-ghost btn-sm">Add group</button>
+        <p class="settings-hint">Sets of tracks you make; put tracks in with <strong>Files ▾ → Groups…</strong>. A track can be in several. Each group can have a <strong>Layout</strong> (wins over the library and default layouts; two of a track's groups with different layouts is an error when re-filing, listed under Quality) and <strong>Quality</strong> checks that leave its tracks out (Missing lyrics for instrumentals).</p>
+        <div id="groups-list" class="groups-list"></div>
+        <button type="button" id="group-add" class="btn btn-ghost btn-sm">Add group</button>
       </div>
       </div>
       <div class="settings-sect" data-sect="scanning" hidden>
@@ -404,7 +397,7 @@ export const APP_HTML = `
                 <button id="covers-btn" class="ib-mi" type="button" role="menuitem" title="Move, copy or delete cover art between the album folder (cover.jpg) and the tracks">Covers…</button>
                 <button id="merge-albums-btn" class="ib-mi" type="button" role="menuitem" title="Make the selected tracks one album: tags, disc numbers, optionally one folder — previewed, then staged">Merge albums…</button>
                 <button id="bulk-rename-btn" class="ib-mi" type="button" role="menuitem" title="Rename the selected files with search &amp; replace (regex, captures, counters) — previewed, then staged">Rename files…</button>
-                <button id="lyrics-group-btn" class="ib-mi" type="button" role="menuitem" title="Put the selection in a group: how its lyrics are looked up (or No lyrics), and its layout">Group…</button>
+                <button id="lyrics-group-btn" class="ib-mi" type="button" role="menuitem" title="Put the selection in groups, or take it out (a group can set a layout and turn Quality checks off)">Groups…</button>
                 <hr>
                 <button id="remove-tracks-btn" class="ib-mi ib-danger" type="button" role="menuitem" title="Remove from the library index (leaves files on disk)">Remove from library</button>
                 <button id="delete-files-btn" class="ib-mi ib-danger" type="button" role="menuitem" title="Move the selected files to trash (undoable)">Delete files…</button>

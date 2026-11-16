@@ -7,7 +7,7 @@ import { esc } from './util'
 const SECTS: Record<string, [string, string]> = {
   libraries:    ['Libraries', 'What tggr scans, and where its library roots are.'],
   layouts:      ['Layouts', 'Where files belong, and how tag values become folder and file names.'],
-  groups:       ['Groups', 'Sets of tracks with their own lyrics lookups (and, under Layouts, their own layout).'],
+  groups:       ['Groups', 'Sets of tracks you make, each with its own layout or Quality checks that leave it out.'],
   scanning:     ['Scanning', 'What a scan reads and skips, and when it runs on its own.'],
   integrations: ['Integrations', "Your own self-hosted music apps. tggr reads Lidarr's naming rules and asks the players to rescan after it writes files."],
   metadata:     ['Metadata', 'Where tags, matches and lyrics come from. MusicBrainz needs no setup; these add to it.'],

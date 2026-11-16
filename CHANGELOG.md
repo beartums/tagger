@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Groups are yours.** There are none until you make one (Settings → Groups),
+  and a track can be in several (**Files ▾ → Groups…**, which also makes a new
+  one). Each group can have a **Layout**, which wins over the library and
+  default layouts, and **Quality** checks that leave its tracks out (Missing
+  lyrics for an Instrumental group). Two of a track's groups with different
+  layouts: re-filing it is an error naming them, and Quality lists it under
+  *Groups' layouts clash*.
+- **Lyrics lookups are the same for every track**: the plain queries first,
+  then the cast-album and soundtrack ones. Groups no longer change them; the
+  built-in Standard / Cast / Soundtrack / No lyrics groups and the per-library
+  default group are gone. A track LRCLIB calls instrumental stops counting as
+  missing lyrics.
 - **An emptied view goes back.** When an opened album, a filter, a Quality
   check or a search loses all its tracks to something you did (fixed, written,
   moved, removed, deleted), tggr returns to the view before it and says so.
