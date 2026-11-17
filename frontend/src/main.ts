@@ -11,7 +11,7 @@ import {
 } from './quality'
 import { APP_HTML } from './template'
 import { ValueChips } from './chips'
-import { muteErrorToasts } from './toast'
+import { muteErrorToasts, wireMessageLog } from './toast'
 import { openCleanup } from './cleanup'
 import { overlayStaged, editToast, undoToast, missingText, openReview, openHistory, shortPath, errText } from './staged'
 import { openBulkRename } from './bulkrename'
@@ -3685,6 +3685,7 @@ exportM3uBtn.addEventListener('click', exportM3u)
 undoBtn.addEventListener('click', undoLast)
 reviewBtn.addEventListener('click', () => openReview(refreshAfterWrite))
 document.getElementById('history-btn')!.addEventListener('click', () => openHistory(refreshAfterWrite))
+wireMessageLog(document.getElementById('msglog-btn')!)
 
 // Filter selects
 initFilterBar(() => { state.offset = 0; loadTracks(); recordView() })

@@ -6,6 +6,9 @@
   artist is looked up in its own request, with progress shown in the
   MusicBrainz tab (one request for all of them ran past the proxy's 30 s).
 - **Error messages stay until clicked**, so there's time to read them.
+- **A message log** (bell, top right): every message tggr has shown, newest
+  first, kept across reloads (last 200). The bell is marked while there are
+  errors you haven't looked at.
 - **A Groups tab** beside Tags, Files and Quality: tracks in any group, each
   group (with its count), and those in no group.
 - **Groups in the filter bar**: pick one or more (tracks in any of them),
