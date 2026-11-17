@@ -555,7 +555,7 @@ async def fill_disc_ids(req: TrackIds):
     return {"results": results, "tracks": n, **out}
 
 
-ARTIST_LOOKUPS = 20     # ~1 s each at MusicBrainz's rate: stay inside the proxy's 30 s
+ARTIST_LOOKUPS = 20     # ~1 s each at MusicBrainz's rate: stay inside the proxy's 30 s (when mb-seed looks them up itself)
 
 
 def _credit(prefix: str, names: str | None, ids: dict[str, str]) -> list[tuple[str, str]]:
@@ -579,6 +579,13 @@ def _credit(prefix: str, names: str | None, ids: dict[str, str]) -> list[tuple[s
 class Seed(BaseModel):
     track_ids: list[int]
     redirect_uri: Optional[str] = None
+    # What the browser already looked up, one /mb-artist at a time: name -> {status, mbid}.
+    # Given, mb-seed makes no MusicBrainz calls, so it can't outlast the proxy's 30 s.
+    artists: Optional[dict[str, dict]] = None
+
+
+class ArtistName(BaseModel):
+    name: str
 
 
 @router.post("/mb-seed")
@@ -598,7 +605,7 @@ def mb_seed(req: Seed):
     tracks = [t for g in groups.values() for t in g]
     album = _common(tracks, "album") or next(iter(albums))[0].rsplit("/", 1)[-1]
     album_artist = _common(tracks, "album_artist") or _common(tracks, "artist")
-    artists = _artist_ids(tracks, album_artist)
+    artists = _artist_ids(tracks, album_artist, req.artists)
     f: list[tuple[str, str]] = [("name", album), ("status", "official")]
     f += _credit("", album_artist, artists["ids"])
     year = (_common(tracks, "year") or "")[:4]
@@ -629,13 +636,8 @@ def mb_seed(req: Seed):
             "artists": {k: v for k, v in artists.items() if k != "ids"}}
 
 
-def _artist_ids(tracks: list[dict], album_artist: str | None) -> dict:
-    """
-    An MBID for each artist the release credits, so the release editor arrives
-    with them linked: from the tags when the files were matched before (a lone
-    artist's mb_artist_id / mb_album_artist_id), else MusicBrainz's one artist
-    with exactly that name. Several with that name, or none: left for you.
-    """
+def _artist_names(tracks: list[dict], album_artist: str | None) -> tuple[dict[str, str], list[str]]:
+    """Every artist the release credits, and the MBIDs the tags already give (a lone artist's mb_artist_id / mb_album_artist_id)."""
     from core.multivalue import split_values
     ids: dict[str, str] = {}
     names: list[str] = []
@@ -645,8 +647,31 @@ def _artist_ids(tracks: list[dict], album_artist: str | None) -> dict:
         if len(parts) == 1 and mbid and _UUID_RE.match(mbid):
             ids.setdefault(parts[0], mbid)
         names += [p for p in parts if p not in names]
+    return ids, names
+
+
+def _artist_ids(tracks: list[dict], album_artist: str | None, found: dict[str, dict] | None = None) -> dict:
+    """
+    An MBID for each artist the release credits, so the release editor arrives
+    with them linked: from the tags when the files were matched before, else
+    MusicBrainz's one artist with exactly that name. Several with that name, or
+    none: left for you. `found` is what the browser looked up already (no calls
+    here then); without it the first ARTIST_LOOKUPS are looked up here.
+    """
+    ids, names = _artist_names(tracks, album_artist)
     out = {"ids": ids, "linked": len([n for n in names if n in ids]), "ambiguous": [], "unknown": [], "unchecked": []}
     todo = [n for n in names if n not in ids]
+    if found is not None:
+        for n in todo:
+            r = found.get(n)
+            if not r:
+                out["unchecked"].append(n)
+            elif r.get("mbid") and _UUID_RE.match(str(r["mbid"])):
+                ids[n] = r["mbid"]
+                out["linked"] += 1
+            else:
+                out["ambiguous" if r.get("status") == "ambiguous" else "unknown"].append(n)
+        return out
     for n in todo[:ARTIST_LOOKUPS]:
         status, mbid = mbp.find_artist(n)
         if mbid:
@@ -656,6 +681,24 @@ def _artist_ids(tracks: list[dict], album_artist: str | None) -> dict:
             out[status].append(n)
     out["unchecked"] = todo[ARTIST_LOOKUPS:]
     return out
+
+
+@router.post("/mb-seed/artists")
+def mb_seed_artists(req: TrackIds):
+    """The artists Add to MusicBrainz still has to look up (not linked by the tags): fast, no MusicBrainz calls."""
+    with db() as conn:
+        groups = _discs(conn, req.track_ids)
+    tracks = [t for g in groups.values() for t in g]
+    album_artist = _common(tracks, "album_artist") or _common(tracks, "artist")
+    ids, names = _artist_names(tracks, album_artist)
+    return {"lookup": [n for n in names if n not in ids], "linked": len([n for n in names if n in ids])}
+
+
+@router.post("/mb-artist")
+def mb_artist(req: ArtistName):
+    """One artist name -> MusicBrainz's one artist with exactly that name, if there is one."""
+    status, mbid = mbp.find_artist(req.name)
+    return {"status": status, "mbid": mbid}
 
 
 @router.post("/disc-info")

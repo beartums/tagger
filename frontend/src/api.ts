@@ -667,8 +667,12 @@ export const api = {
         'POST', '/api/lookup/album/search', { track_ids: trackIds, album, artist, by, track, source, release }),
     discIds: (trackIds: number[]) =>
       request<EditResult & { results: DiscIdResult[]; tracks?: number }>('POST', '/api/lookup/disc-ids', { track_ids: trackIds }),
-    mbSeed: (trackIds: number[], redirectUri: string) =>
-      request<{ action: string; album: string; fields: [string, string][]; artists: { linked: number; ambiguous: string[]; unknown: string[]; unchecked: string[] } }>('POST', '/api/lookup/mb-seed', { track_ids: trackIds, redirect_uri: redirectUri }),
+    mbSeedArtists: (trackIds: number[]) =>
+      request<{ lookup: string[]; linked: number }>('POST', '/api/lookup/mb-seed/artists', { track_ids: trackIds }),
+    mbArtist: (name: string) =>
+      request<{ status: string; mbid: string | null }>('POST', '/api/lookup/mb-artist', { name }),
+    mbSeed: (trackIds: number[], redirectUri: string, artists?: Record<string, { status: string; mbid: string | null }>) =>
+      request<{ action: string; album: string; fields: [string, string][]; artists: { linked: number; ambiguous: string[]; unknown: string[]; unchecked: string[] } }>('POST', '/api/lookup/mb-seed', { track_ids: trackIds, redirect_uri: redirectUri, artists }),
     discInfo: (trackIds: number[]) =>
       request<DiscInfo>('POST', '/api/lookup/disc-info', { track_ids: trackIds }),
     albumScore: (trackIds: number[], mbAlbumId: string) =>

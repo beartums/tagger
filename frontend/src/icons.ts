@@ -21,6 +21,7 @@ export const ICON = {
   pencil: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   group:  svg('<rect x="7" y="3" width="14" height="10" rx="1.5"/><path d="M4 7v12a1 1 0 0 0 1 1h12"/>'),
   panel:  svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/><path d="M17.5 8.5h1M17.5 11.5h1M17.5 14.5h1"/>'),
+  bell:   svg('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
   lock:   svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
   caret:  '<span class="ib-caret" aria-hidden="true">▾</span>',
 }

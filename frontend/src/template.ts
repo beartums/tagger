@@ -17,6 +17,7 @@ export const APP_HTML = `
       <button id="cleanup-btn" class="btn btn-ghost btn-sm" title="Standardize tag separators (Folk/Celtic → Folk; Celtic)">Clean up</button>
       <button id="history-btn" class="btn btn-ghost btn-sm" title="Change history and undo">History</button>
       <button id="scan-btn" class="btn btn-ghost btn-sm scan-btn" title="Scan the whole library">Scan all</button>
+      <button id="msglog-btn" class="btn btn-ghost btn-icon msglog-btn" type="button" title="Messages" aria-label="Messages">${ICON.bell}</button>
       <button id="settings-btn" class="btn btn-ghost btn-icon" title="Settings" aria-label="Settings">⚙</button>
     </div>
   </header>

@@ -11,7 +11,7 @@ import {
 } from './quality'
 import { APP_HTML } from './template'
 import { ValueChips } from './chips'
-import { muteErrorToasts } from './toast'
+import { muteErrorToasts, wireMessageLog } from './toast'
 import { openCleanup } from './cleanup'
 import { overlayStaged, editToast, undoToast, missingText, openReview, openHistory, shortPath, errText } from './staged'
 import { openBulkRename } from './bulkrename'
@@ -2724,12 +2724,23 @@ document.getElementById('mb-add-btn')!.addEventListener('click', async () => {
   const ids = [...state.selectedIds]
   if (!ids.length) return
   // Opened now, while the click still counts: a window opened after the
-  // artist lookups (up to ~20 s) would be blocked as a popup.
+  // artist lookups would be blocked as a popup.
   const win = window.open('', MB_WINDOW)
-  win?.document.write('<p style="font: 15px system-ui; padding: 2em">Looking up the artists on MusicBrainz…</p>')
+  win?.document.write('<p id="mb-progress" style="font: 15px system-ui; padding: 2em">Looking up the artists on MusicBrainz…</p>')
+  const progress = (text: string) => { const el = win?.document.getElementById('mb-progress'); if (el) el.textContent = text }
   let seed
-  toast('Looking up the artists on MusicBrainz…', 'info')
-  try { seed = await api.lookup.mbSeed(ids, location.origin + location.pathname) } catch (e) {
+  try {
+    // One artist per request: a whole album's guests in one call outlasts the proxy's 30 s.
+    const { lookup } = await api.lookup.mbSeedArtists(ids)
+    const found: Record<string, { status: string; mbid: string | null }> = {}
+    for (const [i, name] of lookup.entries()) {
+      if (win?.closed) return
+      progress(`Looking up the artists on MusicBrainz: ${i + 1} of ${lookup.length} (${name})…`)
+      try { found[name] = await api.lookup.mbArtist(name) } catch { found[name] = { status: 'unknown', mbid: null } }
+    }
+    progress('Opening the Add release page…')
+    seed = await api.lookup.mbSeed(ids, location.origin + location.pathname, found)
+  } catch (e) {
     win?.close()
     toast(`Add to MusicBrainz: ${errText(e)}`, 'error'); return
   }
@@ -3674,6 +3685,7 @@ exportM3uBtn.addEventListener('click', exportM3u)
 undoBtn.addEventListener('click', undoLast)
 reviewBtn.addEventListener('click', () => openReview(refreshAfterWrite))
 document.getElementById('history-btn')!.addEventListener('click', () => openHistory(refreshAfterWrite))
+wireMessageLog(document.getElementById('msglog-btn')!)
 
 // Filter selects
 initFilterBar(() => { state.offset = 0; loadTracks(); recordView() })

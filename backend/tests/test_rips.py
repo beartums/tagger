@@ -115,3 +115,23 @@ def test_artists_linked_from_tags_then_by_exact_name(client, monkeypatch):
     assert f["mediums.0.track.0.artist_credit.names.1.mbid"] == "44444444-4444-4444-4444-444444444444"
     assert "mediums.0.track.1.artist_credit.names.0.mbid" not in f                          # ambiguous: yours to pick
     assert s["artists"] == {"linked": 2, "ambiguous": ["John Smith"], "unknown": ["Nobody Yet"], "unchecked": []}
+
+
+def test_seed_artists_looked_up_one_request_each(client, monkeypatch):
+    # The browser asks which names need a lookup, looks each up on its own
+    # (each well inside the proxy's 30 s), then seeds with the answers: mb-seed makes no calls.
+    import api.lookup as lk
+    answers = {"Guest": ("linked", "44444444-4444-4444-4444-444444444444"), "John Smith": ("ambiguous", None)}
+    monkeypatch.setattr(lk.mbp, "find_artist", lambda n: answers[n])
+    ids = _rip("/music/CD Rips", mb_album_artist_id="55555555-5555-5555-5555-555555555555")
+    with db() as conn:
+        conn.execute("UPDATE tracks SET artist = 'Artist; Guest' WHERE id = ?", (ids[0],))
+        conn.execute("UPDATE tracks SET artist = 'John Smith' WHERE id = ?", (ids[1],))
+    names = client.post("/api/lookup/mb-seed/artists", json={"track_ids": ids}).json()
+    assert names == {"lookup": ["Guest", "John Smith"], "linked": 1}
+    found = {n: client.post("/api/lookup/mb-artist", json={"name": n}).json() for n in names["lookup"]}
+    monkeypatch.setattr(lk.mbp, "find_artist", lambda n: (_ for _ in ()).throw(AssertionError("no lookups in mb-seed")))
+    s = client.post("/api/lookup/mb-seed", json={"track_ids": ids, "artists": found}).json()
+    f = dict(s["fields"])
+    assert f["mediums.0.track.0.artist_credit.names.1.mbid"] == "44444444-4444-4444-4444-444444444444"
+    assert s["artists"] == {"linked": 2, "ambiguous": ["John Smith"], "unknown": [], "unchecked": []}
