@@ -1046,6 +1046,8 @@ body.grid-editing .track-table .col-check { display: none; }
   opacity: 0;
   transform: translateY(6px);
   transition: opacity 0.2s, transform 0.2s;
+  pointer-events: auto;
+  cursor: pointer;
 }
 .toast.toast-show  { opacity: 1; transform: translateY(0); }
 .toast-success     { border-left-color: var(--success); }

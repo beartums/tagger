@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Add to MusicBrainz works for albums with many guest artists**: each
+  artist is looked up in its own request, with progress shown in the
+  MusicBrainz tab (one request for all of them ran past the proxy's 30 s).
+- **Error messages stay until clicked**, so there's time to read them.
 - **A Groups tab** beside Tags, Files and Quality: tracks in any group, each
   group (with its count), and those in no group.
 - **Groups in the filter bar**: pick one or more (tracks in any of them),
