@@ -5,6 +5,7 @@ import { api, MbCandidate, MbMatch, MbReleaseTrack } from './api'
 import { toast } from './toast'
 import { esc, fmtDuration } from './util'
 import { editToast, errText } from './staged'
+import { caa, hasArt } from './covers'
 import { state } from './state'
 
 const FIELDS: { key: string; label: string; on: boolean }[] = [
@@ -22,7 +23,7 @@ const coverWhere = (r: { covers: number; folder_covers: number }) =>
 const MB_IDS = ['mb_track_id', 'mb_artist_id', 'mb_album_id', 'mb_album_artist_id', 'mb_release_group_id', 'mb_release_track_id']
 
 /** opts.release: put this release first (one just added to MusicBrainz). */
-export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { release?: string } = {}) {
+export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { release?: string; hasCover?: boolean } = {}) {
   const overlay = document.createElement('div')
   overlay.className = 'fix-confirm-overlay'
   overlay.innerHTML = `
@@ -51,11 +52,11 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { 
         <div id="mb-candidates" class="mb-candidates">Searching…</div>
         <div id="mb-match" hidden>
           <div class="mb-release" id="mb-release"></div>
+          <div class="mb-covers" id="mb-covers"></div>
           <div class="pr-options mb-fields" id="mb-fields">
             ${FIELDS.map(f => `<label class="settings-toggle"><input type="checkbox" data-field="${f.key}" ${f.on ? 'checked' : ''} /><span>${f.label}</span></label>`).join('')}
             <label class="settings-toggle"><input type="checkbox" id="mb-orig" checked /><span>Original year</span></label>
             <label class="settings-toggle" title="Off: replace the genre and composer tracks already have"><input type="checkbox" id="mb-keep" checked /><span>Keep existing genre &amp; composer</span></label>
-            <label class="settings-toggle"><input type="checkbox" id="mb-cover" /><span title="Where it goes: Settings → Writing → Cover Art">Cover art (written now)</span></label>
           </div>
           <table class="pr-table mb-table"><thead><tr><th class="pr-check"></th><th>Your track</th><th class="mb-link">Match</th><th>MusicBrainz track</th></tr></thead>
             <tbody id="mb-rows"></tbody></table>
@@ -77,6 +78,31 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { 
   const candEl = $('#mb-candidates'), matchEl = $('#mb-match'), rowsEl = $('#mb-rows')
   const errEl = $('#mb-error'), sumEl = $('#mb-summary'), goBtn = $<HTMLButtonElement>('#mb-apply')
   let localCount = ids.length, match: MbMatch | null = null
+  // Cover art: the release's front from the Cover Art Archive, written now (not
+  // staged). On by default only when the album has no cover yet; a click on it
+  // turns it on or off, and that choice sticks across releases.
+  let hasCover: boolean | null = opts.hasCover ?? null
+  let art: 'checking' | 'yes' | 'no' = 'checking', coverPick: boolean | null = null
+  if (hasCover === null) api.covers.plan(ids).then(p => { hasCover = p.albums.some(a => a.folder || a.embedded > 0); renderCovers() }).catch(() => { hasCover = true })
+  const coverOn = () => art === 'yes' && (coverPick ?? hasCover === false)
+  function renderCovers() {
+    if (!match) return
+    const id = match.release.mb_album_id
+    const now = `<img class="mbb-cover mb-cover-now" src="/api/covers/${ids[0]}" alt="" title="Its cover now" onerror="this.outerHTML='<span class=&quot;mbb-cover mbb-cover-none&quot; title=&quot;No cover now&quot;>no art</span>'" />`
+    const next = art === 'yes'
+      ? `<button type="button" class="mbb-cover${coverOn() ? '' : ' mbb-cover-off'}" id="mb-cover-pick" title="The release's cover (Cover Art Archive), written now where Settings → Writing → Cover Art says${hasCover ? ' · this album already has a cover' : ''} — click to ${coverOn() ? 'leave it out' : 'write it'}"><img src="${esc(caa(id))}" alt="" /></button>`
+      : `<span class="mbb-cover mbb-cover-none">${art === 'checking' ? '…' : 'no art'}</span>`
+    const what = art === 'checking' ? 'Looking for its cover…'
+      : art === 'no' ? 'No cover art for this release on MusicBrainz'
+      : coverOn() ? 'New cover: written now' : hasCover ? 'Keeping the cover it has (click the new one to use it)' : 'New cover left out'
+    $('#mb-covers').innerHTML = `${now}<span class="mb-cover-arrow">→</span>${next}<span class="ma-dim">${esc(what)}</span>`
+  }
+  function checkArt() {
+    if (!match) return
+    const id = match.release.mb_album_id
+    art = 'checking'; renderCovers()
+    hasArt(caa(id)).then(ok => { if (match?.release.mb_album_id !== id) return; art = ok ? 'yes' : 'no'; renderCovers(); renderMatch() })
+  }
   let cands: MbCandidate[] = [], openId: string | null = null, searchToken = 0
   const quality = new Map<string, { quality: number; matched: number; local: number }>()
   const chosen = new Map<number, string | null>()     // track id -> release track key
@@ -178,6 +204,7 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { 
       for (const it of m.items) chosen.set(it.id, it.key)
       renderCandidates()
       renderMatch()
+      checkArt()
     } catch (err) { fail(err); openId = null; renderCandidates() }
   })
 
@@ -245,11 +272,15 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { 
     const dups = [...counts.values()].some(c => c > 1)
     sumEl.innerHTML = dups ? '<span class="pr-bad">Two tracks point at the same release track</span>' : `${n} of ${m.items.length} tracks`
     const anyField = [...overlay.querySelectorAll<HTMLInputElement>('#mb-fields input[data-field]')].some(cb => cb.checked)
-    const cover = $<HTMLInputElement>('#mb-cover').checked
+    const cover = coverOn()
     goBtn.disabled = !n || dups || (!anyField && !cover)
     goBtn.textContent = anyField ? `Stage ${n} track${n !== 1 ? 's' : ''}` : `Write cover art`
   }
   $('#mb-fields').addEventListener('change', () => { if (match) renderMatch() })
+  $('#mb-covers').addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('#mb-cover-pick')) return
+    coverPick = !coverOn(); renderCovers(); renderMatch()
+  })
   $('#mb-release').addEventListener('click', (e) => {
     const c = (e.target as HTMLElement).closest<HTMLElement>('[data-genre]')
     if (!c) return
@@ -279,7 +310,7 @@ export function openMbAlbum(ids: number[], onDone: () => Promise<void>, opts: { 
     try {
       const r = await api.lookup.albumApply({
         mb_album_id: match.release.mb_album_id, pairs, fields,
-        original_year: $<HTMLInputElement>('#mb-orig').checked, cover: $<HTMLInputElement>('#mb-cover').checked,
+        original_year: $<HTMLInputElement>('#mb-orig').checked, cover: coverOn(),
         keep: $<HTMLInputElement>('#mb-keep').checked ? KEEP : [],
         genre: offGenres.size ? genres(match.release.genre ?? '').filter(g => !offGenres.has(g)).join('; ') : undefined,
       })

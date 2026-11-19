@@ -1918,3 +1918,9 @@ button.scan-status[hidden] { display: none; }
 .lm-xf-off .lm-xlist { opacity: 0.5; text-decoration: line-through; }
 .lm-xi-trash { color: var(--danger); }
 .lm-xwarn { margin-top: 2px; }
+
+/* Match album: the cover now → the release's */
+.mb-covers { display: flex; align-items: center; gap: 10px; padding: 6px 16px; }
+.mb-covers:empty { display: none; }
+.mb-cover-now { cursor: default; }
+.mb-cover-arrow { color: var(--text-dim); }

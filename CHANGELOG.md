@@ -9,6 +9,10 @@
   track in the folder moves). A name already taken at the destination keeps
   what's there; moving into another album's folder sends the cover to the
   trash. Undo puts everything back.
+- **Match album shows the cover it would write**: the album's cover now → the
+  release's cover from MusicBrainz. It's on by default when the album has no
+  cover yet and off when it has one; click the new cover to switch. (It was an
+  unticked checkbox with no preview.)
 - **Files → Move to layout…**: moves the selected files to where their layout
   puts them. It first shows the final folders and file names (hover a file to
   see where it is now) and what will stay put and why; OK stages exactly that.
