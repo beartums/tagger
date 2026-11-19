@@ -741,3 +741,79 @@ def test_background_write_reports_progress(client, lib):
     assert w["done"] == w["total"] == 3
     assert read_tags(str(lib / "Shared" / "b.mp3"))["title"] == "New"
     assert client.get("/api/staged/apply/nope").status_code == 404
+
+
+@needs_ffmpeg
+def test_deleting_a_whole_album_can_take_its_files_and_folder(client, lib):
+    old = lib / "Shared" / "A" / "Al"
+    a = _insert(_mp3(old / "a.mp3"), title="A")
+    b = _insert(_mp3(old / "b.mp3"), title="B")
+    (old / "cover.jpg").write_bytes(b"c")
+    (old / "Scans").mkdir(); (old / "Scans" / "back.png").write_bytes(b"b")
+    pv = client.post("/api/library/delete-files", json={"track_ids": [a, b], "preview": True}).json()
+    f = pv["folders"][0]
+    assert f["whole"] and f["files_on"] and f["folder_on"] and f["files"] == 2
+    part = client.post("/api/library/delete-files", json={"track_ids": [a], "preview": True}).json()
+    assert part["folders"][0]["whole"] is False and part["folders"][0]["files_on"] is False
+
+    res = client.post("/api/library/delete-files", json={"track_ids": [a, b], "folders": {
+        str(old): {"files": True, "folder": True}}}).json()
+    assert res == {"deleted": 2, "other_files": 2, "folders_removed": 1}
+    assert not old.exists() and not (lib / "Shared" / "A").exists() and (lib / "Shared").is_dir()
+    cid = client.get("/api/library/history").json()[0]["id"]
+    client.post(f"/api/library/history/{cid}/undo")
+    assert (old / "a.mp3").exists() and (old / "cover.jpg").exists() and (old / "Scans" / "back.png").exists()
+
+
+@needs_ffmpeg
+def test_deleting_without_folder_options_leaves_the_rest(client, lib):
+    old = lib / "Shared" / "Al"
+    a = _insert(_mp3(old / "a.mp3"), title="A")
+    (old / "rip.log").write_text("eac")
+    assert client.post("/api/library/delete-files", json=[a]).json()["deleted"] == 1
+    assert (old / "rip.log").exists()
+
+
+@needs_ffmpeg
+def test_an_album_staged_in_two_batches_still_brings_its_files(client, lib):
+    """Tarzan, 2026-11-18: the first batch looked partial; the folder's files stayed behind."""
+    old = lib / "Shared" / "old"
+    a = _insert(_mp3(old / "a.mp3"), title="A", album="Al", album_artist="X", track_number="1")
+    b = _insert(_mp3(old / "b.mp3"), title="B", album="Al", album_artist="X", track_number="2")
+    (old / "info.nfo").write_text("n")
+    client.post("/api/tags/reorganize", json={"track_ids": [a]})
+    client.post("/api/tags/reorganize", json={"track_ids": [b]})
+    client.post("/api/staged/apply", json={})
+    assert (lib / "Shared" / "X" / "Al" / "info.nfo").exists() and not old.exists()
+
+
+@needs_ffmpeg
+def test_empty_folders_listed_top_most_deleted_and_undone(client, lib):
+    keep = lib / "Shared" / "Real" / "Album"
+    _mp3(keep / "01.mp3")
+    left = lib / "Shared" / "Gone"
+    (left / "Album" / "Scans").mkdir(parents=True)
+    (left / "Album" / "cover.jpg").write_bytes(b"c")
+    (left / "Album" / "Scans" / "b.png").write_bytes(b"b")
+    bare = lib / "Shared" / "Bare"
+    bare.mkdir()
+    (keep / "Scans").mkdir(); (keep / "Scans" / "x.png").write_bytes(b"x")   # part of the album: not listed
+    found = client.post("/api/library/empty-folders", json={}).json()["folders"]
+    got = {f["dir"]: f for f in found}
+    assert set(got) == {str(left), str(bare)}                   # top-most only; Real has audio
+    assert got[str(left)]["count"] == 2 and "Album/cover.jpg" in got[str(left)]["files"]
+    assert got[str(bare)]["count"] == 0
+
+    res = client.post("/api/library/empty-folders", json={"delete": [str(left), str(bare)]}).json()
+    assert res["deleted"] == 2 and not left.exists() and not bare.exists() and keep.exists()
+    cid = client.get("/api/library/history").json()[0]["id"]
+    client.post(f"/api/library/history/{cid}/undo")
+    assert (left / "Album" / "Scans" / "b.png").exists() and bare.is_dir()
+
+
+def test_empty_folders_refuses_one_that_has_audio_now(client, lib):
+    d = lib / "Shared" / "Late"
+    d.mkdir()
+    (d / "x.flac").write_bytes(b"f")
+    res = client.post("/api/library/empty-folders", json={"delete": [str(d)]}).json()
+    assert res["deleted"] == 0 and "audio" in res["errors"][0]["error"] and d.exists()

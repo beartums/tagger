@@ -14,7 +14,13 @@ export const APP_HTML = `
       <button id="scan-status" class="scan-status" type="button" title="Scan progress — click for details" hidden></button>
       <button id="review-btn" class="btn btn-review btn-sm" title="Review staged changes, then write them to the files" hidden></button>
       <button id="undo-btn" class="btn btn-ghost btn-icon" title="Undo last change" aria-label="Undo last change" hidden>↶</button>
-      <button id="cleanup-btn" class="btn btn-ghost btn-sm" title="Standardize tag separators (Folk/Celtic → Folk; Celtic)">Clean up</button>
+      <div class="ib-wrap">
+        <button id="cleanup-btn" class="btn btn-ghost btn-sm" type="button" aria-haspopup="menu" aria-expanded="false" title="Tidy tags and folders">Clean up</button>
+        <div id="cleanup-menu" class="ib-menu" role="menu" hidden>
+          <button id="cleanup-tags-btn" class="ib-mi" type="button" role="menuitem" title="Standardize tag separators (Folk/Celtic → Folk; Celtic)">Tag separators…</button>
+          <button id="cleanup-folders-btn" class="ib-mi" type="button" role="menuitem" title="Folders with no tracks left, in one, some or all libraries: pick which to delete">Empty folders…</button>
+        </div>
+      </div>
       <button id="history-btn" class="btn btn-ghost btn-sm" title="Change history and undo">History</button>
       <button id="scan-btn" class="btn btn-ghost btn-sm scan-btn" title="Scan the whole library">Scan all</button>
       <button id="msglog-btn" class="btn btn-ghost btn-icon msglog-btn" type="button" title="Messages" aria-label="Messages">${ICON.bell}</button>

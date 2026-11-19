@@ -481,23 +481,54 @@ def fingerprint_status():
     return {"tracks": total, "fingerprinted": done, "available": fingerprintjob.available()}
 
 
+class DeleteFiles(BaseModel):
+    track_ids: list[int]
+    preview: bool = False
+    # source folder -> {"files": trash its other files, "folder": remove it once empty}
+    folders: dict[str, dict[str, bool]] = {}
+
+
 @router.post("/delete-files")
-def delete_files(track_ids: list[int]):
+def delete_files(body: DeleteFiles | list[int]):
     """
     Move the selected files to a trash folder and remove their DB rows. Files
     are not hard-deleted — the move is logged so it can be undone (which
     restores both the file and the row).
+
+    Per folder, optionally its other files (cover, .cue, logs, Scans/ --
+    core/extras.py) go to the trash too, and the folder is removed once empty.
+    With preview: those folders, whole = every track in it is being deleted.
+    Not asked for a folder: neither (as before).
     """
+    import uuid
+    from core import extras
+    from api.config import get_library_roots
+    from core.fileops import prune_empty_dirs, root_for
+    req = body if isinstance(body, DeleteFiles) else DeleteFiles(track_ids=body)
+    track_ids = req.track_ids
     if not track_ids:
         raise HTTPException(400, "No track IDs provided")
     trash_dir = settings.config_dir / "trash"
-    trash_dir.mkdir(parents=True, exist_ok=True)
 
     with db() as conn:
         placeholders = ",".join("?" * len(track_ids))
         rows = conn.execute(
             f"SELECT * FROM tracks WHERE id IN ({placeholders})", track_ids
         ).fetchall()
+        dirs = {r["directory"] for r in rows}
+        going = [r["id"] for r in rows]
+        stay = {}
+        for d in dirs | {str(Path(d).parent) for d in dirs}:
+            stay[d] = conn.execute(
+                f"SELECT COUNT(*) FROM tracks WHERE directory = ? AND id NOT IN ({','.join('?' * len(going))})",
+                (d, *going)).fetchone()[0]
+        plans = extras.plan_delete(dirs, stay)
+        if req.preview:
+            return {"tracks": len(rows), "folders": [
+                {**p.describe(), "files_on": p.whole and bool(p.items), "folder_on": p.whole}
+                for p in plans if p.whole or p.items]}
+
+        trash_dir.mkdir(parents=True, exist_ok=True)
         snaps = []
         for r in rows:
             snap = snapshot(r)
@@ -509,10 +540,51 @@ def delete_files(track_ids: list[int]):
             else:
                 snap["_trash"] = None
             snaps.append(snap)
-        ids = [r["id"] for r in rows]
-        conn.execute(f"DELETE FROM tracks WHERE id IN ({placeholders})", ids)
-        log_change(conn, "delete_files", f"Deleted {len(ids)} files (moved to trash)", snaps)
-    return {"deleted": len(rows)}
+        conn.execute(f"DELETE FROM tracks WHERE id IN ({placeholders})", going)
+        moved, removed = [], 0
+        roots = get_library_roots()
+        for p in plans:
+            want = req.folders.get(p.src, {})
+            if want.get("files"):
+                for src, _ in p.items:
+                    to = trash_dir / f"leftover_{uuid.uuid4().hex[:8]}_{Path(src).name}"
+                    try:
+                        shutil.move(src, str(to))
+                    except OSError:
+                        continue
+                    moved.append({"src": src, "dst": str(to)})
+            if want.get("folder"):
+                prune_empty_dirs(p.src, root_for(p.src, roots) or settings.music_dir)
+                removed += not Path(p.src).exists()
+        extra = f" and {len(moved)} other file{'s' if len(moved) != 1 else ''}" if moved else ""
+        log_change(conn, "delete_files", f"Deleted {len(going)} files{extra} (moved to trash)", snaps, files=moved)
+    return {"deleted": len(rows), "other_files": len(moved), "folders_removed": removed}
+
+
+class EmptyFolders(BaseModel):
+    roots: list[str] = []           # library roots to look in; none = all
+    delete: list[str] = []          # with this: delete these folders
+
+
+@router.post("/empty-folders")
+def empty_folders(req: EmptyFolders):
+    """
+    Clean up → Empty folders: folders with no audio left under the chosen
+    library roots, with the non-track files in them. With `delete`, those go
+    to the trash (undoable from History).
+    """
+    from api.config import get_library_roots
+    from core import emptydirs
+    every = [str(r) for r in get_library_roots()]
+    roots = [r for r in every if not req.roots or r in {os.path.normpath(x) for x in req.roots}]
+    if not req.delete:
+        return {"folders": emptydirs.find(roots)}
+    moved, errors = emptydirs.delete(req.delete, every)
+    if moved:
+        with db() as conn:
+            n = len(moved)
+            log_change(conn, "delete_folders", f"Deleted {n} empty folder{'s' if n != 1 else ''}", [], files=moved)
+    return {"deleted": len(moved), "errors": errors}
 
 
 @router.get("/trash")
@@ -521,7 +593,7 @@ def trash_info():
     trash = settings.config_dir / "trash"
     if not trash.is_dir():
         return {"count": 0, "bytes": 0}
-    files = [f for f in trash.iterdir() if f.is_file()]
+    files = [f for f in trash.rglob("*") if f.is_file()]
     return {"count": len(files), "bytes": sum(f.stat().st_size for f in files)}
 
 
@@ -537,6 +609,11 @@ def empty_trash():
             freed += f.stat().st_size
             f.unlink()
             removed += 1
+        elif f.is_dir():   # a Scans/ folder that went with its album
+            inside = [q for q in f.rglob("*") if q.is_file()]
+            freed += sum(q.stat().st_size for q in inside)
+            removed += len(inside)
+            shutil.rmtree(f)
     return {"removed": removed, "bytes": freed}
 
 

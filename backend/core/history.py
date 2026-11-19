@@ -57,7 +57,7 @@ def log_change(conn, kind: str, summary: str, snapshots: list[dict],
     ({track id: {field: new value, "path": new path if moved}}): with it, any
     one field or move can be undone on its own (undo_part).
     """
-    if not snapshots and not dirs:
+    if not snapshots and not dirs and not files:
         return None
     data = {"tracks": snapshots, **({"dirs": dirs} if dirs else {}), **({"files": files} if files else {}),
             **({"changes": {str(k): v for k, v in changes.items()}} if changes else {})}
@@ -98,8 +98,12 @@ def undo_change(conn, change_id: int) -> dict:
         _undo_file_moves(payload.get("files", []), errors)
     elif row["kind"] == "remove":
         restored = _undo_removes(conn, tracks)
+    elif row["kind"] == "delete_folders":
+        from core import emptydirs
+        restored = emptydirs.undo(payload.get("files", []), errors)
     elif row["kind"] == "delete_files":
         restored = _undo_deletes(conn, tracks, errors)
+        _undo_file_moves(payload.get("files", []), errors)
     else:
         raise ValueError(f"Cannot undo change of kind {row['kind']!r}")
 
