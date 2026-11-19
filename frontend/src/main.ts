@@ -2679,7 +2679,7 @@ document.getElementById('mb-album-btn')!.addEventListener('click', async () => {
   let plan
   try { plan = await api.covers.plan(ids) } catch (e) { toast(`Match: ${errText(e)}`, 'error'); return }
   if (plan.albums.length > 1) openMbAlbums(plan.albums, refreshAfterEdit)
-  else openMbAlbum(ids, refreshAfterEdit)
+  else openMbAlbum(ids, refreshAfterEdit, { hasCover: plan.albums.some(a => a.folder || a.embedded > 0) })
 })
 // Add to MusicBrainz: POST the album to MusicBrainz's Add release page in a
 // new tab (the server builds the fields); MusicBrainz sends you back with
