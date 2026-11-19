@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Moving a whole album brings its other files and removes the old folder**:
+  cover art, .cue, rip logs, booklets, Scans/ and the like follow the tracks,
+  a lyrics sidecar (.lrc) is renamed with its track, and the emptied folder is
+  removed. Move to layout lists them per folder with a toggle (on when every
+  track in the folder moves). A name already taken at the destination keeps
+  what's there; moving into another album's folder sends the cover to the
+  trash. Undo puts everything back.
 - **Files → Move to layout…**: moves the selected files to where their layout
   puts them. It first shows the final folders and file names (hover a file to
   see where it is now) and what will stay put and why; OK stages exactly that.

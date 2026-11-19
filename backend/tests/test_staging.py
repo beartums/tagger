@@ -631,16 +631,6 @@ def test_cover_art_left_in_an_emptied_folder_follows_or_goes_to_trash(client, li
     assert [p.name.endswith("_cover.jpg") for p in (settings.config_dir / "trash").iterdir()] == [True]
 
 
-@needs_ffmpeg
-def test_a_folder_with_more_than_images_keeps_them(client, lib):
-    old = lib / "Shared" / "old"
-    src = _mp3(old / "x.mp3")
-    (old / "cover.jpg").write_bytes(b"c")
-    (old / "rip.log").write_text("eac")
-    tid = _insert(src, title="T", album="Al", album_artist="A", track_number="1")
-    client.post("/api/tags/reorganize", json={"track_ids": [tid]})
-    client.post("/api/staged/apply", json={})
-    assert (old / "cover.jpg").exists() and (old / "rip.log").exists()
 
 
 @needs_ffmpeg
@@ -667,15 +657,49 @@ def test_cover_art_left_in_an_emptied_folder_follows_or_goes_to_trash(client, li
 
 
 @needs_ffmpeg
-def test_a_folder_with_more_than_images_keeps_them(client, lib):
+def test_a_whole_album_brings_everything_and_the_old_folder_goes(client, lib):
     old = lib / "Shared" / "old"
     src = _mp3(old / "x.mp3")
     (old / "cover.jpg").write_bytes(b"c")
     (old / "rip.log").write_text("eac")
+    (old / "x.lrc").write_text("[00:01]la")
+    (old / "Scans").mkdir(); (old / "Scans" / "back.png").write_bytes(b"b")
     tid = _insert(src, title="T", album="Al", album_artist="A", track_number="1")
+    pv = client.post("/api/tags/reorganize", json={"track_ids": [tid], "preview": True}).json()
+    f = pv["folders"][0]
+    assert f["whole"] and f["bring"] and f["files"] == 4
     client.post("/api/tags/reorganize", json={"track_ids": [tid]})
+    res = client.post("/api/staged/apply", json={}).json()
+    new = lib / "Shared" / "A" / "Al"
+    assert (new / "cover.jpg").exists() and (new / "rip.log").exists() and (new / "Scans" / "back.png").exists()
+    assert (new / "01 T.lrc").read_text() == "[00:01]la"          # sidecar renamed with its track
+    assert not old.exists()
+    client.post(f"/api/library/history/{res['change_id']}/undo")
+    assert (old / "rip.log").exists() and (old / "Scans" / "back.png").exists() and (old / "x.lrc").exists()
+
+
+@needs_ffmpeg
+def test_extras_left_when_turned_off_or_partial(client, lib):
+    old = lib / "Shared" / "old"
+    a = _insert(_mp3(old / "a.mp3"), title="A", album="Al", album_artist="X", track_number="1")
+    b = _insert(_mp3(old / "b.mp3"), title="B", album="Al", album_artist="X", track_number="2")
+    (old / "rip.log").write_text("eac")
+    pv = client.post("/api/tags/reorganize", json={"track_ids": [a], "preview": True}).json()
+    assert pv["folders"][0]["whole"] is False and pv["folders"][0]["bring"] is False
+    client.post("/api/tags/reorganize", json={"track_ids": [a, b], "extras": {str(old): False}})
     client.post("/api/staged/apply", json={})
-    assert (old / "cover.jpg").exists() and (old / "rip.log").exists()
+    assert (old / "rip.log").exists() and (lib / "Shared" / "X" / "Al" / "02 B.mp3").exists()
+
+
+@needs_ffmpeg
+def test_disc_folders_bring_the_parents_files(client, lib):
+    album = lib / "Shared" / "in" / "Box"
+    a = _insert(_mp3(album / "CD1" / "a.mp3"), title="A", album="Box", album_artist="X", track_number="1", disc_number="1")
+    b = _insert(_mp3(album / "CD2" / "b.mp3"), title="B", album="Box", album_artist="X", track_number="1", disc_number="2")
+    (album / "booklet.pdf").write_bytes(b"p")
+    client.post("/api/tags/reorganize", json={"track_ids": [a, b]})
+    client.post("/api/staged/apply", json={})
+    assert (lib / "Shared" / "X" / "Box" / "booklet.pdf").exists() and not album.exists()
 
 
 def test_find_replace_regex_captures_and_preview(client, lib):

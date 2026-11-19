@@ -180,6 +180,7 @@ def test_move_files_into_a_folder(client, lib):
     src, ids = _album(lib, "Shared", "Loose", n=2)
     target = lib / "Libraries" / "Music - Christmas" / "Carols"
     target.mkdir()
+    _insert(_mp3(target / "09 other.mp3"), title="Other")   # another album lives here
     r = client.post("/api/tags/move-to", json={"track_ids": ids, "folder": str(target)}).json()
     assert r["planned"] == 2 and r["staged"] is True
     assert client.get("/api/staged/count").json()["last_step"]["summary"] == "Move 2 files → Carols"

@@ -115,6 +115,11 @@ export interface StagedTrack {
   changes: { field: string; old: string | null; new: string | null }[]
 }
 
+/** A source folder's other files (cover, .cue, logs, Scans/…) and where they'd go. */
+export interface ExtrasFolder {
+  dir: string; whole: boolean; dest: string | null; files: number; refs: boolean; discs: boolean; bring: boolean
+  items: { name: string; dir: boolean; files: number; to: string | null; trash: boolean }[]
+}
 export interface WriteError { id?: number; dir?: string; name?: string; error: string }
 
 /** What an editing call did: held for review, or written straight away. */
@@ -562,11 +567,11 @@ export const api = {
       request<{ planned: number; skipped: number; staged: boolean; moved: number; errors: WriteError[] }>(
         'POST', '/api/tags/rename', req),
     refilePreview: (trackIds: number[]) =>
-      request<{ moves: { id: number; from: string; to: string }[]; in_place: number; errors: WriteError[] }>(
+      request<{ moves: { id: number; from: string; to: string }[]; in_place: number; errors: WriteError[]; folders: ExtrasFolder[] }>(
         'POST', '/api/tags/reorganize', { track_ids: trackIds, preview: true }),
-    refile: (trackIds: number[]) =>
+    refile: (trackIds: number[], extras: Record<string, boolean> = {}) =>
       request<{ planned: number; moved: number; staged: boolean; errors: WriteError[]; missing?: number }>(
-        'POST', '/api/tags/reorganize', { track_ids: trackIds }),
+        'POST', '/api/tags/reorganize', { track_ids: trackIds, extras }),
     moveTo: (trackIds: number[], folder: string) =>
       request<{ planned: number; moved: number; staged: boolean; errors: WriteError[]; missing?: number }>(
         'POST', '/api/tags/move-to', { track_ids: trackIds, folder }),
