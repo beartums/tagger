@@ -817,3 +817,25 @@ def test_empty_folders_refuses_one_that_has_audio_now(client, lib):
     (d / "x.flac").write_bytes(b"f")
     res = client.post("/api/library/empty-folders", json={"delete": [str(d)]}).json()
     assert res["deleted"] == 0 and "audio" in res["errors"][0]["error"] and d.exists()
+
+
+def test_wav_and_m4p_count_as_audio(client, lib):
+    d = lib / "Shared" / "Lossless"
+    d.mkdir()
+    (d / "01.wav").write_bytes(b"w")
+    (lib / "Shared" / "Old").mkdir()
+    (lib / "Shared" / "Old" / "song.m4p").write_bytes(b"p")
+    found = {f["dir"] for f in client.post("/api/library/empty-folders", json={}).json()["folders"]}
+    assert str(d) not in found and str(lib / "Shared" / "Old") not in found
+    res = client.post("/api/library/empty-folders", json={"delete": [str(d)]}).json()
+    assert res["deleted"] == 0 and (d / "01.wav").exists()
+
+
+@needs_ffmpeg
+def test_deleting_tracks_never_trashes_other_audio(client, lib):
+    old = lib / "Shared" / "Al"
+    a = _insert(_mp3(old / "a.mp3"), title="A")
+    (old / "a.wav").write_bytes(b"w")
+    (old / "cover.jpg").write_bytes(b"c")
+    pv = client.post("/api/library/delete-files", json={"track_ids": [a], "preview": True}).json()
+    assert [i["name"] for i in pv["folders"][0]["items"]] == ["cover.jpg"]

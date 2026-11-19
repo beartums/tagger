@@ -17,14 +17,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from core.fileops import IMAGE_EXTS
-from core.tagger import AUDIO_EXTENSIONS
+from core.tagger import ANY_AUDIO
 
 DISC = re.compile(r"^(cd|dis[ck])[\s._-]*\d+$", re.I)
 STALE_REFS = {".cue", ".m3u", ".m3u8"}   # name tracks by file name
 
 
 def _audio(p: Path) -> bool:
-    return p.suffix.lower() in AUDIO_EXTENSIONS
+    return p.suffix.lower() in ANY_AUDIO
 
 
 def _has_audio(d: Path) -> bool:

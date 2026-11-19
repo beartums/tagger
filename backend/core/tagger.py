@@ -24,6 +24,12 @@ if "bpm" not in EasyMP4.Get:
     EasyMP4.RegisterIntKey("bpm", "tmpo")
 
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".oga"}
+# Any audio file, tggr reads it or not: a folder holding one of these is never
+# "empty", and these are never another file to move or delete with an album.
+ANY_AUDIO = AUDIO_EXTENSIONS | {
+    ".wav", ".wave", ".aif", ".aiff", ".aifc", ".m4p", ".m4b", ".mp4", ".alac", ".opus", ".wma", ".ape",
+    ".wv", ".mpc", ".mp2", ".mka", ".dsf", ".dff", ".tta", ".shn", ".ra", ".ac3", ".dts", ".mid", ".midi",
+}
 
 # Mapping: internal field name → easy-tag key
 _TO_EASY: dict[str, str] = {
