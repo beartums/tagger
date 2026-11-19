@@ -17,6 +17,7 @@ import { overlayStaged, editToast, undoToast, missingText, openReview, openHisto
 import { openBulkRename } from './bulkrename'
 import { openParseNames } from './parsenames'
 import { openLayoutMove } from './layoutmove'
+import { openDeleteFiles } from './deletefiles'
 import { openMergeAlbums } from './mergealbums'
 import { openCovers, openChangeCover, openBulkCovers } from './covers'
 import { openMbAlbum } from './mbalbum'
@@ -2531,29 +2532,17 @@ async function removeFromLibrary() {
 
 // ─── Delete files ─────────────────────────────────────────────────────────────────
 
-async function deleteFiles() {
+function deleteFiles() {
   const ids = [...state.selectedIds]
   if (!ids.length) return
-  const ok = confirm(
-    `Move ${ids.length} file${ids.length !== 1 ? 's' : ''} to trash?\n\n` +
-    `The files leave your library folder but can be restored with Undo.`
-  )
-  if (!ok) return
-  deleteFilesBtn.disabled = true
-  try {
-    const { deleted } = await api.library.deleteFiles(ids)
-    toast(`Moved ${deleted} file${deleted !== 1 ? 's' : ''} to trash`, 'success')
+  openDeleteFiles(ids, async () => {
     state.selectedIds.clear()
     state.qualityIssues = null
     await loadTracks()
     renderEditor()
     if (state.sidebarMode === 'quality') await renderQualityPanel()
     await refreshUndoButton()
-  } catch (e) {
-    toast(`Delete failed: ${e}`, 'error')
-  } finally {
-    deleteFilesBtn.disabled = false
-  }
+  })
 }
 
 

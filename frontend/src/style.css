@@ -1924,3 +1924,8 @@ button.scan-status[hidden] { display: none; }
 .mb-covers:empty { display: none; }
 .mb-cover-now { cursor: default; }
 .mb-cover-arrow { color: var(--text-dim); }
+/* Delete files: per folder, its other files and the folder itself */
+.df-togs { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.df-togs .tog { white-space: nowrap; }
+.df-togs .tog:disabled { opacity: 0.4; cursor: default; }
+.df-kept { opacity: 0.5; }

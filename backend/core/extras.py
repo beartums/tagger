@@ -128,3 +128,32 @@ def plan(moves: dict[str, str], remaining: dict[str, int], occupied: set[str] = 
         if p.items:
             plans.append(p)
     return plans
+
+
+def plan_delete(folders: set[str], remaining: dict[str, int]) -> list[FolderPlan]:
+    """
+    The folders whose tracks are being deleted: each one's other files (all
+    to the trash, items' `to` None), whole = no track stays. A parent of disc
+    folders comes last, once every one of its disc folders is whole.
+    """
+    plans = []
+    for d in sorted(folders):
+        p = FolderPlan(d, whole=remaining.get(d, 0) == 0, dest=None)
+        for e in _contents(Path(d)):
+            p.items.append((str(e), None))
+            p.files += _files(e)
+        plans.append(p)
+    whole = {Path(p.src) for p in plans if p.whole}
+    for parent in sorted({d.parent for d in whole if DISC.match(d.name)}):
+        try:
+            subs = [e for e in parent.iterdir() if e.is_dir() and _has_audio(e)]
+        except OSError:
+            continue
+        if remaining.get(str(parent), 0) or any(not DISC.match(s.name) or s not in whole for s in subs):
+            continue
+        p = FolderPlan(str(parent), whole=True, dest=None, parent_of_discs=True)
+        for e in _contents(parent):
+            p.items.append((str(e), None))
+            p.files += _files(e)
+        plans.append(p)
+    return plans

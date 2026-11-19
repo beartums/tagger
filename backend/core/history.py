@@ -100,6 +100,7 @@ def undo_change(conn, change_id: int) -> dict:
         restored = _undo_removes(conn, tracks)
     elif row["kind"] == "delete_files":
         restored = _undo_deletes(conn, tracks, errors)
+        _undo_file_moves(payload.get("files", []), errors)
     else:
         raise ValueError(f"Cannot undo change of kind {row['kind']!r}")
 

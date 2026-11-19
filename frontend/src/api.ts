@@ -502,6 +502,10 @@ export const api = {
     dead: () => request<TrackList>('GET', '/api/library/dead'),
     removeTracks: (ids: number[]) => request<{ removed: number }>('POST', '/api/library/remove', ids),
     deleteFiles: (ids: number[]) => request<{ deleted: number }>('POST', '/api/library/delete-files', ids),
+    deletePreview: (ids: number[]) => request<{ tracks: number; folders: (ExtrasFolder & { files_on: boolean; folder_on: boolean })[] }>(
+      'POST', '/api/library/delete-files', { track_ids: ids, preview: true }),
+    deleteWith: (ids: number[], folders: Record<string, { files: boolean; folder: boolean }>) =>
+      request<{ deleted: number; other_files: number; folders_removed: number }>('POST', '/api/library/delete-files', { track_ids: ids, folders }),
     artists: () => request<Artist[]>('GET', '/api/library/artists'),
     valueCounts: (ids: number[], field: string) =>
       request<{ count: number; values: { value: string; tracks: number }[] }>(

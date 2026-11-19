@@ -741,3 +741,34 @@ def test_background_write_reports_progress(client, lib):
     assert w["done"] == w["total"] == 3
     assert read_tags(str(lib / "Shared" / "b.mp3"))["title"] == "New"
     assert client.get("/api/staged/apply/nope").status_code == 404
+
+
+@needs_ffmpeg
+def test_deleting_a_whole_album_can_take_its_files_and_folder(client, lib):
+    old = lib / "Shared" / "A" / "Al"
+    a = _insert(_mp3(old / "a.mp3"), title="A")
+    b = _insert(_mp3(old / "b.mp3"), title="B")
+    (old / "cover.jpg").write_bytes(b"c")
+    (old / "Scans").mkdir(); (old / "Scans" / "back.png").write_bytes(b"b")
+    pv = client.post("/api/library/delete-files", json={"track_ids": [a, b], "preview": True}).json()
+    f = pv["folders"][0]
+    assert f["whole"] and f["files_on"] and f["folder_on"] and f["files"] == 2
+    part = client.post("/api/library/delete-files", json={"track_ids": [a], "preview": True}).json()
+    assert part["folders"][0]["whole"] is False and part["folders"][0]["files_on"] is False
+
+    res = client.post("/api/library/delete-files", json={"track_ids": [a, b], "folders": {
+        str(old): {"files": True, "folder": True}}}).json()
+    assert res == {"deleted": 2, "other_files": 2, "folders_removed": 1}
+    assert not old.exists() and not (lib / "Shared" / "A").exists() and (lib / "Shared").is_dir()
+    cid = client.get("/api/library/history").json()[0]["id"]
+    client.post(f"/api/library/history/{cid}/undo")
+    assert (old / "a.mp3").exists() and (old / "cover.jpg").exists() and (old / "Scans" / "back.png").exists()
+
+
+@needs_ffmpeg
+def test_deleting_without_folder_options_leaves_the_rest(client, lib):
+    old = lib / "Shared" / "Al"
+    a = _insert(_mp3(old / "a.mp3"), title="A")
+    (old / "rip.log").write_text("eac")
+    assert client.post("/api/library/delete-files", json=[a]).json()["deleted"] == 1
+    assert (old / "rip.log").exists()

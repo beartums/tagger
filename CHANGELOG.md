@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Delete files… can take the album's folder with it**: it now opens a
+  dialog listing each folder the tracks leave. When every track in a folder
+  is deleted, its other files (cover, .cue, logs, Scans/…) go to the trash too
+  and the emptied folder is removed — each a toggle, and the folder can only
+  go once its other files do. Undo puts everything back; Empty trash now also
+  clears folders in it.
 - **Moving a whole album brings its other files and removes the old folder**:
   cover art, .cue, rip logs, booklets, Scans/ and the like follow the tracks,
   a lyrics sidecar (.lrc) is renamed with its track, and the emptied folder is
