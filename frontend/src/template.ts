@@ -547,5 +547,6 @@ export const APP_HTML = `
     <span id="status-where" class="status-where"></span>
     <span id="status-count" class="status-count"></span>
     <span id="status-sel" class="status-sel"></span>
+    <button type="button" id="status-bg" class="status-bg" hidden></button>
   </footer>
 `

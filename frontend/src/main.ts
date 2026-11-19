@@ -2143,6 +2143,7 @@ lyricsLookupBtn.addEventListener('click', async () => {
     if (!r.job_id) { toast('Nothing to look up — every track listed was already tried (Search… one by hand)', 'info'); return }
     toast(`Looking up lyrics for ${r.tracks.toLocaleString()} tracks — progress under Settings → Background`, 'info')
     pollLyrics(r.job_id)
+    watchJobs()
   } catch (e) {
     toast(`Lyrics lookup failed: ${errText(e)}`, 'error')
   } finally {
@@ -2195,18 +2196,57 @@ fixAllBtn.addEventListener('click', async () => {
 
 // ─── Scan status ──────────────────────────────────────────────────────────────
 
-function renderScanStatus() {
-  const job = state.scanJob
-  const live = !!job && (job.status === 'running' || job.status === 'pending')
-  scanStatusEl.hidden = !live
-  document.getElementById('bg-dot')!.hidden = !live
-  if (!live) { scanStatusEl.textContent = ''; return }
-  const listing = job!.phase === 'listing' || (!job!.scanned && job!.phase !== 'reading')
-  const pct = job!.total && !listing ? Math.round((job!.scanned / job!.total) * 100) : 0
-  scanStatusEl.textContent = job!.status === 'pending' ? 'Starting scan…'
-    : listing ? `Finding files… ${job!.total ? job!.total.toLocaleString() : ''}`
-    : `Scanning… ${job!.scanned.toLocaleString()}/${job!.total.toLocaleString()} (${pct}%)`
+// Every background job lights the indicators (topbar pill, Settings →
+// Background dot, status bar): a scan from state.scanJob, the rest
+// (conversions, lyrics, fingerprints) from watchJobs below.
+let otherJobs: import('./api').ScanJob[] = []
+const statusBgEl = document.getElementById('status-bg')!
+const JOB_VERB: Record<string, string> = { convert: 'Converting', lyrics: 'Looking up lyrics', fingerprint: 'Fingerprinting' }
+
+function jobText(job: import('./api').ScanJob): string {
+  if (job.kind && job.kind !== 'scan') {
+    const verb = JOB_VERB[job.kind] ?? 'Working'
+    return job.total ? `${verb}… ${job.scanned.toLocaleString()}/${job.total.toLocaleString()}` : `${verb}…`
+  }
+  const listing = job.phase === 'listing' || (!job.scanned && job.phase !== 'reading')
+  const pct = job.total && !listing ? Math.round((job.scanned / job.total) * 100) : 0
+  return job.status === 'pending' ? 'Starting scan…'
+    : listing ? `Finding files… ${job.total ? job.total.toLocaleString() : ''}`
+    : `Scanning… ${job.scanned.toLocaleString()}/${job.total.toLocaleString()} (${pct}%)`
 }
+
+function renderScanStatus() {
+  const scan = state.scanJob && (state.scanJob.status === 'running' || state.scanJob.status === 'pending') ? state.scanJob : null
+  const live = [...(scan ? [scan] : []), ...otherJobs]
+  scanStatusEl.hidden = statusBgEl.hidden = !live.length
+  document.getElementById('bg-dot')!.hidden = !live.length
+  if (!live.length) { scanStatusEl.textContent = statusBgEl.textContent = ''; return }
+  const text = jobText(live[0]) + (live.length > 1 ? ` +${live.length - 1}` : '')
+  scanStatusEl.textContent = text
+  statusBgEl.textContent = text
+  statusBgEl.title = live.map(jobText).join('\n') + '\nClick for Settings → Background'
+}
+
+// Non-scan jobs: polled while any runs. Started by a job starting here
+// (the tggr:job event) or one found running at load.
+let jobsTimer: ReturnType<typeof setInterval> | null = null
+async function watchJobs() {
+  const tick = async () => {
+    try {
+      const jobs = await api.jobs.list()
+      otherJobs = jobs.filter(j => j.kind && j.kind !== 'scan' && (j.status === 'running' || j.status === 'pending'))
+    } catch { otherJobs = [] }
+    renderScanStatus()
+    if (!otherJobs.length && jobsTimer) { clearInterval(jobsTimer); jobsTimer = null }
+  }
+  await tick()
+  if (otherJobs.length && !jobsTimer) jobsTimer = setInterval(tick, 2000)
+}
+window.addEventListener('tggr:job', () => { watchJobs() })
+statusBgEl.addEventListener('click', async () => {
+  if (!settingsModal.classList.contains('open')) await openSettings()
+  showSettingsTab('background')
+})
 
 // ─── Data loading ─────────────────────────────────────────────────────────────
 
@@ -4421,7 +4461,8 @@ let bgTimer: ReturnType<typeof setInterval> | null = null
 
 async function refreshBackground() {
   const active = await renderBackground(paneBackground)
-  if (active) {
+  watchJobs()
+  if (active && (!active.kind || active.kind === 'scan')) {
     state.scanJob = active
     renderScanStatus()
     if (!state.scanPollTimer) pollScan(active.id)   // a scan started elsewhere (auto, another tab)
@@ -4449,8 +4490,9 @@ scanStatusEl.addEventListener('click', async () => {
 })
 // A scan already running when the page loads (auto-scan, another tab).
 api.jobs.list().then(jobs => {
-  const active = jobs.find(j => j.status === 'running' || j.status === 'pending')
+  const active = jobs.find(j => (!j.kind || j.kind === 'scan') && (j.status === 'running' || j.status === 'pending'))
   if (active) { state.scanJob = active; renderScanStatus(); pollScan(active.id) }
+  if (jobs.some(j => j.kind && j.kind !== 'scan' && (j.status === 'running' || j.status === 'pending'))) watchJobs()
 }).catch(() => { /* not signed in yet */ })
 
 document.getElementById('settings-btn')!.addEventListener('click', () => {
