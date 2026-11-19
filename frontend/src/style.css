@@ -1909,3 +1909,9 @@ button.scan-status[hidden] { display: none; }
 .lm-file { padding: 1px 0 1px 18px; font-size: 13px; cursor: default; }
 .lm-file:hover { background: var(--bg-hover, rgba(127,127,127,.12)); }
 .lm-note { margin-right: auto; }
+
+/* Match album: the cover now → the release's */
+.mb-covers { display: flex; align-items: center; gap: 10px; padding: 6px 16px; }
+.mb-covers:empty { display: none; }
+.mb-cover-now { cursor: default; }
+.mb-cover-arrow { color: var(--text-dim); }
