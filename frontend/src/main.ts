@@ -2,7 +2,7 @@ import { exportPrefs, importPrefs } from './prefs'
 import './style.css'
 import { api, DiscIdResult, DiscInfo, Track, Artist, Album, AlbumRow, LookupResult, AppSettings, Naming, RescanResult, TagValue, IssueCount, IssueEntry, IssueKey, setUnauthorizedHandler, onSessionExpired } from './api'
 import { toast } from './toast'
-import { esc, fmtDuration, debounce } from './util'
+import { esc, fmtDuration, debounce, fmtBytes } from './util'
 import { state, PAGE_SIZES, savePageSize, TAG_FIELDS, DirNode, State, saveColPrefs, BROWSE_TAGS, loadColWidths, saveColWidths, saveColOrder, TagStep, pathKey } from './state'
 import { COL_DEFS, orderedCols, viewCols, sourcePath } from './columns'
 import {
@@ -18,6 +18,7 @@ import { openBulkRename } from './bulkrename'
 import { openParseNames } from './parsenames'
 import { openLayoutMove } from './layoutmove'
 import { openDeleteFiles } from './deletefiles'
+import { openEmptyFolders } from './emptyfolders'
 import { openMergeAlbums } from './mergealbums'
 import { openCovers, openChangeCover, openBulkCovers } from './covers'
 import { openMbAlbum } from './mbalbum'
@@ -3657,8 +3658,18 @@ autonumberBtn.addEventListener('click', autoNumber)
 findReplaceBtn.addEventListener('click', () => {
   if (state.selectedIds.size) openFindReplace([...state.selectedIds], res => res.staged ? refreshAfterStage() : refreshAfterBulk())
 })
-document.getElementById('cleanup-btn')!.addEventListener('click', () =>
-  openCleanup([...state.selectedIds], async () => { state.tagValues = new Map(); await refreshAfterEdit() }))
+// Clean up: a small menu -- tag separators, or folders with no tracks left.
+{
+  const btn = document.getElementById('cleanup-btn')!, menu = document.getElementById('cleanup-menu')!
+  const shut = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false') }
+  btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute('aria-expanded', String(!menu.hidden)) })
+  document.addEventListener('click', (e) => { if (!(e.target as HTMLElement).closest('#cleanup-menu')) shut() })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut() })
+  document.getElementById('cleanup-tags-btn')!.addEventListener('click', () => { shut()
+    openCleanup([...state.selectedIds], async () => { state.tagValues = new Map(); await refreshAfterEdit() }) })
+  document.getElementById('cleanup-folders-btn')!.addEventListener('click', () => { shut()
+    openEmptyFolders(async () => { await refreshUndoButton() }).catch(e => toast(`Empty folders: ${errText(e)}`, 'error')) })
+}
 replaygainBtn.addEventListener('click', scanReplayGain)
 inferBtn.addEventListener('click', inferFromFilename)
 exportM3uBtn.addEventListener('click', exportM3u)
@@ -4337,14 +4348,6 @@ backupFile.addEventListener('change', async () => {
   }
 })
 
-
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  const units = ['KB', 'MB', 'GB']
-  let v = n / 1024, i = 0
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
-  return `${v.toFixed(1)} ${units[i]}`
-}
 
 async function refreshTrashStatus() {
   try {

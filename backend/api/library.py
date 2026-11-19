@@ -561,6 +561,32 @@ def delete_files(body: DeleteFiles | list[int]):
     return {"deleted": len(rows), "other_files": len(moved), "folders_removed": removed}
 
 
+class EmptyFolders(BaseModel):
+    roots: list[str] = []           # library roots to look in; none = all
+    delete: list[str] = []          # with this: delete these folders
+
+
+@router.post("/empty-folders")
+def empty_folders(req: EmptyFolders):
+    """
+    Clean up → Empty folders: folders with no audio left under the chosen
+    library roots, with the non-track files in them. With `delete`, those go
+    to the trash (undoable from History).
+    """
+    from api.config import get_library_roots
+    from core import emptydirs
+    every = [str(r) for r in get_library_roots()]
+    roots = [r for r in every if not req.roots or r in {os.path.normpath(x) for x in req.roots}]
+    if not req.delete:
+        return {"folders": emptydirs.find(roots)}
+    moved, errors = emptydirs.delete(req.delete, every)
+    if moved:
+        with db() as conn:
+            n = len(moved)
+            log_change(conn, "delete_folders", f"Deleted {n} empty folder{'s' if n != 1 else ''}", [], files=moved)
+    return {"deleted": len(moved), "errors": errors}
+
+
 @router.get("/trash")
 def trash_info():
     """Count and total size of files sitting in the delete-to-trash folder."""

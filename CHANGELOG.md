@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Clean up → Empty folders…**: folders with no tracks left, in all
+  libraries or the ones you pick, each with the non-track files still in it.
+  All are marked to delete; click one to keep it. They go to the trash
+  (Undo in History). A folder inside an album (its Scans/) isn't listed.
+- **An album queued in parts still brings its files**: Move to layout now
+  remembers only a toggle you changed; otherwise whether the album's other
+  files follow is decided when the moves are written (Tarzan's .nfo/.sfv/
+  cover stayed behind because the first batch looked like part of an album).
 - **Delete files… can take the album's folder with it**: it now opens a
   dialog listing each folder the tracks leave. When every track in a folder
   is deleted, its other files (cover, .cue, logs, Scans/…) go to the trash too

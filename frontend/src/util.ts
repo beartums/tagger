@@ -27,3 +27,12 @@ export function fmtChannels(n: number | null): string {
   if (!n) return '—'
   return n === 1 ? 'Mono' : n === 2 ? 'Stereo' : `${n}ch`
 }
+
+/** 1.2 MB */
+export function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  const units = ['KB', 'MB', 'GB']
+  let v = n / 1024, i = 0
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+  return `${v.toFixed(1)} ${units[i]}`
+}

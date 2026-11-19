@@ -68,7 +68,8 @@ export function openLayoutMove(ids: number[], stageChanges: boolean, onDone: (st
       </div>`
     }).join('') || '<div class="pr-summary">Nothing to move.</div>'
     // Each source folder's other files: on when the whole album moves.
-    for (const f of r.folders) bring[f.dir] = f.bring
+    // Only a folder you toggle is sent; the rest is decided when the moves are written
+    // (whole album then = its files follow), so a batch staged in parts still brings them.
     const listed = (f: typeof r.folders[number]) => f.items.slice(0, 8).map(i =>
       `<span class="lm-xi${i.trash ? ' lm-xi-trash' : ''}" title="${esc(i.trash ? 'Goes to the trash: the destination is another album’s folder' : i.to ? 'To ' + shortPath(i.to) : '')}">${esc(i.name)}${i.dir ? `/ (${i.files})` : ''}</span>`).join(', ')
       + (f.items.length > 8 ? `, +${f.items.length - 8} more` : '')

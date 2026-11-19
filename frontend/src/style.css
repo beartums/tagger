@@ -1929,3 +1929,15 @@ button.scan-status[hidden] { display: none; }
 .df-togs .tog { white-space: nowrap; }
 .df-togs .tog:disabled { opacity: 0.4; cursor: default; }
 .df-kept { opacity: 0.5; }
+/* Clean up → Empty folders */
+.ef-libs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ef-list { padding: 4px 16px 8px; display: flex; flex-direction: column; gap: 2px; }
+.ef-row { display: flex; gap: 10px; align-items: flex-start; text-align: left; background: none; border: 0; border-top: 1px solid var(--border-subtle); padding: 6px 0; color: inherit; font: inherit; cursor: pointer; }
+.ef-row:hover { background: var(--bg-hover, rgba(127,127,127,.08)); }
+.ef-mark { flex: none; width: 52px; font-size: 11px; text-transform: uppercase; color: var(--danger); padding-top: 2px; }
+.ef-keep .ef-mark { color: var(--text-dim); }
+.ef-keep .ef-body { opacity: 0.45; text-decoration: line-through; }
+.ef-body { min-width: 0; font-size: 13px; }
+.ef-path { font-weight: 600; overflow-wrap: anywhere; }
+.ef-files { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.ef-has .ef-path::after { content: ' · has files'; font-weight: 400; color: var(--warning, #d29922); font-size: 12px; }
