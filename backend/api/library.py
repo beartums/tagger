@@ -587,6 +587,37 @@ def empty_folders(req: EmptyFolders):
     return {"deleted": len(moved), "errors": errors}
 
 
+class Convert(BaseModel):
+    roots: list[str] = []           # library roots to look in; none = all
+    paths: list[str] = []           # with these: convert them (a background job)
+
+
+@router.post("/convert")
+def convert_audio(req: Convert, background_tasks: BackgroundTasks):
+    """
+    Clean up → Convert audio: without paths, the files under the chosen roots
+    that tggr can't read (WAV/AIFF -> FLAC, WMA/MP2 -> MP3; .m4p listed as
+    protected). With paths, convert those in the background (core/convert.py).
+    """
+    from api.config import get_library_roots
+    from core import convert
+    from core.tasks import active_scan, create_scan_job
+    every = [str(r) for r in get_library_roots()]
+    if not req.paths:
+        roots = [r for r in every if not req.roots or r in {os.path.normpath(x) for x in req.roots}]
+        return {"folders": convert.find(roots), "available": convert.available()}
+    if not convert.available():
+        raise HTTPException(400, "ffmpeg not found")
+    if active_scan("convert"):
+        raise HTTPException(409, "A conversion is already running")
+    paths = [os.path.normpath(p) for p in req.paths]
+    if any(not any(p.startswith(r + os.sep) for r in every) for p in paths):
+        raise HTTPException(400, "every file must be inside a library root")
+    job_id = create_scan_job(kind="convert")
+    background_tasks.add_task(convert.run, job_id, paths)
+    return {"job_id": job_id, "files": len(paths)}
+
+
 @router.get("/trash")
 def trash_info():
     """Count and total size of files sitting in the delete-to-trash folder."""

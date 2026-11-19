@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Clean up → Convert audio…**: finds audio tggr can't read in the
+  libraries you pick and converts it — WAV/AIFF to FLAC (nothing lost),
+  WMA/MP2 to MP3 V0 — in the background, keeping the tags (not recording
+  metadata like Pro Tools IDs). Each result is checked against the original's
+  length, the original goes to the trash, and the new file is scanned in.
+  History undoes it. Protected iTunes .m4p files are listed with a lock: they
+  can't be converted; download them again from your purchases.
 - **Fix: .wav, .m4p, .wma and other audio tggr doesn't tag counted as "not
   audio"** in the new folder checks, so Empty folders listed folders of them
   as empty and an album's delete or move treated them as its other files.

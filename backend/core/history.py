@@ -98,6 +98,9 @@ def undo_change(conn, change_id: int) -> dict:
         _undo_file_moves(payload.get("files", []), errors)
     elif row["kind"] == "remove":
         restored = _undo_removes(conn, tracks)
+    elif row["kind"] == "convert":
+        from core import convert
+        restored = convert.undo(payload.get("files", []), errors)
     elif row["kind"] == "delete_folders":
         from core import emptydirs
         restored = emptydirs.undo(payload.get("files", []), errors)

@@ -19,6 +19,7 @@ import { openParseNames } from './parsenames'
 import { openLayoutMove } from './layoutmove'
 import { openDeleteFiles } from './deletefiles'
 import { openEmptyFolders } from './emptyfolders'
+import { openConvertAudio } from './convertaudio'
 import { openMergeAlbums } from './mergealbums'
 import { openCovers, openChangeCover, openBulkCovers } from './covers'
 import { openMbAlbum } from './mbalbum'
@@ -3674,6 +3675,8 @@ findReplaceBtn.addEventListener('click', () => {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut() })
   document.getElementById('cleanup-tags-btn')!.addEventListener('click', () => { shut()
     openCleanup([...state.selectedIds], async () => { state.tagValues = new Map(); await refreshAfterEdit() }) })
+  document.getElementById('cleanup-convert-btn')!.addEventListener('click', () => { shut()
+    openConvertAudio(refreshAfterWrite).catch(e => toast(`Convert audio: ${errText(e)}`, 'error')) })
   document.getElementById('cleanup-folders-btn')!.addEventListener('click', () => { shut()
     openEmptyFolders(refreshAfterFolders).catch(e => toast(`Empty folders: ${errText(e)}`, 'error')) })
 }

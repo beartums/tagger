@@ -87,6 +87,12 @@ export async function renderBackground(el: HTMLElement): Promise<ScanJob | null>
         <td><span class="mb-score ${STATUS_CLS[j.status] ?? ''}">${esc(j.status)}</span>${j.error ? `<div class="pr-msg">${esc(j.error)}</div>` : ''}</td>
         <td>${j.scanned.toLocaleString()} / ${j.total.toLocaleString()} tracks</td><td>${dur}</td></tr>`
     }
+    if (j.kind === 'convert') {
+      const dur = j.finished_at && j.started_at ? fmtDur(j.finished_at - j.started_at) : j.started_at ? '…' : ''
+      return `<tr><td>${fmtTime(j.started_at)}</td><td>Convert audio</td>
+        <td><span class="mb-score ${STATUS_CLS[j.status] ?? ''}">${esc(j.status)}</span>${j.error ? `<div class="pr-msg">${esc(j.error)}</div>` : ''}</td>
+        <td>${j.scanned.toLocaleString()} / ${j.total.toLocaleString()} files · ${(j.changed ?? 0).toLocaleString()} converted</td><td>${dur}</td></tr>`
+    }
     if (j.kind === 'lyrics') {
       const dur = j.finished_at && j.started_at ? fmtDur(j.finished_at - j.started_at) : j.started_at ? '…' : ''
       return `<tr><td>${fmtTime(j.started_at)}</td><td>Lyrics lookup</td>

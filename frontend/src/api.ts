@@ -249,7 +249,7 @@ export interface ScanJob {
   directory?: string | null          // null = whole library
   phase?: string | null              // listing | reading | pruning
   changed?: number | null
-  kind?: 'scan' | 'lyrics' | 'fingerprint'
+  kind?: 'scan' | 'lyrics' | 'fingerprint' | 'convert'
 }
 
 export interface About {
@@ -502,6 +502,9 @@ export const api = {
     dead: () => request<TrackList>('GET', '/api/library/dead'),
     removeTracks: (ids: number[]) => request<{ removed: number }>('POST', '/api/library/remove', ids),
     deleteFiles: (ids: number[]) => request<{ deleted: number }>('POST', '/api/library/delete-files', ids),
+    convertible: (roots: string[]) => request<{ available: boolean; folders: { dir: string; root: string; files: { path: string; name: string; ext: string; to: string | null; size: number; protected: boolean; taken: boolean }[] }[] }>(
+      'POST', '/api/library/convert', { roots }),
+    convert: (paths: string[]) => request<{ job_id: string; files: number }>('POST', '/api/library/convert', { paths }),
     emptyFolders: (roots: string[]) => request<{ folders: { dir: string; root: string; count: number; bytes: number; files: string[] }[] }>(
       'POST', '/api/library/empty-folders', { roots }),
     deleteEmptyFolders: (dirs: string[]) => request<{ deleted: number; errors: WriteError[] }>(
