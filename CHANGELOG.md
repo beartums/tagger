@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Every background job shows it's running**: conversions, lyrics lookups and
+  fingerprinting now light the topbar indicator and the Background dot like a
+  scan does, and the status bar shows the same (click it for Settings →
+  Background). A conversion running when the page loads is no longer taken
+  for a scan.
+- **Fix: Settings showed under the Background and About tabs.**
 - **Clean up → Convert audio…**: finds audio tggr can't read in the
   libraries you pick and converts it — WAV/AIFF to FLAC (nothing lost),
   WMA/MP2 to MP3 V0 — in the background, keeping the tags (not recording

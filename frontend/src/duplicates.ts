@@ -99,6 +99,7 @@ export async function openDuplicates(onDone: () => Promise<void>) {
     b.disabled = true
     try {
       const r = await api.library.fingerprintAll()
+      if (r.job_id) window.dispatchEvent(new Event('tggr:job'))
       toast(r.job_id ? `Fingerprinting ${r.tracks.toLocaleString()} tracks — progress under Settings → Background` : 'Nothing left to fingerprint', 'info')
     } catch (err) { toast(`Failed: ${errText(err)}`, 'error'); b.disabled = false }
   })

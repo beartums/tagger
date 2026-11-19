@@ -1701,6 +1701,8 @@ button.scan-status[hidden] { display: none; }
 .album-table .col-check { width: 28px; text-align: center; }
 
 /* ─── Settings page layout: section rail, a heading per section, cards ───── */
+/* hidden has to beat the grid below (it's more specific than .settings-pane[hidden]) */
+.settings-page .settings-sidebar-body#pane-settings[hidden] { display: none; }
 .settings-page .settings-sidebar-body#pane-settings { max-width: 1080px; display: grid; grid-template-columns: 190px minmax(0, 1fr); align-items: start; gap: 0 28px; }
 .settings-page .settings-sidebar-footer { max-width: 1080px; }
 #pane-settings > .settings-subnav { grid-row: 1 / span 20; position: sticky; top: 0; flex-direction: column; flex-wrap: nowrap; gap: 1px; padding: 4px 0; border-bottom: 0; }
@@ -1944,3 +1946,8 @@ button.scan-status[hidden] { display: none; }
 /* Clean up → Convert audio */
 .ca-mark { color: var(--accent); }
 .ca-prot { color: var(--warning, #d29922); }
+/* Status bar: a background job running (click for Settings → Background) */
+.status-bg { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; }
+.status-bg[hidden] { display: none; }
+.status-bg::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: status-bg-pulse 1.2s ease-in-out infinite; }
+@keyframes status-bg-pulse { 50% { opacity: 0.3; } }

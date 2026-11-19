@@ -105,6 +105,7 @@ export async function openConvertAudio(onDone: () => Promise<void>) {
     okBtn.disabled = true
     try {
       const { job_id } = await api.library.convert(paths)
+      window.dispatchEvent(new Event('tggr:job'))
       toast(`Converting ${paths.length} file${paths.length !== 1 ? 's' : ''} in the background (Settings → Background)`, 'info')
       close()
       const timer = setInterval(async () => {
