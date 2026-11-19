@@ -417,6 +417,7 @@ export const APP_HTML = `
               <div id="files-menu" class="ib-menu" role="menu" hidden>
                 <button id="covers-btn" class="ib-mi" type="button" role="menuitem" title="Move, copy or delete cover art between the album folder (cover.jpg) and the tracks">Covers…</button>
                 <button id="merge-albums-btn" class="ib-mi" type="button" role="menuitem" title="Make the selected tracks one album: tags, disc numbers, optionally one folder — previewed, then staged">Merge albums…</button>
+                <button id="layout-move-btn" class="ib-mi" type="button" role="menuitem" title="Move the selected files to where their layout puts them — shows the final folders and names first">Move to layout…</button>
                 <button id="bulk-rename-btn" class="ib-mi" type="button" role="menuitem" title="Rename the selected files with search &amp; replace (regex, captures, counters) — previewed, then staged">Rename files…</button>
                 <button id="lyrics-group-btn" class="ib-mi" type="button" role="menuitem" title="Put the selection in groups, or take it out (a group can set a layout and turn Quality checks off)">Groups…</button>
                 <hr>

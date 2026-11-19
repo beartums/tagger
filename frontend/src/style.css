@@ -1900,3 +1900,12 @@ button.scan-status[hidden] { display: none; }
 .msglog li.msglog-success { border-left-color: var(--success); }
 .msglog time { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .msglog-empty { padding: 12px; margin: 0; color: var(--text-muted); }
+
+/* Move to layout: the final folders and names */
+.lm-tree { padding: 8px 16px; }
+.lm-dir { margin-bottom: 10px; }
+.lm-dir-h { display: flex; gap: 10px; align-items: baseline; font-size: 13px; }
+.lm-dir-name { font-weight: 600; overflow-wrap: anywhere; }
+.lm-file { padding: 1px 0 1px 18px; font-size: 13px; cursor: default; }
+.lm-file:hover { background: var(--bg-hover, rgba(127,127,127,.12)); }
+.lm-note { margin-right: auto; }

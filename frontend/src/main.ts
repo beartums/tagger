@@ -16,6 +16,7 @@ import { openCleanup } from './cleanup'
 import { overlayStaged, editToast, undoToast, missingText, openReview, openHistory, shortPath, errText } from './staged'
 import { openBulkRename } from './bulkrename'
 import { openParseNames } from './parsenames'
+import { openLayoutMove } from './layoutmove'
 import { openMergeAlbums } from './mergealbums'
 import { openCovers, openChangeCover, openBulkCovers } from './covers'
 import { openMbAlbum } from './mbalbum'
@@ -2164,28 +2165,18 @@ function pollLyrics(jobId: string) {
 
 // "Not in layout" view: stage moves for the CHOSEN tracks only -- never the
 // whole list in one click (that was the 11-01 Organize incident).
-refileBtn.addEventListener('click', async () => {
+refileBtn.addEventListener('click', () => {
   const ids = [...state.selectedIds]
   if (!ids.length) { toast('Select the tracks to re-file first', 'info'); return }
-  const n = `${ids.length} track${ids.length !== 1 ? 's' : ''}`
-  if (!confirm(stageChanges
-    ? `Stage moving ${n} to the path its library layout gives? Nothing moves until you write it from Review.`
-    : `Move ${n} to the path its library layout gives now? (Undo is in History.)`)) return
-  refileBtn.disabled = true
-  try {
-    const res = await api.tags.refile(ids)
-    const errNote = res.errors.length ? ` — ${res.errors.length} skipped: ${res.errors[0].error}` : ''
-    if (res.missing) toast(`Nothing written: ${missingText(res.errors)}`, 'error')
-    else if (res.staged) toast(`Staged re-filing ${res.planned} track${res.planned !== 1 ? 's' : ''} — Review to write${errNote}`, res.planned ? 'info' : 'error')
-    else toast(`Re-filed ${res.moved} track${res.moved !== 1 ? 's' : ''}${errNote}`, res.moved ? 'success' : 'error')
+  openLayoutMove(ids, stageChanges, async (staged) => {
     state.qualityIssues = null
-    await (res.staged ? refreshAfterStage() : refreshAfterWrite())
+    await (staged ? refreshAfterStage() : refreshAfterWrite())
     await renderQualityPanel()
-  } catch (e) {
-    toast(`Re-file failed: ${errText(e)}`, 'error')
-  } finally {
-    refileBtn.disabled = false
-  }
+  })
+})
+document.getElementById('layout-move-btn')!.addEventListener('click', () => {
+  const ids = [...state.selectedIds]
+  if (ids.length) openLayoutMove(ids, stageChanges, staged => staged ? refreshAfterStage() : refreshAfterWrite())
 })
 
 fixAllBtn.addEventListener('click', async () => {

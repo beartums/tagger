@@ -139,6 +139,27 @@ def test_organize_stays_inside_the_tracks_library(client, lib):
     assert not (lib / "Choir").exists()  # never the music dir itself
 
 
+@needs_ffmpeg
+def test_move_to_layout_preview_stages_nothing_and_apply_matches_it(client, lib):
+    a = _insert(_mp3(lib / "Shared" / "a.mp3"), title="One", album="Al", album_artist="X", track_number="1")
+    b = _insert(_mp3(lib / "Shared" / "b.mp3"), title="Two", album="Al", album_artist="X", track_number="2")
+    c = _insert(_mp3(lib / "Shared" / "c.mp3"), title="Two", album="Al", album_artist="X", track_number="2")
+    home = _mp3(lib / "Shared" / "X" / "Al" / "03 Three.mp3")
+    d = _insert(home, title="Three", album="Al", album_artist="X", track_number="3")
+    ids = [a, b, c, d]
+
+    pv = client.post("/api/tags/reorganize", json={"track_ids": ids, "preview": True}).json()
+    assert [m["id"] for m in pv["moves"]] == [a]
+    assert pv["moves"][0]["to"] == str(lib / "Shared" / "X" / "Al" / "01 One.mp3")
+    assert pv["in_place"] == 1
+    assert {e["id"] for e in pv["errors"]} == {b, c} and "would land on" in pv["errors"][0]["error"]
+    assert client.get("/api/staged/count").json()["count"] == 0
+
+    res = client.post("/api/tags/reorganize", json={"track_ids": ids}).json()
+    assert res["planned"] == 1
+    assert [t["id"] for t in client.get("/api/staged").json()["tracks"]] == [a]
+
+
 def test_organize_refuses_tracks_outside_every_root(client, lib):
     tid = _insert(lib / "Elsewhere" / "x.mp3", title="T")
     res = client.post("/api/tags/reorganize", json={"track_ids": [tid]}).json()
@@ -172,7 +193,9 @@ def test_rename_on_save_stages_the_move(client, lib):
 def test_apply_refuses_colliding_or_existing_destinations(client, lib):
     a = _insert(_mp3(lib / "Shared" / "a.mp3"), title="Same", album="Al", album_artist="X", track_number="1")
     b = _insert(_mp3(lib / "Shared" / "b.mp3"), title="Same", album="Al", album_artist="X", track_number="1")
-    client.post("/api/tags/reorganize", json={"track_ids": [a, b]})
+    # Separately, so each plan is clean; together, Move to layout refuses both.
+    client.post("/api/tags/reorganize", json={"track_ids": [a]})
+    client.post("/api/tags/reorganize", json={"track_ids": [b]})
     res = client.post("/api/staged/apply", json={}).json()
     assert res["applied"] == 0 and len(res["errors"]) == 2
     assert client.get("/api/staged/count").json()["count"] == 2  # still staged
@@ -304,7 +327,7 @@ def test_undo_staged_steps_newest_first(client, lib):
     client.post("/api/tags/reorganize", json={"track_ids": [a]})                  # step 3
 
     c = client.get("/api/staged/count").json()
-    assert c["steps"] == 3 and c["last_step"]["summary"].startswith("Re-file")
+    assert c["steps"] == 3 and c["last_step"]["summary"].startswith("Move 1 file to the layout")
 
     assert client.post("/api/staged/undo").json()["restored"] == 1
     assert _staged(client, a) == {"tags": {"genre": "Soundtrack"}, "new_path": None}
@@ -385,7 +408,7 @@ def test_actions_group_lines_by_step_newest_first(client, lib):
     client.patch(f"/api/tags/{a}", json={"genre": "Jazz", "year": "2001"})
     client.post("/api/tags/reorganize", json={"track_ids": [a]})
     r = client.get("/api/staged/actions").json()
-    assert [s["summary"] for s in r["steps"]] == ["Re-file 1 file to the library layout", "Edited genre, year — A", "Set genre on 2 tracks"]
+    assert [s["summary"] for s in r["steps"]] == ["Move 1 file to the layout", "Edited genre, year — A", "Set genre on 2 tracks"]
     org, edit, bulk = r["steps"]
     assert [l["kind"] for l in org["lines"]] == ["path"] and org["lines"][0]["new"].endswith("/X/Al/01 A.mp3")
     assert {(l["field"], l["old"], l["new"]) for l in edit["lines"]} == {("genre", "Folk", "Jazz"), ("year", None, "2001")}

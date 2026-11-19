@@ -218,27 +218,33 @@ def find_replace(req: FindReplace):
 
 class Reorganize(BaseModel):
     track_ids: list[int]
+    preview: bool = False           # list the moves, stage nothing
 
 
 @router.post("/reorganize")
 def reorganize(req: Reorganize):
     """
-    Re-file: plan a move for each selected file to its layout (its groups',
-    else its library's, else the rename template -- core/layout.py), relative to its own library root (core/fileops.py),
-    and stage it -- nothing moves until the staged changes are written. Uses
-    the tags as staged.
+    Move to layout: plan a move for each selected file to its layout (its
+    groups', else its library's, else the rename template -- core/layout.py),
+    relative to its own library root (core/fileops.py), and stage it --
+    nothing moves until the staged changes are written. Uses the tags as staged.
 
-    The UI offers it only as "Re-file selected" in the Quality panel's "Not in
-    layout" view, for tracks chosen there. The old whole-selection Organize
-    button was removed 2026-11-02: too easy to fire by accident.
+    With preview, only the plan: {moves: [{id, from, to}], in_place, errors}.
+    Applying stages exactly what the preview showed: a file whose destination
+    another selected file also gets, or that is taken on disk, is left alone.
+
+    Offered as Files → Move to layout… and as "Re-file selected" in the
+    Quality panel's "Not in layout" view, both behind that preview. The old
+    one-click Organize button was removed 2026-11-02: too easy to fire by accident.
     """
+    from collections import Counter
+    from pathlib import Path
     from core import groups as grp
     from core.layout import Layouts
     if not req.track_ids:
         raise HTTPException(400, "No track IDs provided")
     layouts = Layouts()
     roots = layouts.roots
-    planned: list[int] = []
     errors = []
     with db() as conn:
         rows = _rows(conn, req.track_ids)
@@ -247,10 +253,11 @@ def reorganize(req: Reorganize):
         pending = staging.load(conn, list(found))
         staged_dirs = staging.load_dirs(conn)
         assigned = grp.members(conn, list(found))
-        step = staging.Step(conn, f"Re-file {len(rows)} file{'s' if len(rows) != 1 else ''} to the library layout")
+        plan: list[tuple] = []          # (row, dest)
         for row in rows:
+            name = row["filename"]
             if staged_dirs and staging.moved_path(row["path"], staged_dirs):
-                errors.append({"id": row["id"], "error": "its folder is staged to move -- write that first"})
+                errors.append({"id": row["id"], "name": name, "error": "its folder is staged to move -- write that first"})
                 continue
             try:
                 dest = staging.plan_path(
@@ -258,16 +265,32 @@ def reorganize(req: Reorganize):
                     layouts.template(row["path"], assigned.get(row["id"], [])), roots, layouts.rules,
                 )
             except (staging.PlanError, grp.LayoutConflict) as exc:
-                errors.append({"id": row["id"], "error": str(exc)})
+                errors.append({"id": row["id"], "name": name, "error": str(exc)})
                 continue
+            plan.append((row, dest))
+        taken = Counter(d for r, d in plan if d != r["path"])
+        moves, in_place = [], []
+        for row, dest in plan:
             if dest == row["path"]:
-                staging.stage(conn, row, new_path=None, step=step)
-                continue
+                in_place.append(row)
+            elif taken[dest] > 1:
+                errors.append({"id": row["id"], "name": row["filename"],
+                               "error": f"{taken[dest]} selected files would land on {Path(dest).name}"})
+            elif Path(dest).exists() and not staging._same(row["path"], dest):
+                errors.append({"id": row["id"], "name": row["filename"], "error": "destination already exists"})
+            else:
+                moves.append((row, dest))
+        if req.preview:
+            return {"moves": [{"id": r["id"], "from": r["path"], "to": d} for r, d in moves],
+                    "in_place": len(in_place), "errors": errors}
+        step = staging.Step(conn, f"Move {len(moves)} file{'s' if len(moves) != 1 else ''} to the layout")
+        for row in in_place:
+            staging.stage(conn, row, new_path=None, step=step)
+        for row, dest in moves:
             staging.stage(conn, row, new_path=dest, step=step)
-            planned.append(row["id"])
-        res = _finish(conn, step, planned)
+        res = _finish(conn, step, [r["id"] for r, _ in moves])
     moved = 0 if res["staged"] else res["applied"]
-    return {"planned": len(planned), "moved": moved, "errors": errors + res.get("errors", []),
+    return {"planned": len(moves), "moved": moved, "errors": errors + res.get("errors", []),
             "staged": res["staged"], "missing": res.get("missing", 0)}
 
 
