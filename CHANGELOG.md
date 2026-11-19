@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Files → Move to layout…**: moves the selected files to where their layout
+  puts them. It first shows the final folders and file names (hover a file to
+  see where it is now) and what will stay put and why; OK stages exactly that.
+  Quality → Not in layout's "Re-file selected" now opens the same preview.
 - **Add to MusicBrainz works for albums with many guest artists**: each
   artist is looked up in its own request, with progress shown in the
   MusicBrainz tab (one request for all of them ran past the proxy's 30 s).

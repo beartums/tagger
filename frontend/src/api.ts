@@ -561,6 +561,9 @@ export const api = {
     rename: (req: BulkRenameRequest & { exclude: number[] }) =>
       request<{ planned: number; skipped: number; staged: boolean; moved: number; errors: WriteError[] }>(
         'POST', '/api/tags/rename', req),
+    refilePreview: (trackIds: number[]) =>
+      request<{ moves: { id: number; from: string; to: string }[]; in_place: number; errors: WriteError[] }>(
+        'POST', '/api/tags/reorganize', { track_ids: trackIds, preview: true }),
     refile: (trackIds: number[]) =>
       request<{ planned: number; moved: number; staged: boolean; errors: WriteError[]; missing?: number }>(
         'POST', '/api/tags/reorganize', { track_ids: trackIds }),
