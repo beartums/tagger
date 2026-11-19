@@ -1941,3 +1941,6 @@ button.scan-status[hidden] { display: none; }
 .ef-path { font-weight: 600; overflow-wrap: anywhere; }
 .ef-files { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
 .ef-has .ef-path::after { content: ' · has files'; font-weight: 400; color: var(--warning, #d29922); font-size: 12px; }
+/* Clean up → Convert audio */
+.ca-mark { color: var(--accent); }
+.ca-prot { color: var(--warning, #d29922); }

@@ -18,6 +18,7 @@ export const APP_HTML = `
         <button id="cleanup-btn" class="btn btn-ghost btn-sm" type="button" aria-haspopup="menu" aria-expanded="false" title="Tidy tags and folders">Clean up</button>
         <div id="cleanup-menu" class="ib-menu" role="menu" hidden>
           <button id="cleanup-tags-btn" class="ib-mi" type="button" role="menuitem" title="Standardize tag separators (Folk/Celtic → Folk; Celtic)">Tag separators…</button>
+          <button id="cleanup-convert-btn" class="ib-mi" type="button" role="menuitem" title="Audio tggr can't read (WAV, AIFF, WMA) converted to FLAC or MP3; protected iTunes .m4p listed">Convert audio…</button>
           <button id="cleanup-folders-btn" class="ib-mi" type="button" role="menuitem" title="Folders with no tracks left, in one, some or all libraries: pick which to delete">Empty folders…</button>
         </div>
       </div>

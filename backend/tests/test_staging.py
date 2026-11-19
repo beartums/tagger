@@ -5,6 +5,7 @@ import shutil
 import subprocess
 
 import pytest
+from pathlib import Path
 
 from core import fileops, staging
 from core.config import settings
@@ -839,3 +840,53 @@ def test_deleting_tracks_never_trashes_other_audio(client, lib):
     (old / "cover.jpg").write_bytes(b"c")
     pv = client.post("/api/library/delete-files", json={"track_ids": [a], "preview": True}).json()
     assert [i["name"] for i in pv["folders"][0]["items"]] == ["cover.jpg"]
+
+
+@needs_ffmpeg
+def test_convert_wav_to_flac_scans_it_and_undo_puts_it_back(client, lib):
+    import subprocess, time
+    from tests.conftest import FFMPEG
+    d = lib / "Shared" / "Wavs"
+    d.mkdir()
+    wav = d / "01 Song.wav"
+    subprocess.run([FFMPEG, "-f", "lavfi", "-i", "sine=f=440:d=2", "-metadata", "title=Song",
+                    "-metadata", "encoded_by=Pro Tools", "-y", str(wav)],
+                   check=True, capture_output=True)
+    (d / "02 Locked.m4p").write_bytes(b"drm")
+    found = client.post("/api/library/convert", json={}).json()["folders"]
+    files = {f["name"]: f for f in found[0]["files"]}
+    assert files["01 Song.wav"]["to"] == "01 Song.flac" and files["02 Locked.m4p"]["protected"]
+    job = client.post("/api/library/convert", json={"paths": [str(wav)]}).json()["job_id"]
+    for _ in range(100):
+        st = client.get(f"/api/jobs/{job}").json()
+        if st["status"] not in ("pending", "running"):
+            break
+        time.sleep(0.1)
+    assert st["status"] == "done" and st["changed"] == 1
+    flac = d / "01 Song.flac"
+    assert flac.exists() and not wav.exists()
+    tracks = client.get("/api/library/tracks").json()["tracks"]
+    assert [t["title"] for t in tracks if t["path"] == str(flac)] == ["Song"]   # tags carried, scanned in
+    from mutagen.flac import FLAC
+    assert "encoded_by" not in {k.lower() for k in FLAC(str(flac)).keys()}       # recording metadata dropped
+    cid = client.get("/api/library/history").json()[0]["id"]
+    client.post(f"/api/library/history/{cid}/undo")
+    assert wav.exists() and not flac.exists()
+    assert not [t for t in client.get("/api/library/tracks").json()["tracks"] if t["path"] == str(flac)]
+
+
+@needs_ffmpeg
+def test_convert_wma_to_mp3_and_refuse_protected(client, lib):
+    import subprocess
+    from core import convert
+    from tests.conftest import FFMPEG
+    d = lib / "Shared" / "Old"
+    d.mkdir()
+    wma = d / "a.wma"
+    subprocess.run([FFMPEG, "-f", "lavfi", "-i", "sine=f=440:d=2", "-c:a", "wmav2", "-y", str(wma)],
+                   check=True, capture_output=True)
+    new, trashed = convert.convert_one(str(wma))
+    assert new.endswith("a.mp3") and Path(new).exists() and Path(trashed).exists() and not wma.exists()
+    (d / "b.m4p").write_bytes(b"x")
+    with pytest.raises(convert.ConvertError, match="protected"):
+        convert.convert_one(str(d / "b.m4p"))
