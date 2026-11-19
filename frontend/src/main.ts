@@ -781,7 +781,7 @@ function drawAlbumList(fetched: AlbumRow[]) {
     state.tagPath = []; state.query = ''; searchEl.value = ''
     state.selectedDirectory = r.directory
     state.selectedIds.clear(); state.offset = 0
-    if (!state.rootNode) await loadTree()
+    if (!state.rootNode || treeStale) await loadTree()
     renderSidebarTabs()
     renderFilesPanel()
     renderViewMode()
@@ -2244,7 +2244,11 @@ function expandedPaths(node: DirNode | null, out: string[] = []): string[] {
   return out
 }
 
+// Folders changed while the Files tab was hidden: reload it when it's next shown.
+let treeStale = false
+
 async function loadTree() {
+  treeStale = false
   // Reloading after a write: re-open what was open (folders that moved away just stay shut).
   const reopen = expandedPaths(state.rootNode).sort((a, b) => a.length - b.length)
   try {
@@ -2538,11 +2542,7 @@ function deleteFiles() {
   if (!ids.length) return
   openDeleteFiles(ids, async () => {
     state.selectedIds.clear()
-    state.qualityIssues = null
-    await loadTracks()
-    renderEditor()
-    if (state.sidebarMode === 'quality') await renderQualityPanel()
-    await refreshUndoButton()
+    await refreshAfterFolders()
   })
 }
 
@@ -3114,10 +3114,17 @@ async function refreshAfterWrite() {
   state.qualityIssues = null
   if (state.sidebarMode === 'tags') await loadLibrary()
   if (state.sidebarMode === 'files') await loadTree()
+  else if (state.rootNode) treeStale = true
   await loadTracks()
   if (state.sidebarMode === 'quality') await renderQualityPanel()
   renderEditor()
   await refreshUndoButton()
+}
+
+/** After folders were deleted: drop a deleted one from the view, and from the Files tree. */
+async function refreshAfterFolders() {
+  if (state.selectedDirectory && !(await dirExists(state.selectedDirectory))) state.selectedDirectory = null
+  await refreshAfterWrite()
 }
 
 async function refreshUndoButton() {
@@ -3284,7 +3291,7 @@ document.querySelector('.sidebar-tabs')!.addEventListener('click', async (e) => 
     if (!state.artists.length) await loadLibrary()
   } else if (mode === 'files') {
     state.tagPath = []
-    if (!state.rootNode) await loadTree()
+    if (!state.rootNode || treeStale) await loadTree()
   } else if (mode === 'groups') {
     state.tagPath = []; state.selectedDirectory = null; state.selectedGroup = null
     await renderGroupsPanel()
@@ -3668,7 +3675,7 @@ findReplaceBtn.addEventListener('click', () => {
   document.getElementById('cleanup-tags-btn')!.addEventListener('click', () => { shut()
     openCleanup([...state.selectedIds], async () => { state.tagValues = new Map(); await refreshAfterEdit() }) })
   document.getElementById('cleanup-folders-btn')!.addEventListener('click', () => { shut()
-    openEmptyFolders(async () => { await refreshUndoButton() }).catch(e => toast(`Empty folders: ${errText(e)}`, 'error')) })
+    openEmptyFolders(refreshAfterFolders).catch(e => toast(`Empty folders: ${errText(e)}`, 'error')) })
 }
 replaygainBtn.addEventListener('click', scanReplayGain)
 inferBtn.addEventListener('click', inferFromFilename)
@@ -4872,7 +4879,7 @@ async function restoreView(v: View) {
       await Promise.all([...state.expandedTags].filter(f => !state.tagValues.has(f)).map(loadTagValues))
       renderTagsPanel()
     } else if (v.mode === 'files') {
-      if (!state.rootNode) await loadTree()
+      if (!state.rootNode || treeStale) await loadTree()
       if (v.dir) await revealDir(v.dir)
       renderFilesPanel()
     } else if (v.mode === 'groups') {

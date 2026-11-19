@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Deleted folders leave the Files sidebar**: after Delete files… or Clean up
+  → Empty folders, the tree reloads (open folders stay open), and a view of a
+  folder that's gone goes back to all tracks. After any write made while the
+  Files tab is hidden, it reloads when you next open it.
 - **Clean up → Empty folders…**: folders with no tracks left, in all
   libraries or the ones you pick, each with the non-track files still in it.
   All are marked to delete; click one to keep it. They go to the trash
