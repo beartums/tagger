@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Fix: .wav, .m4p, .wma and other audio tggr doesn't tag counted as "not
+  audio"** in the new folder checks, so Empty folders listed folders of them
+  as empty and an album's delete or move treated them as its other files.
+  Any audio file now keeps a folder off the list and is never trashed or
+  moved as an extra.
+- **Deleted folders leave the Files sidebar**: after Delete files… or Clean up
+  → Empty folders, the tree reloads (open folders stay open), and a view of a
+  folder that's gone goes back to all tracks. After any write made while the
+  Files tab is hidden, it reloads when you next open it.
 - **Clean up → Empty folders…**: folders with no tracks left, in all
   libraries or the ones you pick, each with the non-track files still in it.
   All are marked to delete; click one to keep it. They go to the trash

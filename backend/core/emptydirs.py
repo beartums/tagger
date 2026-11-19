@@ -14,13 +14,13 @@ from pathlib import Path
 
 from core.config import settings
 from core.fileops import prune_empty_dirs
-from core.tagger import AUDIO_EXTENSIONS
+from core.tagger import ANY_AUDIO
 
 LISTED = 20   # file names shown per folder
 
 
 def _audio(name: str) -> bool:
-    return os.path.splitext(name)[1].lower() in AUDIO_EXTENSIONS
+    return os.path.splitext(name)[1].lower() in ANY_AUDIO
 
 
 def find(roots: list[str]) -> list[dict]:
