@@ -219,6 +219,7 @@ def find_replace(req: FindReplace):
 class Reorganize(BaseModel):
     track_ids: list[int]
     preview: bool = False           # list the moves, stage nothing
+    extras: dict[str, bool] = {}    # source folder -> bring its other files (default: when the whole album moves)
 
 
 @router.post("/reorganize")
@@ -281,13 +282,22 @@ def reorganize(req: Reorganize):
             else:
                 moves.append((row, dest))
         if req.preview:
+            from core import extras
+            went = {r["path"]: d for r, d in moves}
+            stay = {str(Path(o).parent) for o in went} | {str(Path(o).parent.parent) for o in went}
+            left = staging.remaining(conn, stay)
+            for o in went:                       # the moving ones don't stay
+                left[str(Path(o).parent)] -= 1
+            folders = [{**p.describe(), "bring": req.extras.get(p.src, p.whole)}
+                       for p in extras.plan(went, left, staging.occupied(conn, went)) if p.items]
             return {"moves": [{"id": r["id"], "from": r["path"], "to": d} for r, d in moves],
-                    "in_place": len(in_place), "errors": errors}
+                    "in_place": len(in_place), "errors": errors, "folders": folders}
         step = staging.Step(conn, f"Move {len(moves)} file{'s' if len(moves) != 1 else ''} to the layout")
         for row in in_place:
             staging.stage(conn, row, new_path=None, step=step)
         for row, dest in moves:
-            staging.stage(conn, row, new_path=dest, step=step)
+            pick = req.extras.get(str(Path(row["path"]).parent))
+            staging.stage(conn, row, new_path=dest, step=step, extras=None if pick is None else int(pick))
         res = _finish(conn, step, [r["id"] for r, _ in moves])
     moved = 0 if res["staged"] else res["applied"]
     return {"planned": len(moves), "moved": moved, "errors": errors + res.get("errors", []),

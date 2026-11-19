@@ -20,6 +20,7 @@ export function openLayoutMove(ids: number[], stageChanges: boolean, onDone: (st
       </div>
       <div class="pr-summary" id="lm-summary">Working out where each file goes…</div>
       <div class="fix-confirm-body pr-body"><div id="lm-tree" class="lm-tree"></div>
+        <div id="lm-extras" class="lm-extras"></div>
         <div id="lm-errors" class="ma-clashes"></div></div>
       <div class="fix-confirm-footer">
         <span class="ma-dim lm-note">${stageChanges ? 'Staged: nothing moves until you write it from Review.' : 'Files move now; undo is in History.'}</span>
@@ -38,6 +39,17 @@ export function openLayoutMove(ids: number[], stageChanges: boolean, onDone: (st
   $('.fix-confirm-close').addEventListener('click', close)
   $('#lm-cancel').addEventListener('click', close)
 
+  const bring: Record<string, boolean> = {}
+  const extrasEl = $('#lm-extras')
+  extrasEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-extras]')
+    if (!b) return
+    const on = b.getAttribute('aria-pressed') !== 'true'
+    bring[b.dataset.extras!] = on
+    b.setAttribute('aria-pressed', String(on))
+    b.closest('.lm-xf')!.classList.toggle('lm-xf-off', !on)
+  })
+
   api.tags.refilePreview(ids).then(r => {
     // Final state: one block per destination folder, its files as they'll be named.
     const byDir = new Map<string, { from: string; to: string }[]>()
@@ -55,6 +67,20 @@ export function openLayoutMove(ids: number[], stageChanges: boolean, onDone: (st
         ${files.map(f => `<div class="lm-file" data-diff-from="${esc(shortPath(f.from))}" data-diff-to="${esc(shortPath(f.to))}">${esc(nameOf(f.to))}</div>`).join('')}
       </div>`
     }).join('') || '<div class="pr-summary">Nothing to move.</div>'
+    // Each source folder's other files: on when the whole album moves.
+    for (const f of r.folders) bring[f.dir] = f.bring
+    const listed = (f: typeof r.folders[number]) => f.items.slice(0, 8).map(i =>
+      `<span class="lm-xi${i.trash ? ' lm-xi-trash' : ''}" title="${esc(i.trash ? 'Goes to the trash: the destination is another album’s folder' : i.to ? 'To ' + shortPath(i.to) : '')}">${esc(i.name)}${i.dir ? `/ (${i.files})` : ''}</span>`).join(', ')
+      + (f.items.length > 8 ? `, +${f.items.length - 8} more` : '')
+    extrasEl.innerHTML = r.folders.length ? `<div class="lm-xh">The albums’ other files</div>` + r.folders.map(f => `
+      <div class="lm-xf${f.bring ? '' : ' lm-xf-off'}">
+        <button type="button" class="tog lm-xtog" data-extras="${esc(f.dir)}" aria-pressed="${f.bring}"
+          title="${esc(f.whole ? 'Every track in this folder moves: its other files follow and the old folder goes. Click to leave them where they are.' : 'Some tracks stay in this folder, so its files stay too unless you turn this on. The folder stays.')}">
+          ${f.whole ? 'Bring along and remove the old folder' : 'Bring along'}</button>
+        <div class="lm-xbody"><div class="ma-dim">${esc(shortPath(f.dir))}/${f.discs ? ' (disc folders’ parent)' : ''}${f.whole ? '' : ' · some tracks stay'} → ${esc(f.dest ? shortPath(f.dest) + '/' : 'each track’s folder')}</div>
+          <div class="lm-xlist">${f.files} file${f.files !== 1 ? 's' : ''}: ${listed(f)}</div>
+          ${f.refs ? `<div class="ma-dim lm-xwarn">A .cue or playlist here names tracks by file name; those names will be out of date.</div>` : ''}</div>
+      </div>`).join('') : ''
     $('#lm-errors').innerHTML = r.errors.length
       ? `<div class="pr-bad">Left where they are (${r.errors.length}):</div>` +
         r.errors.slice(0, 50).map(e => `<div class="pr-msg">${esc(e.name ?? String(e.id))}: ${esc(e.error)}</div>`).join('')
@@ -73,7 +99,7 @@ export function openLayoutMove(ids: number[], stageChanges: boolean, onDone: (st
   okBtn.addEventListener('click', async () => {
     okBtn.disabled = true
     try {
-      const res = await api.tags.refile(ids)
+      const res = await api.tags.refile(ids, bring)
       const errNote = res.errors.length ? ` — ${res.errors.length} left where they are` : ''
       if (res.missing) toast(`Nothing written: ${missingText(res.errors)}`, 'error')
       else if (res.staged) toast(`Staged moving ${res.planned} file${res.planned !== 1 ? 's' : ''} to the layout — Review to write${errNote}`, 'info')

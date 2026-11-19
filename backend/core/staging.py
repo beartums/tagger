@@ -26,7 +26,7 @@ from pathlib import Path
 
 from core.config import settings
 from core.fileops import (
-    MoveError, leftover_images, move_dir, move_file, prune_empty_dirs, root_for, same_filesystem,
+    MoveError, move_dir, move_file, prune_empty_dirs, root_for, same_filesystem,
 )
 from core.history import STAGEABLE, log_change, repoint_tracks, snapshot
 from core.naming import NamingRules, current_rules, render_template
@@ -53,7 +53,8 @@ def load(conn, ids: list[int] | None = None) -> dict[int, dict]:
         ph = ",".join("?" * len(ids))
         rows = conn.execute(f"SELECT * FROM staged WHERE track_id IN ({ph})", ids).fetchall()
     return {
-        r["track_id"]: {"tags": json.loads(r["tags"]), "new_path": r["new_path"]}
+        r["track_id"]: {"tags": json.loads(r["tags"]), "new_path": r["new_path"],
+                        **({"extras": r["extras"]} if r["extras"] is not None else {})}
         for r in rows
     }
 
@@ -141,15 +142,15 @@ def effective(row, entry: dict | None) -> dict:
     return d
 
 
-def _save(conn, track_id: int, tags: dict, new_path: str | None) -> None:
+def _save(conn, track_id: int, tags: dict, new_path: str | None, extras: int | None = None) -> None:
     if not tags and not new_path:
         conn.execute("DELETE FROM staged WHERE track_id = ?", (track_id,))
         return
     conn.execute(
-        "INSERT INTO staged (track_id, tags, new_path, staged_at) VALUES (?, ?, ?, ?) "
+        "INSERT INTO staged (track_id, tags, new_path, staged_at, extras) VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT(track_id) DO UPDATE SET tags = excluded.tags, "
-        "new_path = excluded.new_path, staged_at = excluded.staged_at",
-        (track_id, json.dumps(tags), new_path, time.time()),
+        "new_path = excluded.new_path, staged_at = excluded.staged_at, extras = excluded.extras",
+        (track_id, json.dumps(tags), new_path, time.time(), extras if new_path else None),
     )
 
 
@@ -231,7 +232,7 @@ def undo_step(conn) -> dict:
         if prev is None:
             _save(conn, tid, {}, None)
         else:
-            _save(conn, tid, prev["tags"], prev["new_path"])
+            _save(conn, tid, prev["tags"], prev["new_path"], prev.get("extras"))
         restored += 1
     for key, prev in json.loads(r["data"]).items():
         if key.startswith(DIR_KEY):
@@ -330,8 +331,10 @@ def describe(conn) -> dict:
     return {"count": count(conn), "steps": out, "other": other}
 
 
-def stage(conn, row, tags: dict | None = None, new_path=_UNSET, step: Step | None = None) -> None:
-    """Merge tags (and/or a new path) into row's staged entry."""
+def stage(conn, row, tags: dict | None = None, new_path=_UNSET, step: Step | None = None,
+          extras=_UNSET) -> None:
+    """Merge tags (and/or a new path) into row's staged entry. extras: bring the
+    folder's other files along (1), leave them (0), or the default (None)."""
     if step:
         step.touch(row["id"])
     cur = load(conn, [row["id"]]).get(row["id"], {"tags": {}, "new_path": None})
@@ -341,7 +344,7 @@ def stage(conn, row, tags: dict | None = None, new_path=_UNSET, step: Step | Non
     path = cur["new_path"] if new_path is _UNSET else new_path
     if path == row["path"]:
         path = None
-    _save(conn, row["id"], merged, path)
+    _save(conn, row["id"], merged, path, cur.get("extras") if extras is _UNSET else extras)
 
 
 def plan_path(row, tags: dict, template: str, roots: list[Path], rules: NamingRules | None = None) -> str:
@@ -410,7 +413,7 @@ def discard_part(conn, tid: int, field: str) -> bool:
         del tags[field]
     else:
         return False
-    _save(conn, tid, tags, new_path)
+    _save(conn, tid, tags, new_path, entry.get("extras"))
     key = str(tid)
     for r in conn.execute("SELECT id, data, after FROM staged_steps").fetchall():
         data = json.loads(r["data"])
@@ -519,8 +522,8 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
     snaps: dict[int, dict] = {}   # first (pre-change) snapshot per track
     changed: dict[int, dict] = {}  # what was set on each track, for per-field undo
     vacated: list[Path] = []
-    went: dict[Path, set[Path]] = {}   # folder a track left -> where its tracks went
-    created: set[Path] = set()         # destination folders this write made
+    went: dict[str, str] = {}          # old path -> new path, for each track moved
+    choice: dict[str, set[int]] = {}   # folder -> the extras choices its moved tracks carry
     for tid, entry in entries.items():
         row = rows.get(tid)
         tick(row["title"] or row["filename"] if row else "")
@@ -555,8 +558,6 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
         moved_to = None
         if new:
             try:
-                if not Path(new).parent.exists():
-                    created.add(Path(new).parent)
                 move_file(row["path"], new)
                 moved_to = new
             except (MoveError, OSError) as exc:
@@ -567,7 +568,9 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
             dest = Path(moved_to)
             sets.update(path=moved_to, filename=dest.name, directory=str(dest.parent))
             vacated.append(Path(row["path"]).parent)
-            went.setdefault(Path(row["path"]).parent, set()).add(dest.parent)
+            went[row["path"]] = moved_to
+            if entry.get("extras") is not None:
+                choice.setdefault(str(Path(row["path"]).parent), set()).add(entry["extras"])
         if tags or moved_to:
             changed[tid] = {**tags, **({"path": moved_to} if moved_to else {})}
         if sets:
@@ -617,8 +620,8 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
 
     if progress:
         progress(total, total, "")
-    moved_files = _clear_leftovers(went, created)
-    for d in set(vacated):
+    moved_files = _bring_extras(conn, went, choice)
+    for d in set(vacated) | {Path(m["src"]).parent for m in moved_files}:
         stop = root_for(d, roots) or settings.music_dir
         prune_empty_dirs(d, stop)
 
@@ -631,28 +634,55 @@ def apply(conn, ids: list[int] | None = None, summary: str | None = None,
     return {"applied": n, "folders": len(moved_dirs), "errors": errors, "change_id": change_id}
 
 
-def _clear_leftovers(went: dict[Path, set[Path]], created: set[Path]) -> list[dict]:
+def remaining(conn, folders) -> dict[str, int]:
+    """Tracks the library index still has directly in each folder."""
+    out = {}
+    for d in folders:
+        out[str(d)] = conn.execute("SELECT COUNT(*) FROM tracks WHERE directory = ?", (str(d),)).fetchone()[0]
+    return out
+
+
+def occupied(conn, moves: dict[str, str]) -> set[str]:
+    """Destination folders holding tracks other than the ones moving in."""
+    arriving: dict[str, set[str]] = {}
+    for o, n in moves.items():
+        arriving.setdefault(str(Path(n).parent), set()).update({o, n})
+    out = set()
+    for d, paths in arriving.items():
+        there = {r[0] for r in conn.execute("SELECT path FROM tracks WHERE directory = ?", (d,))}
+        if there - paths:
+            out.add(d)
+    return out
+
+
+def _bring_extras(conn, went: dict[str, str], choice: dict[str, set[int]]) -> list[dict]:
     """
-    Folders the tracks all left, holding only cover art: the images follow
-    the tracks when they all went to one folder this write created (the album,
-    re-filed), else go to the trash -- an existing folder is another album,
-    with its own art. Either way the folder can be pruned; undo moves them back.
+    After the tracks moved: each folder's other files (core/extras.py) follow
+    when its tracks' extras choice says so, or by default when the whole album
+    left. A name already taken at the destination keeps what is there; the
+    incoming one goes to the trash. Undo moves them all back.
     """
+    from core import extras
+    if not went:
+        return []
+    folders = {Path(o).parent for o in went} | {Path(o).parent.parent for o in went}
     moved = []
-    for d, dests in went.items():
-        images = leftover_images(d)
-        if not images:
+    for p in extras.plan(went, remaining(conn, folders), occupied(conn, went)):
+        picked = choice.get(p.src, set())
+        if p.parent_of_discs:   # follows its disc folders' choice
+            picked = set().union(*(v for k, v in choice.items() if Path(k).parent == Path(p.src)))
+        bring = 0 not in picked if picked else p.whole
+        if not bring:
             continue
-        dest = next(iter(dests)) if len(dests) == 1 else None
-        if dest not in created or any((dest / i.name).exists() for i in images):
-            dest = None
-        for img in images:
-            to = dest / img.name if dest else settings.config_dir / "trash" / f"leftover_{uuid.uuid4().hex[:8]}_{img.name}"
+        for src, dst in p.items:
+            to = Path(dst) if dst else None
+            if to is None or to.exists():
+                to = settings.config_dir / "trash" / f"leftover_{uuid.uuid4().hex[:8]}_{Path(src).name}"
             try:
-                move_file(img, to)
+                move_file(src, to)
             except (MoveError, OSError):
                 continue  # stays; the folder just isn't pruned
-            moved.append({"src": str(img), "dst": str(to)})
+            moved.append({"src": src, "dst": str(to)})
     return moved
 
 

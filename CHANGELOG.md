@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Moving a whole album brings its other files and removes the old folder**:
+  cover art, .cue, rip logs, booklets, Scans/ and the like follow the tracks,
+  a lyrics sidecar (.lrc) is renamed with its track, and the emptied folder is
+  removed. Move to layout lists them per folder with a toggle (on when every
+  track in the folder moves). A name already taken at the destination keeps
+  what's there; moving into another album's folder sends the cover to the
+  trash. Undo puts everything back.
 - **Match album shows the cover it would write**: the album's cover now → the
   release's cover from MusicBrainz. It's on by default when the album has no
   cover yet and off when it has one; click the new cover to switch. (It was an

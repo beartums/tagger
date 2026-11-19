@@ -1909,6 +1909,15 @@ button.scan-status[hidden] { display: none; }
 .lm-file { padding: 1px 0 1px 18px; font-size: 13px; cursor: default; }
 .lm-file:hover { background: var(--bg-hover, rgba(127,127,127,.12)); }
 .lm-note { margin-right: auto; }
+.lm-extras { padding: 4px 16px 8px; }
+.lm-xh { font-weight: 600; font-size: 13px; margin: 4px 0 6px; }
+.lm-xf { display: flex; gap: 12px; align-items: flex-start; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+.lm-xtog { flex: none; white-space: nowrap; }
+.lm-xbody { min-width: 0; font-size: 13px; }
+.lm-xlist { overflow-wrap: anywhere; }
+.lm-xf-off .lm-xlist { opacity: 0.5; text-decoration: line-through; }
+.lm-xi-trash { color: var(--danger); }
+.lm-xwarn { margin-top: 2px; }
 
 /* Match album: the cover now → the release's */
 .mb-covers { display: flex; align-items: center; gap: 10px; padding: 6px 16px; }

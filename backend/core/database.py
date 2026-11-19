@@ -92,6 +92,9 @@ def _migrate(conn) -> None:
     # The last count of each Quality check (api/library.py): shown for checks turned off.
     conn.execute("CREATE TABLE IF NOT EXISTS quality_results (key TEXT PRIMARY KEY, tracks INTEGER NOT NULL,"
                  " albums INTEGER NOT NULL, checked_at REAL NOT NULL)")
+    # A staged move's choice about its folder's other files (core/extras.py): NULL = the default.
+    if "extras" not in {r[1] for r in conn.execute("PRAGMA table_info(staged)")}:
+        conn.execute("ALTER TABLE staged ADD COLUMN extras INTEGER")
     steps = {r[1] for r in conn.execute("PRAGMA table_info(staged_steps)")}
     if "after" not in steps:
         conn.execute("ALTER TABLE staged_steps ADD COLUMN after TEXT")
