@@ -9,7 +9,7 @@ beside the mark in text; the full logo and the social preview draw it.
 | `logo-full-light.svg`, `logo-full-dark.svg` | The full logo: mark + "tggr", crisp (no glow), wordmark as outlines. Used in the README. Built by `build_lockup.py`. |
 | `logo-dark.svg` | The mark on dark backgrounds (white ink). Same as `frontend/public/logo.svg`. |
 | `logo-light.svg` | The mark on light backgrounds (dark ink). |
-| `favicon.svg` | Browser tab icon; ink follows the browser's light/dark setting. Same as `frontend/public/favicon.svg`. |
+| `favicon.svg` | Browser tab icon; ink follows the browser's light/dark setting. Same as `frontend/public/favicon.svg`. A TALLER drawing than the logo mark (longer braces and wave bars, same stroke widths), so it fills a square tab instead of sitting in a 3:2 band. |
 | `favicon.ico` | 16, 32 and 48 px, for anything that can't use the SVG. |
 | `app-icon.svg` | The mark on a rounded dark tile: home-screen and app icons. |
 | `social-preview.svg` | 1280×640 card for GitHub's social preview and link unfurls. |
@@ -47,3 +47,14 @@ magick /tmp/fav-16.png /tmp/fav-32.png /tmp/fav-48.png ../favicon.ico
 
 The social preview uses Helvetica Neue (Arial as fallback); render it on a
 machine that has it, or the type changes.
+
+## Concepts (not adopted)
+
+`concepts/` holds generated brand concepts kept as candidates for a possible future
+rebrand. They are reference images only: nothing in the app uses them, and their
+"TagTamer" name and palettes are not decisions.
+
+| File | Idea |
+|---|---|
+| `concepts/tagtamer-tag-and-wave.png` | A price tag crossed by a sound wave; navy `#1E293B`, cyan `#06B6D4`, green `#10B981`; a 3-bar favicon variant |
+| `concepts/tagtamer-network-grid.png` | A node-and-edge grid around a play button and waveform; navy, violet, cyan |
