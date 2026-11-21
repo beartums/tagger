@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The album view shows what's staged**: an album with staged changes is
+  outlined in amber with a ✎ count of its staged tracks (tiles), or gets the
+  track list's amber bar and "✎ N" by its name (list). A staged folder move
+  shows where it's going ("→ Shared/New/Album"). The marks follow every
+  stage, write, discard and undo.
 - **Every background job shows it's running**: conversions, lyrics lookups and
   fingerprinting now light the topbar indicator and the Background dot like a
   scan does, and the status bar shows the same (click it for Settings →

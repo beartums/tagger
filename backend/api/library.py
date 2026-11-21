@@ -953,6 +953,8 @@ def album_list(view: View = Depends()):
         dots = {(q["directory"], q["a"]): _dot_counts(q) for q in conn.execute(
             f"SELECT directory, COALESCE(album, '') AS a, {_dot_sums()} FROM tracks {where}"
             f" GROUP BY directory, COALESCE(album, '')", params)}
+        staged = {r[0] for r in conn.execute("SELECT track_id FROM staged")}
+        moves = staging.load_dirs(conn)
     groups: dict[tuple, list] = {}
     for r in rows:
         groups.setdefault((r["directory"], r["album"] or ""), []).append(r)
@@ -961,6 +963,9 @@ def album_list(view: View = Depends()):
         row: dict = {"album": album, "directory": directory, "tracks": len(tracks),
                      "cover_track_id": min(t["id"] for t in tracks), "mixed": [], "values": {},
                      "quality": dots.get((directory, album), {}),
+                     "staged": sum(t["id"] in staged for t in tracks),
+                     # where a staged folder move (this folder or one above) takes it
+                     "moving": (staging.moved_path(directory + "/", moves) or "").rstrip("/") or None,
                      # for multi-select; none when read-only (never bulk-selected)
                      "ids": [t["id"] for t in tracks] if os.access(directory, os.W_OK) else []}
         for f in fields:
@@ -1005,12 +1010,16 @@ def list_albums(artist: Optional[str] = None):
         rows = conn.execute(
             f"""
             SELECT album, COALESCE(artist, '') AS artist, album_artist,
-                   COUNT(*) AS track_count, MIN(id) AS cover_track_id, {_dot_sums()}
+                   COUNT(*) AS track_count, MIN(id) AS cover_track_id,
+                   -- staged edits or moves, or in a folder with a staged move
+                   SUM(id IN (SELECT track_id FROM staged) OR EXISTS (SELECT 1 FROM staged_dirs d
+                       WHERE substr(tracks.path, 1, length(d.src) + 1) = d.src || '/')) AS staged,
+                   {_dot_sums()}
             FROM tracks {where}
             GROUP BY COALESCE(artist, ''), album
             ORDER BY COALESCE(artist, '') COLLATE NOCASE, album COLLATE NOCASE
             """,
             params,
         ).fetchall()
-    return [{k: r[k] for k in ("album", "artist", "album_artist", "track_count", "cover_track_id")}
+    return [{k: r[k] for k in ("album", "artist", "album_artist", "track_count", "cover_track_id", "staged")}
             | {"quality": _dot_counts(r)} for r in rows]

@@ -239,3 +239,17 @@ def test_selected_only_view(client, lib):
     assert set(ids(f"sel={token}")) == {a, d}
     assert ids(f"sel={token}&format=flac") == [a]                   # combines with the rest
     assert ids("sel=unknown") == []                                 # gone (restart): nothing, so the view goes back
+
+
+@needs_ffmpeg
+def test_album_views_count_staged_tracks_and_folder_moves(client, lib):
+    src, ids = _album(lib, "Shared", "A", "Al", n=2, album="Al")
+    client.post("/api/tags/bulk", json={"track_ids": ids[:1], "tags": {"genre": "Jazz"}})
+    row = next(a for a in client.get("/api/library/album-list").json() if a["album"] == "Al")
+    assert (row["staged"], row["moving"]) == (1, None)
+    assert next(a for a in client.get("/api/library/albums").json() if a["album"] == "Al")["staged"] == 1
+    client.post("/api/staged/discard", json={})
+    client.post("/api/fs/move", json={"src": str(src.parent), "dst": str(lib / "Shared" / "B")})
+    row = next(a for a in client.get("/api/library/album-list").json() if a["album"] == "Al")
+    assert (row["staged"], row["moving"]) == (0, str(lib / "Shared" / "B" / "Al"))
+    assert next(a for a in client.get("/api/library/albums").json() if a["album"] == "Al")["staged"] == 2
