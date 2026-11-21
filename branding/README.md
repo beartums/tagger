@@ -9,7 +9,7 @@ beside the mark in text; the full logo and the social preview draw it.
 | `logo-full-light.svg`, `logo-full-dark.svg` | The full logo: mark + "tggr", crisp (no glow), wordmark as outlines. Used in the README. Built by `build_lockup.py`. |
 | `logo-dark.svg` | The mark on dark backgrounds (white ink). Same as `frontend/public/logo.svg`. |
 | `logo-light.svg` | The mark on light backgrounds (dark ink). |
-| `favicon.svg` | Browser tab icon; ink follows the browser's light/dark setting. Same as `frontend/public/favicon.svg`. A TALLER drawing than the logo mark (longer braces and wave bars, same stroke widths), so it fills a square tab instead of sitting in a 3:2 band. |
+| `favicon.svg` | Browser tab icon; ink follows the browser's light/dark setting. Same as `frontend/public/favicon.svg`. A TALLER drawing than the logo mark (longer braces and wave bars, same stroke widths), so it fills a square tab instead of sitting in a 3:2 band. Its wave is simplified to 5 thick bars on the line (no glow): the logo's 8 thin bars smear at tab size (32 device px on a Retina screen, 16 on a regular one). |
 | `favicon.ico` | 16, 32 and 48 px, for anything that can't use the SVG. |
 | `app-icon.svg` | The mark on a rounded dark tile: home-screen and app icons. |
 | `social-preview.svg` | 1280×640 card for GitHub's social preview and link unfurls. |
