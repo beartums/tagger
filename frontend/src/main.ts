@@ -493,6 +493,7 @@ function getVisibleAlbums(): Album[] {
     }
     m.artist = null   // several track artists: the tile is the album artist's
     m.track_count += a.track_count
+    m.staged += a.staged
     m.quality = { ...m.quality }
     for (const [k, n] of Object.entries(a.quality ?? {})) m.quality[k] = (m.quality[k] ?? 0) + n
     m.cover_track_id = Math.min(m.cover_track_id, a.cover_track_id)
@@ -552,6 +553,7 @@ function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
   card.className = 'album-card'
   card.dataset.albumKey = tileKey(alb)
   card.classList.toggle('album-picked', albumPicks.has(tileKey(alb)))
+  card.classList.toggle('album-staged', alb.staged > 0)
   card.title = 'Click to open · the box (or Ctrl/⌘-click) selects, Shift-click a range'
   const artistDisplay = esc(alb.album_artist || alb.artist || '(Unknown Artist)')
   card.innerHTML = `
@@ -560,6 +562,7 @@ function makeAlbumCard(alb: Album, i: number, albums: Album[]): HTMLElement {
       <img class="album-cover" loading="lazy" src="${coverUrl(alb.cover_track_id)}" alt="${esc(alb.album || '')}" />
       ${(() => { const q = albumQuality(alb.quality ?? {}, alb.track_count); return `<span class="quality-dot quality-dot-${q.rating} album-tile-dot" title="${esc(q.title)}"></span>` })()}
       <div class="album-cover-placeholder">♪</div>
+      ${alb.staged ? `<span class="album-staged-badge" title="${plural(alb.staged, 'track')} staged to change or move — Review to write">✎ ${alb.staged}</span>` : ''}
     </div>
     <div class="album-info">
       <div class="album-title">${esc(alb.album || '(Unknown Album)')}</div>
@@ -734,13 +737,18 @@ function drawAlbumList(fetched: AlbumRow[]) {
     const cls = r.tracks < r.expected ? 'al-short' : r.tracks > r.expected ? 'al-over' : 'al-full'
     return `<span class="${cls}" title="${r.tracks} present of ${r.expected} expected (from “n/N” track numbers)">${r.tracks} / ${r.expected}</span>`
   }
+  // Staged and not yet written: the track rows' amber, with what's waiting.
+  const stagedMark = (r: AlbumRow) => [
+    r.staged ? `<span class="al-staged" title="${plural(r.staged, 'track')} with staged changes — Review to write">✎ ${r.staged}</span>` : '',
+    r.moving ? `<span class="al-staged" title="Folder will move to ${esc(r.moving)}">→ ${esc(shortPath(r.moving))}</span>` : '',
+  ].join('')
   const dot = (r: AlbumRow) => { const q = albumQuality(r.quality ?? {}, r.tracks); return `<span class="quality-dot quality-dot-${q.rating}" title="${esc(q.title)}"></span>` }
   albumListEl.innerHTML = `<table class="track-table album-table"><thead><tr>
       ${th('quality', '', 'al-q', 'Quality: the worst track decides. Click to sort')}<th class="col-check"><input type="checkbox" id="album-select-all" title="Select every album on this page" /></th><th class="al-cover"><span class="col-resizer" data-al-cover-resize title="Drag to resize the covers · double-click to reset"></span></th>${th('album', 'Album')}${th('artist', 'Artist', '', 'Album artist, or the track artists when there is none')}${th('tracks', 'Tracks', 'al-num')}${th('discs', 'Discs', 'al-num')}
       ${th('year', 'Year')}${th('genre', 'Genre')}${th('format', 'Format')}${th('folder', 'Folder')}</tr></thead><tbody>
-    ${rows.map((r, i) => ({ r, i })).slice(albumPage.offset, albumPage.offset + state.pageSize).map(({ r, i }) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}" title="${esc(r.directory)}\nClick to open · the box (or Ctrl/⌘-click) selects, Shift-click a range">
+    ${rows.map((r, i) => ({ r, i })).slice(albumPage.offset, albumPage.offset + state.pageSize).map(({ r, i }) => `<tr data-i="${i}" data-album-key="${esc(listKey(r))}" class="${albumPicks.has(listKey(r)) ? 'album-picked' : ''}${r.staged || r.moving ? ' row-staged' : ''}" title="${esc(r.directory)}\nClick to open · the box (or Ctrl/⌘-click) selects, Shift-click a range">
       <td class="al-q">${dot(r)}</td><td class="col-check">${r.ids.length ? `<input type="checkbox" class="album-check" ${albumPicks.has(listKey(r)) ? 'checked' : ''} aria-label="Select this album" />` : '<span class="ro-lock" title="Read-only">🔒</span>'}</td><td class="al-cover"><img loading="lazy" src="${coverUrl(r.cover_track_id)}" alt="" onerror="this.style.visibility='hidden'" /></td>
-      <td>${esc(r.album || '(no album)')}</td><td>${artist(r)}</td><td class="al-num">${tracks(r)}</td>
+      <td>${esc(r.album || '(no album)')}${stagedMark(r)}</td><td>${artist(r)}</td><td class="al-num">${tracks(r)}</td>
       <td class="al-num">${r.discs > 1 ? r.discs : ''}</td><td>${v(r, 'year')}</td><td>${v(r, 'genre')}</td>
       <td>${v(r, 'format')}${r.bitrate ? ` <span class="al-dim">${Math.round(r.bitrate / 1000)}k</span>` : ''}</td>
       <td class="al-dim">${esc(shortPath(r.directory))}</td></tr>`).join('')}
@@ -3144,8 +3152,15 @@ async function refreshAfterStage() {
     }
     renderTracks()
   }
+  if (state.viewMode === 'albums') await refreshAlbumView()
   renderEditor()
   await refreshUndoButton()
+}
+
+/** Album view after staging: the staged marks come from the server. */
+async function refreshAlbumView() {
+  if (albumStyle === 'tiles') await loadLibrary()
+  renderAlbumView()
 }
 
 /** After a bulk tag edit: staged, or written (Settings → Stage changes off). */
@@ -3157,6 +3172,11 @@ async function refreshAfterWrite() {
   if (state.sidebarMode === 'files') await loadTree()
   else if (state.rootNode) treeStale = true
   await loadTracks()
+  // The album list reloads with the tracks; the tiles come from the library.
+  if (state.viewMode === 'albums' && albumStyle === 'tiles') {
+    if (state.sidebarMode !== 'tags') await loadLibrary()
+    renderAlbumGrid()
+  }
   if (state.sidebarMode === 'quality') await renderQualityPanel()
   renderEditor()
   await refreshUndoButton()

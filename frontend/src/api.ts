@@ -147,6 +147,7 @@ export interface Album {
   track_count: number
   cover_track_id: number
   quality: Record<string, number>      // per dot check: how many of its tracks fail it
+  staged: number                       // tracks with staged changes
 }
 
 export interface DuplicateTrack {
@@ -163,6 +164,8 @@ export interface AlbumRow {
   values: Record<string, string[]>     // distinct values of each mixed field, most common first
   ids: number[]                        // its tracks (none when read-only)
   quality: Record<string, number>      // per dot check: how many of its tracks fail it
+  staged: number                       // tracks with staged changes
+  moving: string | null                // where a staged folder move takes it
 }
 
 export interface RescanResult { at: number; ok: boolean; message: string }
